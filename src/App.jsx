@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useId } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -27,6 +27,16 @@ const LUGARES_FISICOS = ["Cancha", "Gimnasio de pesas", "Mixto"];
 const ENFOQUES_FISICOS = ["Velocidad", "Potencia", "Fuerza", "Resistencia", "Movilidad"];
 
 function toKey(y, m, d) { return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+
+// Fecha real de hoy en huso horario de Buenos Aires (America/Argentina/Buenos_Aires), como "YYYY-MM-DD".
+function todayKeyBA() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 function Chip({ children, tone = "zinc" }) {
   const map = {
@@ -147,11 +157,12 @@ function screenTick(x1, y1, x2, y2) {
 
 const TACTIC_STROKE = 1.1;
 
-function CourtLine({ l }) {
+function CourtLine({ l, markerId }) {
   const stroke = "#fb923c";
   const d = pathFromPoints(l.points, l.type);
-  if (l.type === "pase") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} strokeDasharray="4 3" markerEnd="url(#arrowhead)" />;
-  if (l.type === "dribbling") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd="url(#arrowhead)" />;
+  const marker = `url(#${markerId})`;
+  if (l.type === "pase") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} strokeDasharray="4 3" markerEnd={marker} />;
+  if (l.type === "dribbling") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd={marker} />;
   if (l.type === "cortina") {
     const last = l.points[l.points.length - 1];
     const prev = l.points[l.points.length - 2];
@@ -163,7 +174,7 @@ function CourtLine({ l }) {
       </g>
     );
   }
-  return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd="url(#arrowhead)" />;
+  return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd={marker} />;
 }
 
 // Ícono de tamaño fijo, orientable: primer clic ubica el símbolo, segundo clic define su dirección.
@@ -274,20 +285,21 @@ const TOOLS = [
   { id: "borrar", label: "Borrar" },
 ];
 
-function CourtDiagram() {
-  const [courtType, setCourtType] = useState("half");
-  const [players, setPlayers] = useState([]);
-  const [lines, setLines] = useState([]);
-  const [ball, setBall] = useState(null);
-  const [shots, setShots] = useState([]);
+function CourtDiagram({ initial, onSave, onCancel }) {
+  const [courtType, setCourtType] = useState(initial?.courtType || "half");
+  const [players, setPlayers] = useState(initial?.players || []);
+  const [lines, setLines] = useState(initial?.lines || []);
+  const [ball, setBall] = useState(initial?.ball || null);
+  const [shots, setShots] = useState(initial?.shots || []);
   const [shotDraft, setShotDraft] = useState(null);
   const [tool, setTool] = useState("ataque");
   const [drawingPath, setDrawingPath] = useState(null);
   const [previewPt, setPreviewPt] = useState(null);
   const svgRef = useRef(null);
   const dragRef = useRef(null);
-  const offCount = useRef(0);
-  const defCount = useRef(0);
+  const offCount = useRef((initial?.players || []).filter((p) => p.team === "off").reduce((m, p) => Math.max(m, p.num), 0));
+  const defCount = useRef((initial?.players || []).filter((p) => p.team === "def").reduce((m, p) => Math.max(m, p.num), 0));
+  const markerId = useId();
 
   const vbW = 150, vbH = courtType === "half" ? 140 : 280;
   const LINE_TOOLS = ["pase", "dribbling", "corte", "cortina"];
@@ -400,12 +412,12 @@ function CourtDiagram() {
         onClick={onCourtClick} onDoubleClick={onCourtDoubleClick}
         onTouchStart={onCourtDown} onTouchMove={onMove} onTouchEnd={onUp}>
         <defs>
-          <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.4" refY="2" orient="auto">
+          <marker id={markerId} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.4" refY="2" orient="auto">
             <path d="M0,0 L0,4 L3.4,2 z" fill="#fb923c" />
           </marker>
         </defs>
         <CourtBg w={vbW} h={vbH} courtType={courtType} />
-        {lines.map((l) => <g key={l.id} onClick={(e) => onLineClick(e, l)}><CourtLine l={l} /></g>)}
+        {lines.map((l) => <g key={l.id} onClick={(e) => onLineClick(e, l)}><CourtLine l={l} markerId={markerId} /></g>)}
         {previewPoints.length > 1 && (
           <polyline points={previewPoints.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#a1a1aa" strokeWidth="1.5" strokeDasharray="3 3" />
         )}
@@ -431,7 +443,40 @@ function CourtDiagram() {
       <p className="text-xs text-zinc-600 mt-1">
         Mové, agregá jugadores o balón tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
       </p>
+      <div className="flex gap-2 mt-2">
+        <button onClick={() => onSave({ courtType, players, lines, ball, shots })} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
+          Guardar cancha
+        </button>
+        <button onClick={onCancel} className="text-zinc-400 text-xs px-3 py-1.5">Cancelar</button>
+      </div>
     </div>
+  );
+}
+
+// Render de solo lectura de una cancha ya guardada (miniatura dentro de la lista de un bloque).
+function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] }) {
+  const markerId = useId();
+  const vbW = 150, vbH = courtType === "half" ? 140 : 280;
+  return (
+    <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ maxWidth: 120, pointerEvents: "none" }} className="bg-zinc-900 rounded-lg border border-zinc-800 shrink-0">
+      <defs>
+        <marker id={markerId} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.4" refY="2" orient="auto">
+          <path d="M0,0 L0,4 L3.4,2 z" fill="#fb923c" />
+        </marker>
+      </defs>
+      <CourtBg w={vbW} h={vbH} courtType={courtType} />
+      {lines.map((l) => <CourtLine key={l.id} l={l} markerId={markerId} />)}
+      {players.map((p) => (
+        <g key={p.id}>
+          <circle cx={p.x} cy={p.y} r="6" fill={p.team === "off" ? "#3b82f6" : "#18181b"} stroke={p.team === "off" ? "#93c5fd" : "#ef4444"} strokeWidth="1.5" />
+          <text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill={p.team === "off" ? "#ffffff" : "#ef4444"}>
+            {p.team === "def" ? "X" + p.num : p.num}
+          </text>
+        </g>
+      ))}
+      {ball && <BallIcon x={ball.x} y={ball.y} r={4} />}
+      {shots.map((s) => <ShotIcon key={s.id} x={s.x} y={s.y} angle={s.angle || 0} />)}
+    </svg>
   );
 }
 
@@ -439,7 +484,7 @@ function EntrenamientoView({ event, onBack, onUpdate }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
-  const [drawOpen, setDrawOpen] = useState({});
+  const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
   const [asistencia, setAsistencia] = useState(event.asistencia || "");
 
@@ -466,7 +511,23 @@ function EntrenamientoView({ event, onBack, onUpdate }) {
     setShowForm(false);
   };
 
-  const toggleDraw = (id) => setDrawOpen({ ...drawOpen, [id]: !drawOpen[id] });
+  const saveDiagram = (bloqueId, diagramId, state) => {
+    const next = bloques.map((b) => {
+      if (b.id !== bloqueId) return b;
+      const diagrams = b.diagrams || [];
+      if (diagramId === "new") return { ...b, diagrams: [...diagrams, { id: "d" + Date.now(), ...state }] };
+      return { ...b, diagrams: diagrams.map((d) => (d.id === diagramId ? { id: diagramId, ...state } : d)) };
+    });
+    setBloques(next);
+    onUpdate({ bloques: next });
+    setEditing(null);
+  };
+
+  const deleteDiagram = (bloqueId, diagramId) => {
+    const next = bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b));
+    setBloques(next);
+    onUpdate({ bloques: next });
+  };
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
@@ -543,21 +604,45 @@ function EntrenamientoView({ event, onBack, onUpdate }) {
 
       <Section icon={Clock} title="Bloque de cancha" accent="text-blue-400">
         <div className="space-y-2">
-          {bloques.map((b) => (
-            <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-              <div className="flex gap-3">
-                <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
-                  <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
-                  <button onClick={() => toggleDraw(b.id)} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mt-2">
-                    <PenLine size={12} /> {drawOpen[b.id] ? "Ocultar cancha" : "Dibujar cancha"}
-                  </button>
-                  {drawOpen[b.id] && <CourtDiagram />}
+          {bloques.map((b) => {
+            const diagrams = b.diagrams || [];
+            return (
+              <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div className="flex gap-3">
+                  <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
+                    <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
+
+                    <div className="mt-3 space-y-3">
+                      {diagrams.map((d, di) =>
+                        editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
+                          <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} />
+                        ) : (
+                          <div key={d.id} className="flex items-center gap-2">
+                            <CourtPreview {...d} />
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
+                              <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
+                              <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                            </div>
+                          </div>
+                        )
+                      )}
+
+                      {editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
+                        <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
+                      ) : (
+                        <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+                          <PenLine size={12} /> Agregar cancha
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {showForm ? (
@@ -726,9 +811,10 @@ function PartidoView({ event, onBack, onUpdate }) {
 }
 
 function CalendarView({ events, onSelectEvent, onAddEvent }) {
-  const today = new Date("2026-07-07");
-  const [month, setMonth] = useState(today.getMonth());
-  const [year, setYear] = useState(today.getFullYear());
+  const todayKey = todayKeyBA();
+  const [todayYear, todayMonth] = todayKey.split("-").map(Number);
+  const [month, setMonth] = useState(todayMonth - 1);
+  const [year, setYear] = useState(todayYear);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento" });
@@ -789,7 +875,7 @@ function CalendarView({ events, onSelectEvent, onAddEvent }) {
         {cells.map((d, i) => {
           if (!d) return <div key={i} />;
           const evs = eventsFor(d);
-          const isToday = toKey(year, month, d) === "2026-07-07";
+          const isToday = toKey(year, month, d) === todayKey;
           return (
             <button key={i} onClick={() => setSelectedDay(d)}
               className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col ${selectedDay === d ? "border-orange-500/60 bg-orange-500/5" : "border-zinc-800 hover:border-zinc-700"} ${isToday ? "ring-1 ring-zinc-500" : ""}`}>
