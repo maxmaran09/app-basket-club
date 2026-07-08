@@ -971,6 +971,10 @@ export default function App() {
 
   return (
     <div className="bg-zinc-950 min-h-screen p-6 font-sans">
+      <div className="max-w-3xl mx-auto flex items-center gap-2 mb-4">
+        <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
+        <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
+      </div>
       {errorMsg && (
         <div className="max-w-3xl mx-auto mb-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-3 py-2">
           Error de conexión con Supabase: {errorMsg}
