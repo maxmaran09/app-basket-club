@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -107,6 +107,40 @@ function EditableField({ label, icon, value, onSave, accent = "text-blue-400", m
         </div>
       )}
     </Section>
+  );
+}
+
+// Confirmación destructiva: hay que escribir BORRAR a mano para habilitar el botón.
+function ConfirmDeleteModal({ eventTitle, onCancel, onConfirm }) {
+  const [text, setText] = useState("");
+  const ready = text.trim().toUpperCase() === "BORRAR";
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-red-400 font-bold text-sm mb-2">Eliminar evento</h3>
+        <p className="text-zinc-400 text-sm mb-3">
+          Vas a eliminar <span className="text-zinc-200">"{eventTitle}"</span> de forma permanente. Escribí <span className="font-mono text-red-300">BORRAR</span> para confirmar.
+        </p>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="BORRAR"
+          autoFocus
+          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-3"
+        />
+        <div className="flex gap-2">
+          <button
+            disabled={!ready}
+            onClick={onConfirm}
+            className={`text-sm px-3 py-1.5 rounded text-white ${ready ? "bg-red-600 hover:bg-red-500" : "bg-red-900/40 cursor-not-allowed"}`}
+          >
+            Eliminar definitivamente
+          </button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -480,11 +514,12 @@ function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] })
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate }) {
+function EntrenamientoView({ event, onBack, onUpdate, onDelete }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
   const [asistencia, setAsistencia] = useState(event.asistencia || "");
 
@@ -531,9 +566,14 @@ function EntrenamientoView({ event, onBack, onUpdate }) {
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm mb-4">
-        <ArrowLeft size={15} /> Volver al calendario
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
+          <ArrowLeft size={15} /> Volver al calendario
+        </button>
+        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+          <Trash2 size={13} /> Eliminar evento
+        </button>
+      </div>
 
       <div className="flex items-center gap-2 text-blue-400 mb-1">
         <Dumbbell size={18} />
@@ -668,11 +708,15 @@ function EntrenamientoView({ event, onBack, onUpdate }) {
       <p className="text-xs text-zinc-600 mt-8 border-t border-zinc-800 pt-3">
         Diagramas de cancha con jugadores, balón y trayectorias con quiebres. Pendiente: biblioteca de jugadas guardadas y animación.
       </p>
+
+      {confirmDelete && (
+        <ConfirmDeleteModal eventTitle={event.title} onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+      )}
     </div>
   );
 }
 
-function PartidoView({ event, onBack, onUpdate }) {
+function PartidoView({ event, onBack, onUpdate, onDelete }) {
   const [scouting, setScouting] = useState(event.scoutingColectivo || []);
   const [newBullet, setNewBullet] = useState("");
   const [ataqueTags, setAtaqueTags] = useState(event.ataque?.transicion || []);
@@ -717,11 +761,18 @@ function PartidoView({ event, onBack, onUpdate }) {
     });
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm mb-4">
-        <ArrowLeft size={15} /> Volver al calendario
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
+          <ArrowLeft size={15} /> Volver al calendario
+        </button>
+        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+          <Trash2 size={13} /> Eliminar evento
+        </button>
+      </div>
 
       <div className="flex items-center gap-2 text-orange-400 mb-1">
         <Trophy size={18} />
@@ -806,11 +857,15 @@ function PartidoView({ event, onBack, onUpdate }) {
           </div>
         )}
       </Section>
+
+      {confirmDelete && (
+        <ConfirmDeleteModal eventTitle={event.title} onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+      )}
     </div>
   );
 }
 
-function CalendarView({ events, onSelectEvent, onAddEvent }) {
+function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
@@ -820,6 +875,9 @@ function CalendarView({ events, onSelectEvent, onAddEvent }) {
   const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento" });
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [tira, setTira] = useState(TIRAS[0]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [moveTarget, setMoveTarget] = useState(null);
+  const [moveDate, setMoveDate] = useState("");
 
   const equipoEvents = events.filter((e) => e.categoria === categoria && e.tira === tira);
 
@@ -899,13 +957,31 @@ function CalendarView({ events, onSelectEvent, onAddEvent }) {
             {dayEvents.map((e) => {
               const st = TIPO_ESTILO[e.type];
               const clickable = e.type === "entrenamiento" || e.type === "partido";
+              const isMoving = moveTarget === e.id;
               return (
-                <button key={e.id} disabled={!clickable} onClick={() => clickable && onSelectEvent(e)}
-                  className={`w-full text-left rounded-lg px-3 py-2 border border-zinc-800 flex items-center gap-2 ${clickable ? "hover:border-zinc-600 cursor-pointer" : "cursor-default"}`}>
-                  <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
-                  <span className={`text-sm ${st.text}`}>{e.title}</span>
-                  {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto" />}
-                </button>
+                <div key={e.id} className="rounded-lg border border-zinc-800">
+                  <div className="flex items-center gap-1 px-1">
+                    <button disabled={!clickable} onClick={() => clickable && onSelectEvent(e)}
+                      className={`flex-1 text-left px-2 py-2 flex items-center gap-2 ${clickable ? "hover:text-zinc-200 cursor-pointer" : "cursor-default"}`}>
+                      <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
+                      <span className={`text-sm ${st.text}`}>{e.title}</span>
+                      {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto" />}
+                    </button>
+                    <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
+                      <CalendarClock size={14} />
+                    </button>
+                    <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-1.5 shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  {isMoving && (
+                    <div className="flex items-center gap-2 px-3 pb-2">
+                      <input type="date" value={moveDate} onChange={(ev) => setMoveDate(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <button onClick={() => { onMoveEvent(e.id, moveDate); setMoveTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded">Guardar</button>
+                      <button onClick={() => setMoveTarget(null)} className="text-zinc-400 text-xs px-2 py-1">Cancelar</button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -934,6 +1010,14 @@ function CalendarView({ events, onSelectEvent, onAddEvent }) {
           <div key={k} className="flex items-center gap-1.5 text-xs text-zinc-500"><span className={`w-2 h-2 rounded-full ${v.dot}`} />{v.label}</div>
         ))}
       </div>
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          eventTitle={deleteTarget.title}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => { onDeleteEvent(deleteTarget.id); setDeleteTarget(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -969,6 +1053,13 @@ export default function App() {
     setActive((prev) => (prev && prev.id === id ? data : prev));
   };
 
+  const deleteEvent = async (id) => {
+    const { error } = await supabase.from("eventos").delete().eq("id", id);
+    if (error) { setErrorMsg(error.message); return; }
+    setEvents((prev) => prev.filter((e) => e.id !== id));
+    setActive((prev) => (prev && prev.id === id ? null : prev));
+  };
+
   return (
     <div className="bg-zinc-950 min-h-screen p-6 font-sans">
       <div className="max-w-3xl mx-auto flex items-center gap-2 mb-4">
@@ -988,14 +1079,16 @@ export default function App() {
             events={events}
             onSelectEvent={setActive}
             onAddEvent={addEvent}
+            onDeleteEvent={deleteEvent}
+            onMoveEvent={(id, date) => updateEvent(id, { date })}
           />
         )
       )}
       {active?.type === "entrenamiento" && (
-        <EntrenamientoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} />
+        <EntrenamientoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
       {active?.type === "partido" && (
-        <PartidoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} />
+        <PartidoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
     </div>
   );
