@@ -243,14 +243,15 @@ function CourtLine({ l }) {
   return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd="url(#arrowhead)" />;
 }
 
-// Ícono de tamaño fijo (no se dibuja a mano): se coloca con un clic, como el balón.
-// Símbolo fijo "=>": dos barras y un chevron centrado verticalmente entre ambas.
-function ShotIcon({ x, y, onMouseDown, onTouchStart, cursor = "pointer" }) {
+// Ícono de tamaño fijo, orientable: primer clic ubica el símbolo, segundo clic define su dirección.
+// Símbolo fijo "=>": dos barras y un chevron centrado verticalmente entre ambas, rotado según "angle".
+function ShotIcon({ x, y, angle = 0, onMouseDown, onTouchStart, cursor = "pointer", faded = false }) {
   const stroke = "#fb923c";
   const barsLen = 8, gap = 2.4, chevron = 4.5;
   const tipX = x + barsLen + chevron;
+  const deg = (angle * 180) / Math.PI;
   return (
-    <g onMouseDown={onMouseDown} onTouchStart={onTouchStart} style={{ cursor }}>
+    <g transform={`rotate(${deg} ${x} ${y})`} opacity={faded ? 0.5 : 1} onMouseDown={onMouseDown} onTouchStart={onTouchStart} style={{ cursor }}>
       <line x1={x} y1={y - gap / 2} x2={x + barsLen} y2={y - gap / 2} stroke={stroke} strokeWidth={TACTIC_STROKE} />
       <line x1={x} y1={y + gap / 2} x2={x + barsLen} y2={y + gap / 2} stroke={stroke} strokeWidth={TACTIC_STROKE} />
       <path d={`M ${x + barsLen} ${y - gap} L ${tipX} ${y} L ${x + barsLen} ${y + gap}`} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} strokeLinecap="round" strokeLinejoin="round" />
@@ -356,6 +357,7 @@ function CourtDiagram() {
   const [lines, setLines] = useState([]);
   const [ball, setBall] = useState(null);
   const [shots, setShots] = useState([]);
+  const [shotDraft, setShotDraft] = useState(null);
   const [tool, setTool] = useState("ataque");
   const [drawingPath, setDrawingPath] = useState(null);
   const [previewPt, setPreviewPt] = useState(null);
@@ -387,12 +389,21 @@ function CourtDiagram() {
     if (tool === "ataque") { offCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }]); }
     else if (tool === "defensa") { defCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }]); }
     else if (tool === "balon") { setBall({ x: pt.x, y: pt.y }); }
-    else if (tool === "lanzamiento") { setShots((s) => [...s, { id: "s" + Date.now(), x: pt.x, y: pt.y }]); }
   };
 
   const onCourtClick = (evt) => {
-    if (!LINE_TOOLS.includes(tool)) return;
     const pt = getPoint(evt);
+    if (tool === "lanzamiento") {
+      if (!shotDraft) { setShotDraft(pt); }
+      else {
+        const angle = Math.atan2(pt.y - shotDraft.y, pt.x - shotDraft.x);
+        setShots((s) => [...s, { id: "s" + Date.now(), x: shotDraft.x, y: shotDraft.y, angle }]);
+        setShotDraft(null);
+        setPreviewPt(null);
+      }
+      return;
+    }
+    if (!LINE_TOOLS.includes(tool)) return;
     if (!drawingPath) setDrawingPath({ type: tool, points: [pt] });
     else setDrawingPath((d) => ({ ...d, points: [...d.points, pt] }));
   };
@@ -404,7 +415,7 @@ function CourtDiagram() {
   };
 
   const onMove = (evt) => {
-    if (drawingPath) setPreviewPt(getPoint(evt));
+    if (drawingPath || shotDraft) setPreviewPt(getPoint(evt));
     if (!dragRef.current) return;
     evt.preventDefault();
     const pt = getPoint(evt);
@@ -435,9 +446,9 @@ function CourtDiagram() {
 
   const onLineClick = (evt, l) => { evt.stopPropagation(); if (tool === "borrar") setLines((ls) => ls.filter((x) => x.id !== l.id)); };
 
-  const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); };
+  const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); setShotDraft(null); };
 
-  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; };
+  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; };
 
   const previewPoints = drawingPath ? [...drawingPath.points, ...(previewPt ? [previewPt] : [])] : [];
 
@@ -485,11 +496,17 @@ function CourtDiagram() {
         ))}
         {ball && <BallIcon x={ball.x} y={ball.y} r={4} onMouseDown={onBallDown} onTouchStart={onBallDown} cursor={tool === "mover" ? "grab" : "pointer"} />}
         {shots.map((s) => (
-          <ShotIcon key={s.id} x={s.x} y={s.y} onMouseDown={(e) => onShotDown(e, s)} onTouchStart={(e) => onShotDown(e, s)} cursor={tool === "mover" ? "grab" : "pointer"} />
+          <ShotIcon key={s.id} x={s.x} y={s.y} angle={s.angle || 0} onMouseDown={(e) => onShotDown(e, s)} onTouchStart={(e) => onShotDown(e, s)} cursor={tool === "mover" ? "grab" : "pointer"} />
         ))}
+        {shotDraft && (
+          <>
+            <circle cx={shotDraft.x} cy={shotDraft.y} r="1.5" fill="#fb923c" />
+            <ShotIcon x={shotDraft.x} y={shotDraft.y} angle={previewPt ? Math.atan2(previewPt.y - shotDraft.y, previewPt.x - shotDraft.x) : 0} faded />
+          </>
+        )}
       </svg>
       <p className="text-xs text-zinc-600 mt-1">
-        Mové, agregá jugadores, balón o lanzamiento tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo (=&gt;), se coloca con un clic.
+        Mové, agregá jugadores o balón tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
       </p>
     </div>
   );
