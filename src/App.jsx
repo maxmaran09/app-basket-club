@@ -177,19 +177,26 @@ function EditableField({ label, icon, value, onSave, accent = "text-blue-400", m
   );
 }
 
+// Onda sinusoidal de longitud de onda fija (no importa el largo del segmento), que termina en un
+// tramo recto final para que la flecha apunte en la dirección de la línea, no de la última onda.
 function zigzagPoints(x1, y1, x2, y2) {
-  const segs = 6, amp = 7;
+  const wavelength = 9, amp = 4, samplesPerWave = 8;
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   const px = -uy, py = ux;
+  const tail = Math.min(wavelength * 0.55, len * 0.4);
+  const waveLen = Math.max(len - tail, 0);
+  const steps = Math.max(2, Math.round((waveLen / wavelength) * samplesPerWave));
   const pts = [];
-  for (let i = 1; i < segs; i++) {
-    const t = i / segs;
-    const bx = x1 + dx * t, by = y1 + dy * t;
-    const sign = i % 2 === 0 ? 1 : -1;
-    pts.push({ x: bx + px * amp * sign, y: by + py * amp * sign });
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const dist = t * waveLen;
+    const bx = x1 + ux * dist, by = y1 + uy * dist;
+    const offset = amp * Math.sin((2 * Math.PI * dist) / wavelength);
+    pts.push({ x: bx + px * offset, y: by + py * offset });
   }
+  pts.push({ x: x1 + ux * waveLen, y: y1 + uy * waveLen });
   pts.push({ x: x2, y: y2 });
   return pts;
 }
@@ -211,27 +218,44 @@ function screenTick(x1, y1, x2, y2) {
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   const px = -uy, py = ux;
-  const t = 9;
+  const t = 6;
   return { ax: x2 + px * t, ay: y2 + py * t, bx: x2 - px * t, by: y2 - py * t };
 }
+
+const TACTIC_STROKE = 1.1;
 
 function CourtLine({ l }) {
   const stroke = "#fb923c";
   const d = pathFromPoints(l.points, l.type);
-  if (l.type === "pase") return <path d={d} fill="none" stroke={stroke} strokeWidth="2" strokeDasharray="6 5" markerEnd="url(#arrowhead)" />;
-  if (l.type === "dribbling") return <path d={d} fill="none" stroke={stroke} strokeWidth="2" markerEnd="url(#arrowhead)" />;
+  if (l.type === "pase") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} strokeDasharray="4 3" markerEnd="url(#arrowhead)" />;
+  if (l.type === "dribbling") return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd="url(#arrowhead)" />;
   if (l.type === "cortina") {
     const last = l.points[l.points.length - 1];
     const prev = l.points[l.points.length - 2];
     const t = screenTick(prev.x, prev.y, last.x, last.y);
     return (
       <g>
-        <path d={d} fill="none" stroke={stroke} strokeWidth="2" />
-        <line x1={t.ax} y1={t.ay} x2={t.bx} y2={t.by} stroke={stroke} strokeWidth="2.5" />
+        <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} />
+        <line x1={t.ax} y1={t.ay} x2={t.bx} y2={t.by} stroke={stroke} strokeWidth={TACTIC_STROKE + 0.3} />
       </g>
     );
   }
-  return <path d={d} fill="none" stroke={stroke} strokeWidth="2" markerEnd="url(#arrowhead)" />;
+  return <path d={d} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} markerEnd="url(#arrowhead)" />;
+}
+
+// Ícono de tamaño fijo (no se dibuja a mano): se coloca con un clic, como el balón.
+// Símbolo fijo "=>": dos barras y un chevron centrado verticalmente entre ambas.
+function ShotIcon({ x, y, onMouseDown, onTouchStart, cursor = "pointer" }) {
+  const stroke = "#fb923c";
+  const barsLen = 8, gap = 2.4, chevron = 4.5;
+  const tipX = x + barsLen + chevron;
+  return (
+    <g onMouseDown={onMouseDown} onTouchStart={onTouchStart} style={{ cursor }}>
+      <line x1={x} y1={y - gap / 2} x2={x + barsLen} y2={y - gap / 2} stroke={stroke} strokeWidth={TACTIC_STROKE} />
+      <line x1={x} y1={y + gap / 2} x2={x + barsLen} y2={y + gap / 2} stroke={stroke} strokeWidth={TACTIC_STROKE} />
+      <path d={`M ${x + barsLen} ${y - gap} L ${tipX} ${y} L ${x + barsLen} ${y + gap}`} fill="none" stroke={stroke} strokeWidth={TACTIC_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  );
 }
 
 function BallIcon({ x, y, r = 8, onMouseDown, onTouchStart, cursor = "pointer" }) {
@@ -322,6 +346,7 @@ const TOOLS = [
   { id: "dribbling", label: "Dribbling" },
   { id: "corte", label: "Corte" },
   { id: "cortina", label: "Cortina" },
+  { id: "lanzamiento", label: "Lanzamiento" },
   { id: "borrar", label: "Borrar" },
 ];
 
@@ -330,6 +355,7 @@ function CourtDiagram() {
   const [players, setPlayers] = useState([]);
   const [lines, setLines] = useState([]);
   const [ball, setBall] = useState(null);
+  const [shots, setShots] = useState([]);
   const [tool, setTool] = useState("ataque");
   const [drawingPath, setDrawingPath] = useState(null);
   const [previewPt, setPreviewPt] = useState(null);
@@ -361,6 +387,7 @@ function CourtDiagram() {
     if (tool === "ataque") { offCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }]); }
     else if (tool === "defensa") { defCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }]); }
     else if (tool === "balon") { setBall({ x: pt.x, y: pt.y }); }
+    else if (tool === "lanzamiento") { setShots((s) => [...s, { id: "s" + Date.now(), x: pt.x, y: pt.y }]); }
   };
 
   const onCourtClick = (evt) => {
@@ -383,6 +410,7 @@ function CourtDiagram() {
     const pt = getPoint(evt);
     if (dragRef.current.type === "player") setPlayers((ps) => ps.map((p) => (p.id === dragRef.current.id ? { ...p, x: pt.x, y: pt.y } : p)));
     else if (dragRef.current.type === "ball") setBall({ x: pt.x, y: pt.y });
+    else if (dragRef.current.type === "shot") setShots((ss) => ss.map((s) => (s.id === dragRef.current.id ? { ...s, x: pt.x, y: pt.y } : s)));
   };
 
   const onUp = () => { dragRef.current = null; };
@@ -399,11 +427,17 @@ function CourtDiagram() {
     else if (tool === "borrar") setBall(null);
   };
 
+  const onShotDown = (evt, s) => {
+    evt.stopPropagation();
+    if (tool === "mover") dragRef.current = { type: "shot", id: s.id };
+    else if (tool === "borrar") setShots((ss) => ss.filter((x) => x.id !== s.id));
+  };
+
   const onLineClick = (evt, l) => { evt.stopPropagation(); if (tool === "borrar") setLines((ls) => ls.filter((x) => x.id !== l.id)); };
 
   const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); };
 
-  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; };
+  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; };
 
   const previewPoints = drawingPath ? [...drawingPath.points, ...(previewPt ? [previewPt] : [])] : [];
 
@@ -432,8 +466,8 @@ function CourtDiagram() {
         onClick={onCourtClick} onDoubleClick={onCourtDoubleClick}
         onTouchStart={onCourtDown} onTouchMove={onMove} onTouchEnd={onUp}>
         <defs>
-          <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
-            <path d="M0,0 L0,5 L5,2.5 z" fill="#fb923c" />
+          <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.4" refY="2" orient="auto">
+            <path d="M0,0 L0,4 L3.4,2 z" fill="#fb923c" />
           </marker>
         </defs>
         <CourtBg w={vbW} h={vbH} courtType={courtType} />
@@ -450,9 +484,12 @@ function CourtDiagram() {
           </g>
         ))}
         {ball && <BallIcon x={ball.x} y={ball.y} r={4} onMouseDown={onBallDown} onTouchStart={onBallDown} cursor={tool === "mover" ? "grab" : "pointer"} />}
+        {shots.map((s) => (
+          <ShotIcon key={s.id} x={s.x} y={s.y} onMouseDown={(e) => onShotDown(e, s)} onTouchStart={(e) => onShotDown(e, s)} cursor={tool === "mover" ? "grab" : "pointer"} />
+        ))}
       </svg>
       <p className="text-xs text-zinc-600 mt-1">
-        Mové, agregá jugadores o balón tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T.
+        Mové, agregá jugadores, balón o lanzamiento tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo (=&gt;), se coloca con un clic.
       </p>
     </div>
   );
