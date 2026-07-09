@@ -943,31 +943,65 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
   );
 }
 
-function PartidoView({ event, onBack, onUpdate, onDelete }) {
-  const [scouting, setScouting] = useState(event.scoutingColectivo || []);
-  const [newBullet, setNewBullet] = useState("");
+// Ícono de YouTube consistente en toda la app: si no hay link, queda visible pero deshabilitado
+// (transparente); si hay link, abre en pestaña nueva. "label" lo convierte en botón destacado.
+function VideoLinkButton({ url, size = 14, label }) {
+  const enabled = Boolean(url);
+  const abrir = () => enabled && window.open(url, "_blank", "noopener,noreferrer");
+
+  if (label) {
+    return (
+      <button
+        onClick={abrir}
+        disabled={!enabled}
+        className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition ${
+          enabled ? "bg-red-600/15 border-red-600/40 text-red-300 hover:bg-red-600/25" : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
+        }`}
+      >
+        <Youtube size={size} /> {label}
+      </button>
+    );
+  }
+  return (
+    <button onClick={abrir} disabled={!enabled} title={enabled ? "Ver video" : "Sin video cargado"}
+      className={enabled ? "text-red-400 hover:text-red-300" : "text-zinc-700 cursor-not-allowed"}>
+      <Youtube size={size} />
+    </button>
+  );
+}
+
+function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
+  const [rivalId, setRivalId] = useState(event.rival_id || "");
+  const [jugadoresRivales, setJugadoresRivales] = useState([]);
+  const [loadingRival, setLoadingRival] = useState(true);
   const [ataqueTags, setAtaqueTags] = useState(event.ataque?.transicion || []);
   const [setTags, setSetTags] = useState(event.ataque?.set || []);
   const [cortinaTags, setCortinaTags] = useState(event.defensa?.cortinas || []);
-  const [videoColectivo, setVideoColectivo] = useState(event.videoColectivo || "");
-  const [plantel, setPlantel] = useState(event.plantelRival || []);
   const [planAtaque, setPlanAtaque] = useState(event.planAtaque || "");
   const [planDefensa, setPlanDefensa] = useState(event.planDefensa || "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const equipoRival = equiposRivales.find((e) => e.id === rivalId) || null;
+
+  useEffect(() => {
+    if (!rivalId) { setJugadoresRivales([]); setLoadingRival(false); return; }
+    let cancelled = false;
+    setLoadingRival(true);
+    (async () => {
+      const { data, error } = await supabase.from("jugadores_rivales").select("*").eq("equipo_rival_id", rivalId).order("dorsal", { ascending: true });
+      if (cancelled) return;
+      if (!error) setJugadoresRivales(data);
+      setLoadingRival(false);
+    })();
+    return () => { cancelled = true; };
+  }, [rivalId]);
 
   const toggleList = (list, val) => (list.includes(val) ? list.filter((x) => x !== val) : [...list, val]);
 
-  const addBullet = () => {
-    if (!newBullet) return;
-    const next = [...scouting, newBullet];
-    setScouting(next);
-    onUpdate({ scoutingColectivo: next });
-    setNewBullet("");
-  };
-
-  const updatePlayerVideo = (idx, val) => {
-    const copy = [...plantel];
-    copy[idx] = { ...copy[idx], video: val };
-    setPlantel(copy);
+  const cambiarRival = (id) => {
+    setRivalId(id);
+    const eq = equiposRivales.find((e) => e.id === id);
+    onUpdate({ rival_id: id || null, rival: eq?.nombre_club || "" });
   };
 
   const onToggleTransicion = (v) => {
@@ -988,8 +1022,6 @@ function PartidoView({ event, onBack, onUpdate, onDelete }) {
     });
   };
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
       <div className="flex items-center justify-between mb-4">
@@ -1005,51 +1037,57 @@ function PartidoView({ event, onBack, onUpdate, onDelete }) {
         <Trophy size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">{event.jornada}</span>
       </div>
-      <h1 className="text-2xl font-bold mb-2">vs {event.rival}</h1>
-      <div className="flex flex-wrap mb-6">
+      <h1 className="text-2xl font-bold mb-2">vs {equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}</h1>
+      <div className="flex flex-wrap mb-2">
         <Chip tone="orange">{event.condicion}</Chip>
         <Chip><Clock size={11} className="inline mr-1 -mt-0.5" />{event.horario}</Chip>
         <Chip>Citación {event.citacion}</Chip>
         <Chip>{event.date}</Chip>
         {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
       </div>
+      <div className="flex items-center gap-2 mb-6">
+        <p className="text-xs text-zinc-500">Rival:</p>
+        <select value={rivalId} onChange={(e) => cambiarRival(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
+          <option value="">(sin asignar)</option>
+          {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
+        </select>
+      </div>
 
       <Section icon={Shield} title="Scouting colectivo" accent="text-orange-400">
-        <ul className="space-y-1.5 mb-2">
-          {scouting.map((s, i) => (
-            <li key={i} className="text-sm text-zinc-300 flex gap-2">
-              <span className="text-orange-500 mt-1">•</span><span>{s}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="flex gap-2 mb-3">
-          <input value={newBullet} onChange={(e) => setNewBullet(e.target.value)} placeholder="Agregar característica del rival..." className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          <button onClick={addBullet} className="bg-zinc-800 hover:bg-zinc-700 text-sm px-3 rounded text-zinc-200">Agregar</button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Youtube size={14} className="text-zinc-500 shrink-0" />
-          <input value={videoColectivo} onChange={(e) => setVideoColectivo(e.target.value)} onBlur={() => onUpdate({ videoColectivo })} placeholder="Link de YouTube — scouting colectivo" className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100" />
-        </div>
-        {videoColectivo && <a href={videoColectivo} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:underline block mt-1">Ver video ↗</a>}
+        {!equipoRival ? (
+          <p className="text-sm text-zinc-500">Asigná un rival arriba para ver su scouting (se carga desde Scouting Hub).</p>
+        ) : (
+          <>
+            <p className="text-sm text-zinc-300 mb-3">{equipoRival.notas_colectivas || <span className="text-zinc-600">Sin notas colectivas cargadas todavía.</span>}</p>
+            <VideoLinkButton url={equipoRival.video_colectivo_url} label="Ver Video de Partido" />
+          </>
+        )}
       </Section>
 
       <Section icon={Users} title="Plantel rival" accent="text-orange-400">
-        <div className="space-y-2">
-          {plantel.map((j, i) => (
-            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-orange-300 font-mono text-xs">#{j.numero}</span>
-                <span className="font-medium text-sm">{j.nombre}</span>
-                <span className="text-zinc-500 text-xs ml-auto">{j.posicion} · {j.categoria}</span>
+        {!equipoRival ? (
+          <p className="text-sm text-zinc-500">—</p>
+        ) : loadingRival ? (
+          <p className="text-sm text-zinc-500">Cargando plantel…</p>
+        ) : jugadoresRivales.length === 0 ? (
+          <p className="text-sm text-zinc-500">Este rival todavía no tiene jugadores cargados en Scouting Hub.</p>
+        ) : (
+          <div className="space-y-2">
+            {jugadoresRivales.map((j) => (
+              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+                  <span className="font-medium text-sm">{j.nombre_apellido}</span>
+                  <VideoLinkButton url={j.video_individual_url} size={13} />
+                  <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
+                </div>
+                {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
+                {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
+                {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
               </div>
-              <p className="text-sm text-zinc-400 mb-2">{j.caracteristicas}</p>
-              <div className="flex items-center gap-2">
-                <Youtube size={13} className="text-zinc-600 shrink-0" />
-                <input value={j.video || ""} onChange={(e) => updatePlayerVideo(i, e.target.value)} onBlur={() => onUpdate({ plantelRival: plantel })} placeholder="Link scouting individual" className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-100" />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section icon={Swords} title="Plan de juego — ataque" accent="text-orange-400">
@@ -1092,14 +1130,14 @@ function PartidoView({ event, onBack, onUpdate, onDelete }) {
   );
 }
 
-function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent }) {
+function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
   const [year, setYear] = useState(todayYear);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento" });
+  const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento", rivalId: "" });
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [tira, setTira] = useState(TIRAS[0]);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -1219,8 +1257,30 @@ function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMove
               <select value={newEv.type} onChange={(e) => setNewEv({ ...newEv, type: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm">
                 {Object.keys(TIPO_ESTILO).map((t) => <option key={t} value={t}>{TIPO_ESTILO[t].label}</option>)}
               </select>
+              {newEv.type === "partido" && (
+                <select value={newEv.rivalId} onChange={(e) => setNewEv({ ...newEv, rivalId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm">
+                  <option value="">Rival (elegilo o cargalo en Scouting Hub)</option>
+                  {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
+                </select>
+              )}
               <div className="flex gap-2">
-                <button onClick={() => { if (newEv.title) { onAddEvent({ date: toKey(year, month, selectedDay), categoria, tira, ...newEv }); setNewEv({ title: "", type: "entrenamiento" }); setShowAdd(false); } }} className="bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+                <button
+                  onClick={() => {
+                    if (!newEv.title) return;
+                    const payload = { date: toKey(year, month, selectedDay), categoria, tira, title: newEv.title, type: newEv.type };
+                    const rivalEquipo = equiposRivales.find((r) => r.id === newEv.rivalId);
+                    if (newEv.type === "partido" && rivalEquipo) {
+                      payload.rival_id = rivalEquipo.id;
+                      payload.rival = rivalEquipo.nombre_club;
+                    }
+                    onAddEvent(payload);
+                    setNewEv({ title: "", type: "entrenamiento", rivalId: "" });
+                    setShowAdd(false);
+                  }}
+                  className="bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded"
+                >
+                  Guardar
+                </button>
                 <button onClick={() => setShowAdd(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
               </div>
             </div>
@@ -1516,11 +1576,281 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   );
 }
 
+// Alta y edición de un equipo rival (nombre, escudo, notas colectivas, video de partido).
+function EquipoRivalFormModal({ equipo, onCancel, onSave }) {
+  const [form, setForm] = useState({
+    nombre_club: equipo?.nombre_club ?? "",
+    logo_url: equipo?.logo_url ?? "",
+    notas_colectivas: equipo?.notas_colectivas ?? "",
+    video_colectivo_url: equipo?.video_colectivo_url ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!form.nombre_club) return;
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">{equipo ? "Editar equipo rival" : "Agregar equipo rival"}</h3>
+        <div className="space-y-2">
+          <input placeholder="Nombre del club" value={form.nombre_club} onChange={(e) => set("nombre_club", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <input placeholder="Link del escudo (logo_url, opcional)" value={form.logo_url} onChange={(e) => set("logo_url", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <textarea placeholder="Notas colectivas (fortalezas / debilidades del equipo)" value={form.notas_colectivas} onChange={(e) => set("notas_colectivas", e.target.value)} rows={3} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div className="flex items-center gap-2">
+            <Youtube size={14} className="text-zinc-500 shrink-0" />
+            <input placeholder="Link de YouTube — video colectivo" value={form.video_colectivo_url} onChange={(e) => set("video_colectivo_url", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button disabled={!form.nombre_club || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{equipo ? "Guardar cambios" : "Guardar equipo"}</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Alta y edición de un jugador rival dentro de la ficha de un equipo.
+function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
+  const [form, setForm] = useState({
+    dorsal: jugadorRival?.dorsal ?? "",
+    nombre_apellido: jugadorRival?.nombre_apellido ?? "",
+    posicion: jugadorRival?.posicion ?? POSICIONES[0],
+    categoria: jugadorRival?.categoria ?? "",
+    cualidades_ataque: jugadorRival?.cualidades_ataque ?? "",
+    cualidades_defensa: jugadorRival?.cualidades_defensa ?? "",
+    debilidades: jugadorRival?.debilidades ?? "",
+    video_individual_url: jugadorRival?.video_individual_url ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!form.nombre_apellido) return;
+    setSaving(true);
+    await onSave({ ...form, dorsal: form.dorsal ? Number(form.dorsal) : null });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">{jugadorRival ? "Editar jugador rival" : "Agregar jugador rival"}</h3>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <div className="flex gap-2">
+            <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <input placeholder="Categoría (Mayor, U21...)" value={form.categoria} onChange={(e) => set("categoria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <textarea placeholder="Cualidades de ataque" value={form.cualidades_ataque} onChange={(e) => set("cualidades_ataque", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <textarea placeholder="Cualidades de defensa" value={form.cualidades_defensa} onChange={(e) => set("cualidades_defensa", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <textarea placeholder="Debilidades" value={form.debilidades} onChange={(e) => set("debilidades", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div className="flex items-center gap-2">
+            <Youtube size={14} className="text-zinc-500 shrink-0" />
+            <input placeholder="Link de YouTube — jugadas individuales" value={form.video_individual_url} onChange={(e) => set("video_individual_url", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugadorRival ? "Guardar cambios" : "Guardar jugador"}</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Ficha completa de un equipo rival: notas/video colectivo editable + plantel de jugadores
+// rivales (propia tabla relacional, se reusa desde cualquier partido contra este equipo).
+function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
+  const [jugadoresRivales, setJugadoresRivales] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notas, setNotas] = useState(equipo.notas_colectivas || "");
+  const [videoUrl, setVideoUrl] = useState(equipo.video_colectivo_url || "");
+  const [showAddJugador, setShowAddJugador] = useState(false);
+  const [editJugador, setEditJugador] = useState(null);
+  const [deleteJugador, setDeleteJugador] = useState(null);
+  const [showEditEquipo, setShowEditEquipo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("jugadores_rivales").select("*").eq("equipo_rival_id", equipo.id).order("dorsal", { ascending: true });
+      if (cancelled) return;
+      if (!error) setJugadoresRivales(data);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [equipo.id]);
+
+  const addJugadorRival = async (data) => {
+    const { data: row, error } = await supabase.from("jugadores_rivales").insert({ ...data, equipo_rival_id: equipo.id }).select().single();
+    if (!error) setJugadoresRivales((prev) => [...prev, row]);
+    setShowAddJugador(false);
+  };
+  const updateJugadorRival = async (id, patch) => {
+    const { data: row, error } = await supabase.from("jugadores_rivales").update(patch).eq("id", id).select().single();
+    if (!error) setJugadoresRivales((prev) => prev.map((j) => (j.id === id ? row : j)));
+    setEditJugador(null);
+  };
+  const removeJugadorRival = async (id) => {
+    const { error } = await supabase.from("jugadores_rivales").delete().eq("id", id);
+    if (!error) setJugadoresRivales((prev) => prev.filter((j) => j.id !== id));
+    setDeleteJugador(null);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto text-zinc-100">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
+          <ArrowLeft size={15} /> Volver a Scouting Hub
+        </button>
+        <button onClick={() => setShowEditEquipo(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-blue-400 text-xs">
+          <PenLine size={13} /> Editar equipo
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 text-orange-400 mb-1">
+        <Shield size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Ficha de rival</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-6">{equipo.nombre_club}</h1>
+
+      <EditableField label="Notas colectivas" icon={Shield} accent="text-orange-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline />
+
+      <Section icon={Youtube} title="Video colectivo" accent="text-orange-400">
+        <div className="flex items-center gap-2 mb-2">
+          <Youtube size={14} className="text-zinc-500 shrink-0" />
+          <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onBlur={() => onUpdateEquipo({ video_colectivo_url: videoUrl })} placeholder="Link de YouTube — video colectivo" className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100" />
+        </div>
+        <VideoLinkButton url={videoUrl} label="Ver Video de Partido" />
+      </Section>
+
+      <Section icon={Users} title="Plantel rival" accent="text-orange-400">
+        {loading ? (
+          <p className="text-sm text-zinc-500">Cargando plantel…</p>
+        ) : (
+          <div className="space-y-2 mb-3">
+            {jugadoresRivales.map((j) => (
+              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+                  <span className="font-medium text-sm">{j.nombre_apellido}</span>
+                  <VideoLinkButton url={j.video_individual_url} size={13} />
+                  <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
+                  <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-1"><PenLine size={12} /></button>
+                  <button onClick={() => setDeleteJugador(j)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                </div>
+                {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
+                {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
+                {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setShowAddJugador(true)} className="flex items-center gap-1.5 text-orange-400 text-sm hover:text-orange-300">
+          <Plus size={15} /> Agregar jugador rival
+        </button>
+      </Section>
+
+      {showAddJugador && (
+        <JugadorRivalFormModal onCancel={() => setShowAddJugador(false)} onSave={addJugadorRival} />
+      )}
+      {editJugador && (
+        <JugadorRivalFormModal jugadorRival={editJugador} onCancel={() => setEditJugador(null)} onSave={(data) => updateJugadorRival(editJugador.id, data)} />
+      )}
+      {deleteJugador && (
+        <ConfirmDeleteModal itemLabel={deleteJugador.nombre_apellido} subject="jugador rival" onCancel={() => setDeleteJugador(null)} onConfirm={() => removeJugadorRival(deleteJugador.id)} />
+      )}
+      {showEditEquipo && (
+        <EquipoRivalFormModal
+          equipo={equipo}
+          onCancel={() => setShowEditEquipo(false)}
+          onSave={async (data) => { await onUpdateEquipo(data); setShowEditEquipo(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const selected = equiposRivales.find((e) => e.id === selectedId) || null;
+
+  if (selected) {
+    return (
+      <EquipoRivalFicha
+        equipo={selected}
+        onBack={() => setSelectedId(null)}
+        onUpdateEquipo={(patch) => onUpdateEquipo(selected.id, patch)}
+      />
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Shield size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Scouting Hub</span>
+      </div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Equipos rivales</h1>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+          <Plus size={15} /> Agregar equipo rival
+        </button>
+      </div>
+
+      {equiposRivales.length === 0 && <p className="text-sm text-zinc-500">Todavía no cargaste ningún equipo rival.</p>}
+
+      <div className="space-y-2">
+        {equiposRivales.map((eq) => (
+          <div key={eq.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-center gap-3">
+            <button onClick={() => setSelectedId(eq.id)} className="flex-1 text-left">
+              <p className="font-medium text-sm text-zinc-100">{eq.nombre_club}</p>
+              {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{eq.notas_colectivas}</p>}
+            </button>
+            <VideoLinkButton url={eq.video_colectivo_url} size={14} />
+            <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-1">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {showAdd && (
+        <EquipoRivalFormModal onCancel={() => setShowAdd(false)} onSave={async (data) => { await onAddEquipo(data); setShowAdd(false); }} />
+      )}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deleteTarget.nombre_club}
+          subject="equipo rival"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => { onDeleteEquipo(deleteTarget.id); setDeleteTarget(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [events, setEvents] = useState([]);
   const [jugadores, setJugadores] = useState([]);
+  const [equiposRivales, setEquiposRivales] = useState([]);
   const [active, setActive] = useState(null);
-  const [view, setView] = useState("calendario"); // "calendario" | "plantel"
+  const [view, setView] = useState("calendario"); // "calendario" | "plantel" | "scouting"
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -1542,6 +1872,16 @@ export default function App() {
       const { data, error } = await supabase.from("jugadores").select("*").order("nombre_apellido", { ascending: true });
       if (cancelled) return;
       if (!error) setJugadores(data);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("equipos_rivales").select("*").order("nombre_club", { ascending: true });
+      if (cancelled) return;
+      if (!error) setEquiposRivales(data);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -1584,6 +1924,24 @@ export default function App() {
     setJugadores((prev) => prev.map((j) => (j.id === id ? data : j)));
   };
 
+  const addEquipoRival = async (eq) => {
+    const { data, error } = await supabase.from("equipos_rivales").insert(eq).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setEquiposRivales((prev) => [...prev, data]);
+  };
+
+  const updateEquipoRival = async (id, patch) => {
+    const { data, error } = await supabase.from("equipos_rivales").update(patch).eq("id", id).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setEquiposRivales((prev) => prev.map((e) => (e.id === id ? data : e)));
+  };
+
+  const deleteEquipoRival = async (id) => {
+    const { error } = await supabase.from("equipos_rivales").delete().eq("id", id);
+    if (error) { setErrorMsg(error.message); return; }
+    setEquiposRivales((prev) => prev.filter((e) => e.id !== id));
+  };
+
   return (
     <div className="bg-zinc-950 min-h-screen p-6 font-sans">
       <div className="max-w-3xl mx-auto flex items-center gap-2 mb-4">
@@ -1603,6 +1961,9 @@ export default function App() {
           <button onClick={() => setView("plantel")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "plantel" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
             Plantel
           </button>
+          <button onClick={() => setView("scouting")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "scouting" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
+            Scouting Hub
+          </button>
         </div>
       )}
       {!active && (
@@ -1611,13 +1972,16 @@ export default function App() {
         ) : view === "calendario" ? (
           <CalendarView
             events={events}
+            equiposRivales={equiposRivales}
             onSelectEvent={setActive}
             onAddEvent={addEvent}
             onDeleteEvent={deleteEvent}
             onMoveEvent={(id, date) => updateEvent(id, { date })}
           />
-        ) : (
+        ) : view === "plantel" ? (
           <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
+        ) : (
+          <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
         )
       )}
       {active?.type === "entrenamiento" && (
@@ -1627,7 +1991,7 @@ export default function App() {
         <IndividualView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
       {active?.type === "partido" && (
-        <PartidoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+        <PartidoView event={active} equiposRivales={equiposRivales} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
     </div>
   );
