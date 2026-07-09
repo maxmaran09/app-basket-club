@@ -1029,6 +1029,17 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
   const [planDefensa, setPlanDefensa] = useState(event.planDefensa || "");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const [editHeader, setEditHeader] = useState(false);
+  const [jornada, setJornada] = useState(event.jornada || "");
+  const [condicion, setCondicion] = useState(event.condicion || "LOCAL");
+  const [horario, setHorario] = useState(event.horario || "");
+  const [citacion, setCitacion] = useState(event.citacion || "");
+
+  const guardarHeader = () => {
+    setEditHeader(false);
+    onUpdate({ jornada, condicion, horario, citacion });
+  };
+
   const equipoRival = equiposRivales.find((e) => e.id === rivalId) || null;
 
   useEffect(() => {
@@ -1083,16 +1094,41 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
 
       <div className="flex items-center gap-2 text-orange-400 mb-1">
         <Trophy size={18} />
-        <span className="text-xs font-bold uppercase tracking-widest">{event.jornada}</span>
+        <span className="text-xs font-bold uppercase tracking-widest">{jornada || "Partido"}</span>
       </div>
       <h1 className="text-2xl font-bold mb-2">vs {equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}</h1>
-      <div className="flex flex-wrap mb-2">
-        <Chip tone="orange">{event.condicion}</Chip>
-        <Chip><Clock size={11} className="inline mr-1 -mt-0.5" />{event.horario}</Chip>
-        <Chip>Citación {event.citacion}</Chip>
-        <Chip>{event.date}</Chip>
-        {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
-      </div>
+
+      {editHeader ? (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2 mb-2">
+          <div className="flex gap-2">
+            <input value={jornada} onChange={(e) => setJornada(e.target.value)} placeholder="Jornada (ej: Fecha 3, Playoff — Juego 1)" className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <select value={condicion} onChange={(e) => setCondicion(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              <option value="LOCAL">LOCAL</option>
+              <option value="VISITANTE">VISITANTE</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <input value={horario} onChange={(e) => setHorario(e.target.value)} placeholder="Horario del partido (ej: 20:30 hs)" className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input value={citacion} onChange={(e) => setCitacion(e.target.value)} placeholder="Horario de citación (ej: 19:15 hs)" className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={guardarHeader} className="bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={() => setEditHeader(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Chip tone="orange">{condicion}</Chip>
+          <Chip><Clock size={11} className="inline mr-1 -mt-0.5" />{horario || "sin horario"}</Chip>
+          <Chip>Citación {citacion || "—"}</Chip>
+          <Chip>{event.date}</Chip>
+          {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
+          <button onClick={() => setEditHeader(true)} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+            <PenLine size={12} /> Editar
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-6">
         <p className="text-xs text-zinc-500">Rival:</p>
         <select value={rivalId} onChange={(e) => cambiarRival(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
