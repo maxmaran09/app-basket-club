@@ -1673,6 +1673,74 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   );
 }
 
+// Vista general de todos los bloques de entrenamiento programados (Entrenamiento, Individual y
+// Optativo) de una categoría/tira, para entrar directo a cualquiera sin ir mes a mes en el
+// calendario. Optativo no tiene ficha propia todavía, así que se lista pero no es clickeable.
+const ENTRENAMIENTOS_TIPOS = ["entrenamiento", "individual", "optativo"];
+
+function EntrenamientosView({ events, onSelectEvent }) {
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const todayKey = todayKeyBA();
+
+  const filtered = events
+    .filter((e) => ENTRENAMIENTOS_TIPOS.includes(e.type) && e.categoria === categoria && e.tira === tira)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return (
+    <div className="max-w-3xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Dumbbell size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Entrenamientos</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-4">Bloques programados</h1>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={tira} onChange={(e) => setTira(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-zinc-500">No hay entrenamientos, individuales ni optativos cargados para {categoria} · {tira}.</p>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((e) => {
+            const st = TIPO_ESTILO[e.type];
+            const isPast = e.date < todayKey;
+            const clickable = e.type === "entrenamiento" || e.type === "individual";
+            const content = (
+              <>
+                <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${st.text} truncate`}>{e.title}</p>
+                  <p className="text-xs text-zinc-500">{e.date} · {st.label}</p>
+                </div>
+              </>
+            );
+            return clickable ? (
+              <button
+                key={e.id}
+                onClick={() => onSelectEvent(e)}
+                className={`w-full text-left rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3 hover:border-zinc-600 transition ${isPast ? "opacity-50" : ""}`}
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={e.id} className={`rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3 ${isPast ? "opacity-40" : ""}`}>
+                {content}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Alta y edición de un equipo rival (nombre, escudo, notas colectivas, video de partido).
 function EquipoRivalFormModal({ equipo, onCancel, onSave }) {
   const [form, setForm] = useState({
@@ -1945,6 +2013,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
 const NAV_ITEMS = [
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "plantel", label: "Plantel", icon: Users },
+  { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
   { id: "scouting", label: "Scouting", icon: Swords },
 ];
 
@@ -2123,6 +2192,8 @@ export default function App() {
             />
           ) : seccionActiva === "plantel" ? (
             <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
+          ) : seccionActiva === "entrenamientos" ? (
+            <EntrenamientosView events={events} onSelectEvent={setActive} />
           ) : (
             <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
           )
