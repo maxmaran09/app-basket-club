@@ -1942,14 +1942,29 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
   );
 }
 
+const NAV_ITEMS = [
+  { id: "calendario", label: "Calendario", icon: Calendar },
+  { id: "plantel", label: "Plantel", icon: Users },
+  { id: "scouting", label: "Scouting", icon: Swords },
+];
+
 export default function App() {
   const [events, setEvents] = useState([]);
   const [jugadores, setJugadores] = useState([]);
   const [equiposRivales, setEquiposRivales] = useState([]);
   const [active, setActive] = useState(null);
-  const [view, setView] = useState("calendario"); // "calendario" | "plantel" | "scouting"
+  const [seccionActiva, setSeccionActiva] = useState("calendario"); // "calendario" | "plantel" | "scouting"
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
+  });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+
+  const irASeccion = (id) => { setActive(null); setSeccionActiva(id); };
+
+  useEffect(() => {
+    try { localStorage.setItem("sidebarCollapsed", sidebarCollapsed ? "1" : "0"); } catch {}
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2040,57 +2055,109 @@ export default function App() {
   };
 
   return (
-    <div className="bg-zinc-950 min-h-screen p-6 font-sans">
-      <div className="max-w-3xl mx-auto flex items-center gap-2 mb-4">
-        <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
-        <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
-      </div>
-      {errorMsg && (
-        <div className="max-w-3xl mx-auto mb-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-3 py-2">
-          Error de conexión con Supabase: {errorMsg}
+    <div className="bg-zinc-950 min-h-screen font-sans md:flex">
+      {/* Sidebar fija — solo escritorio, colapsable a solo íconos */}
+      <aside className={`hidden md:flex md:flex-col md:shrink-0 bg-zinc-900 border-r border-zinc-800 min-h-screen p-4 transition-all duration-200 ${sidebarCollapsed ? "md:w-[72px]" : "md:w-56"}`}>
+        <div className={`flex items-center gap-2 mb-8 px-1 ${sidebarCollapsed ? "justify-center" : ""}`}>
+          <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-9 w-auto shrink-0" />
+          {!sidebarCollapsed && (
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-zinc-100 leading-tight truncate">Náutico Hacoaj</p>
+              <p className="text-xs text-zinc-500">Staff Básquet</p>
+            </div>
+          )}
         </div>
-      )}
-      {!active && (
-        <div className="max-w-3xl mx-auto flex gap-2 mb-4">
-          <button onClick={() => setView("calendario")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "calendario" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
-            Calendario
-          </button>
-          <button onClick={() => setView("plantel")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "plantel" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
-            Plantel
-          </button>
-          <button onClick={() => setView("scouting")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "scouting" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
-            Scouting Hub
-          </button>
+        <nav className="flex flex-col gap-1 flex-1">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = !active && seccionActiva === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => irASeccion(item.id)}
+                title={sidebarCollapsed ? item.label : undefined}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${sidebarCollapsed ? "justify-center px-0" : ""} ${
+                  isActive ? "bg-orange-500/15 text-orange-300" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                <Icon size={18} />
+                {!sidebarCollapsed && item.label}
+              </button>
+            );
+          })}
+        </nav>
+        <button
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 ${sidebarCollapsed ? "justify-center px-0" : ""}`}
+        >
+          {sidebarCollapsed ? <ChevronRight size={16} /> : (<><ChevronLeft size={16} /> Colapsar</>)}
+        </button>
+      </aside>
+
+      {/* Contenido principal */}
+      <main className="flex-1 min-w-0 p-6 pb-24 md:pb-6">
+        <div className="md:hidden flex items-center gap-2 mb-4">
+          <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
+          <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
         </div>
-      )}
-      {!active && (
-        loading ? (
-          <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
-        ) : view === "calendario" ? (
-          <CalendarView
-            events={events}
-            equiposRivales={equiposRivales}
-            onSelectEvent={setActive}
-            onAddEvent={addEvent}
-            onDeleteEvent={deleteEvent}
-            onMoveEvent={(id, date) => updateEvent(id, { date })}
-            onRenameEvent={(id, title) => updateEvent(id, { title })}
-          />
-        ) : view === "plantel" ? (
-          <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
-        ) : (
-          <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
-        )
-      )}
-      {active?.type === "entrenamiento" && (
-        <EntrenamientoView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
-      )}
-      {active?.type === "individual" && (
-        <IndividualView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
-      )}
-      {active?.type === "partido" && (
-        <PartidoView event={active} equiposRivales={equiposRivales} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
-      )}
+
+        {errorMsg && (
+          <div className="max-w-3xl mx-auto mb-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-3 py-2">
+            Error de conexión con Supabase: {errorMsg}
+          </div>
+        )}
+
+        {!active && (
+          loading ? (
+            <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
+          ) : seccionActiva === "calendario" ? (
+            <CalendarView
+              events={events}
+              equiposRivales={equiposRivales}
+              onSelectEvent={setActive}
+              onAddEvent={addEvent}
+              onDeleteEvent={deleteEvent}
+              onMoveEvent={(id, date) => updateEvent(id, { date })}
+              onRenameEvent={(id, title) => updateEvent(id, { title })}
+            />
+          ) : seccionActiva === "plantel" ? (
+            <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
+          ) : (
+            <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
+          )
+        )}
+        {active?.type === "entrenamiento" && (
+          <EntrenamientoView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+        )}
+        {active?.type === "individual" && (
+          <IndividualView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+        )}
+        {active?.type === "partido" && (
+          <PartidoView event={active} equiposRivales={equiposRivales} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+        )}
+      </main>
+
+      {/* Bottom nav fija — solo celular, iconos grandes para tocar con el pulgar */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900 border-t border-zinc-800 flex items-stretch"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const isActive = !active && seccionActiva === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => irASeccion(item.id)}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 ${isActive ? "text-orange-400" : "text-zinc-500"}`}
+            >
+              <Icon size={24} />
+              <span className="text-[10px] font-medium">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
