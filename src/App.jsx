@@ -943,21 +943,15 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
   );
 }
 
-// Convierte cualquier link de YouTube (watch?v=, youtu.be/, shorts/, embed/) en su URL embebible.
+// Convierte cualquier link de YouTube (watch?v=, youtu.be/, shorts/, embed/, live/, con
+// parámetros extra o barra final) en su URL embebible, extrayendo el ID de 11 caracteres con
+// una regex en vez de parsear a mano — más tolerante a formatos raros de link.
 // Devuelve null si no se pudo interpretar (para poder ofrecer un link normal como respaldo).
 function youtubeEmbedUrl(url) {
   if (!url) return null;
   try {
-    const u = new URL(url);
-    let id = "";
-    if (u.hostname.includes("youtu.be")) id = u.pathname.slice(1);
-    else if (u.hostname.includes("youtube.com")) {
-      if (u.pathname === "/watch") id = u.searchParams.get("v") || "";
-      else if (u.pathname.startsWith("/embed/")) id = u.pathname.slice("/embed/".length);
-      else if (u.pathname.startsWith("/shorts/")) id = u.pathname.slice("/shorts/".length);
-    }
-    id = id.split(/[?&]/)[0];
-    return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/))([A-Za-z0-9_-]{11})/);
+    return match ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : null;
   } catch {
     return null;
   }
