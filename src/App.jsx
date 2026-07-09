@@ -26,6 +26,15 @@ const CARGAS_FISICAS = ["Baja", "Media", "Alta"];
 const LUGARES_FISICOS = ["Cancha", "Gimnasio de pesas", "Mixto"];
 const ENFOQUES_FISICOS = ["Velocidad", "Potencia", "Fuerza", "Resistencia", "Movilidad"];
 
+const POSICIONES = ["Base", "Escolta", "Alero", "Ala-Pivot", "Pivot"];
+const ESTADOS_ASISTENCIA = ["Presente", "Ausente", "Tarde", "Lesionado"];
+const ESTADO_ESTILO = {
+  Presente: "bg-emerald-500/20 border-emerald-500/50 text-emerald-300",
+  Ausente: "bg-red-500/20 border-red-500/50 text-red-300",
+  Tarde: "bg-amber-500/20 border-amber-500/50 text-amber-300",
+  Lesionado: "bg-purple-500/20 border-purple-500/50 text-purple-300",
+};
+
 function toKey(y, m, d) { return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
 
 // Fecha real de hoy en huso horario de Buenos Aires (America/Argentina/Buenos_Aires), como "YYYY-MM-DD".
@@ -36,6 +45,17 @@ function todayKeyBA() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+
+// Edad calculada al vuelo a partir de la fecha de nacimiento, así nunca queda desactualizada.
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const hoy = new Date();
+  const nacimiento = new Date(fechaNacimiento + "T00:00:00");
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const m = hoy.getMonth() - nacimiento.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
+  return edad;
 }
 
 function Chip({ children, tone = "zinc" }) {
@@ -111,16 +131,16 @@ function EditableField({ label, icon, value, onSave, accent = "text-blue-400", m
 }
 
 // Confirmación destructiva: hay que escribir BORRAR a mano para habilitar el botón.
-function ConfirmDeleteModal({ eventTitle, onCancel, onConfirm }) {
+function ConfirmDeleteModal({ itemLabel, subject = "elemento", onCancel, onConfirm }) {
   const [text, setText] = useState("");
   const ready = text.trim().toUpperCase() === "BORRAR";
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-red-400 font-bold text-sm mb-2">Eliminar evento</h3>
+        <h3 className="text-red-400 font-bold text-sm mb-2">Eliminar {subject}</h3>
         <p className="text-zinc-400 text-sm mb-3">
-          Vas a eliminar <span className="text-zinc-200">"{eventTitle}"</span> de forma permanente. Escribí <span className="font-mono text-red-300">BORRAR</span> para confirmar.
+          Vas a eliminar {subject} <span className="text-zinc-200">"{itemLabel}"</span> de forma permanente. Escribí <span className="font-mono text-red-300">BORRAR</span> para confirmar.
         </p>
         <input
           value={text}
@@ -514,14 +534,83 @@ function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] })
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate, onDelete }) {
+// Lista de asistencia dinámica: trae el plantel que corresponde a la categoría/tira del
+// entrenamiento y guarda cada estado contra la tabla "asistencias" (upsert por jugador+evento).
+function AsistenciaSection({ event, jugadores }) {
+  const [estados, setEstados] = useState({});
+  const [loadingAsist, setLoadingAsist] = useState(true);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("asistencias").select("jugador_id, estado").eq("entrenamiento_id", event.id);
+      if (cancelled) return;
+      if (!error && data) {
+        const map = {};
+        data.forEach((r) => { map[r.jugador_id] = r.estado; });
+        setEstados(map);
+      }
+      setLoadingAsist(false);
+    })();
+    return () => { cancelled = true; };
+  }, [event.id]);
+
+  const roster = jugadores.filter((j) => j.categoria_origen === event.categoria && j.tira === event.tira);
+
+  const setEstado = (jugadorId, estado) => {
+    setEstados((prev) => ({ ...prev, [jugadorId]: prev[jugadorId] === estado ? undefined : estado }));
+    setSaved(false);
+  };
+
+  const guardar = async () => {
+    const rows = Object.entries(estados).filter(([, v]) => v).map(([jugador_id, estado]) => ({ entrenamiento_id: event.id, jugador_id, estado }));
+    if (rows.length === 0) return;
+    const { error } = await supabase.from("asistencias").upsert(rows, { onConflict: "entrenamiento_id,jugador_id" });
+    if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  };
+
+  return (
+    <Section icon={Users} title="Asistencia" accent="text-blue-400">
+      {loadingAsist ? (
+        <p className="text-sm text-zinc-500">Cargando plantel…</p>
+      ) : roster.length === 0 ? (
+        <p className="text-sm text-zinc-500">No hay jugadores cargados para {event.categoria} · {event.tira}. Agregalos desde la pestaña Plantel.</p>
+      ) : (
+        <>
+          <div className="space-y-1.5 mb-3">
+            {roster.map((j) => (
+              <div key={j.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <span className="text-orange-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                <span className="text-sm text-zinc-200 flex-1">{j.nombre_apellido}</span>
+                <div className="flex gap-1 flex-wrap justify-end">
+                  {ESTADOS_ASISTENCIA.map((es) => (
+                    <button key={es} onClick={() => setEstado(j.id, es)}
+                      className={`px-2 py-1 rounded text-xs border ${estados[j.id] === es ? ESTADO_ESTILO[es] : "bg-zinc-950 border-zinc-700 text-zinc-500 hover:border-zinc-600"}`}>
+                      {es}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={guardar} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Guardar asistencia</button>
+            {saved && <span className="text-emerald-400 text-xs">Guardado ✓</span>}
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
+function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
-  const [asistencia, setAsistencia] = useState(event.asistencia || "");
 
   const [editFisica, setEditFisica] = useState(false);
   const [horarioBasquet, setHorarioBasquet] = useState(event.horarioBasquet || "");
@@ -587,7 +676,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete }) {
 
       <EditableField label="Objetivo de la semana" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline />
 
-      <EditableField label="Asistencia" icon={Users} value={asistencia} onSave={(v) => { setAsistencia(v); onUpdate({ asistencia: v }); }} />
+      <AsistenciaSection event={event} jugadores={jugadores} />
 
       <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
@@ -710,7 +799,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete }) {
       </p>
 
       {confirmDelete && (
-        <ConfirmDeleteModal eventTitle={event.title} onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+        <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
       )}
     </div>
   );
@@ -859,7 +948,7 @@ function PartidoView({ event, onBack, onUpdate, onDelete }) {
       </Section>
 
       {confirmDelete && (
-        <ConfirmDeleteModal eventTitle={event.title} onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+        <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
       )}
     </div>
   );
@@ -1013,7 +1102,8 @@ function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMove
 
       {deleteTarget && (
         <ConfirmDeleteModal
-          eventTitle={deleteTarget.title}
+          itemLabel={deleteTarget.title}
+          subject="evento"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { onDeleteEvent(deleteTarget.id); setDeleteTarget(null); }}
         />
@@ -1022,9 +1112,217 @@ function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMove
   );
 }
 
+function AddJugadorModal({ categoria, tira, onCancel, onSave }) {
+  const [form, setForm] = useState({
+    dorsal: "", nombre_apellido: "", posicion: POSICIONES[0], altura: "", peso: "", fecha_nacimiento: "",
+    categoria_origen: categoria, tira: tira, notas_comentarios: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!form.nombre_apellido) return;
+    setSaving(true);
+    await onSave({
+      dorsal: form.dorsal ? Number(form.dorsal) : null,
+      nombre_apellido: form.nombre_apellido,
+      posicion: form.posicion,
+      altura: form.altura ? Number(form.altura) : null,
+      peso: form.peso ? Number(form.peso) : null,
+      fecha_nacimiento: form.fecha_nacimiento || null,
+      categoria_origen: form.categoria_origen,
+      tira: form.tira,
+      notas_comentarios: form.notas_comentarios,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">Agregar jugador</h3>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <div className="flex gap-2">
+            <input placeholder="Altura (m)" type="number" step="0.01" value={form.altura} onChange={(e) => set("altura", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Peso (kg)" type="number" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500 mb-1">Fecha de nacimiento</p>
+            <input type="date" value={form.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <div className="flex gap-2">
+            <select value={form.categoria_origen} onChange={(e) => set("categoria_origen", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={form.tira} onChange={(e) => set("tira", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <textarea placeholder="Notas / comentarios" value={form.notas_comentarios} onChange={(e) => set("notas_comentarios", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">Guardar jugador</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
+  const [fecha, setFecha] = useState(todayKeyBA());
+  const [altura, setAltura] = useState(jugador.altura ?? "");
+  const [peso, setPeso] = useState(jugador.peso ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    const entry = { fecha };
+    if (altura !== "") entry.altura = Number(altura);
+    if (peso !== "") entry.peso = Number(peso);
+    const evaluaciones = [...(jugador.evaluaciones_pfs || []), entry];
+    await onSave({
+      altura: altura !== "" ? Number(altura) : jugador.altura,
+      peso: peso !== "" ? Number(peso) : jugador.peso,
+      evaluaciones_pfs: evaluaciones,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">Actualizar medidas — {jugador.nombre_apellido}</h3>
+        <div className="space-y-2">
+          <div>
+            <p className="text-xs text-zinc-500 mb-1">Fecha</p>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <div className="flex gap-2">
+            <input placeholder="Altura (m)" type="number" step="0.01" value={altura} onChange={(e) => setAltura(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Peso (kg)" type="number" value={peso} onChange={(e) => setPeso(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button disabled={saving} onClick={submit} className="bg-sky-600 hover:bg-sky-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador }) {
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [medidasTarget, setMedidasTarget] = useState(null);
+
+  const filtered = jugadores.filter((j) => j.categoria_origen === categoria && j.tira === tira);
+
+  return (
+    <div className="max-w-3xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Users size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Plantel</span>
+      </div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Jugadores</h1>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+          <Plus size={15} /> Agregar jugador
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={tira} onChange={(e) => setTira(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 && <p className="text-sm text-zinc-500">No hay jugadores cargados en {categoria} · {tira} todavía.</p>}
+
+      <div className="space-y-2">
+        {filtered.map((j) => (
+          <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+              <span className="font-medium text-sm">{j.nombre_apellido}</span>
+              <span className="text-zinc-500 text-xs ml-auto">{j.posicion}</span>
+              <button onClick={() => setDeleteTarget(j)} title="Eliminar jugador" className="text-zinc-600 hover:text-red-400 p-1">
+                <Trash2 size={13} />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-1">
+              {j.altura != null && <Chip>{j.altura} m</Chip>}
+              {j.peso != null && <Chip>{j.peso} kg</Chip>}
+              {calcularEdad(j.fecha_nacimiento) != null && <Chip>{calcularEdad(j.fecha_nacimiento)} años</Chip>}
+            </div>
+            {j.notas_comentarios && <p className="text-sm text-zinc-400 mb-1">{j.notas_comentarios}</p>}
+            <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
+            {j.evaluaciones_pfs?.length > 0 && (
+              <details className="mt-1">
+                <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Ver evolución ({j.evaluaciones_pfs.length})</summary>
+                <ul className="mt-1 space-y-0.5">
+                  {[...j.evaluaciones_pfs].reverse().map((ev, i) => (
+                    <li key={i} className="text-xs text-zinc-400">
+                      {ev.fecha}
+                      {ev.altura != null ? ` · ${ev.altura} m` : ""}
+                      {ev.peso != null ? ` · ${ev.peso} kg` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {showAdd && (
+        <AddJugadorModal
+          categoria={categoria}
+          tira={tira}
+          onCancel={() => setShowAdd(false)}
+          onSave={async (data) => { await onAddJugador(data); setShowAdd(false); }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          itemLabel={deleteTarget.nombre_apellido}
+          subject="jugador"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => { onDeleteJugador(deleteTarget.id); setDeleteTarget(null); }}
+        />
+      )}
+
+      {medidasTarget && (
+        <ActualizarMedidasModal
+          jugador={medidasTarget}
+          onCancel={() => setMedidasTarget(null)}
+          onSave={async (patch) => { await onUpdateJugador(medidasTarget.id, patch); setMedidasTarget(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [events, setEvents] = useState([]);
+  const [jugadores, setJugadores] = useState([]);
   const [active, setActive] = useState(null);
+  const [view, setView] = useState("calendario"); // "calendario" | "plantel"
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -1036,6 +1334,16 @@ export default function App() {
       if (error) setErrorMsg(error.message);
       else setEvents(data);
       setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("jugadores").select("*").order("nombre_apellido", { ascending: true });
+      if (cancelled) return;
+      if (!error) setJugadores(data);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -1060,6 +1368,24 @@ export default function App() {
     setActive((prev) => (prev && prev.id === id ? null : prev));
   };
 
+  const addJugador = async (j) => {
+    const { data, error } = await supabase.from("jugadores").insert(j).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setJugadores((prev) => [...prev, data]);
+  };
+
+  const deleteJugador = async (id) => {
+    const { error } = await supabase.from("jugadores").delete().eq("id", id);
+    if (error) { setErrorMsg(error.message); return; }
+    setJugadores((prev) => prev.filter((j) => j.id !== id));
+  };
+
+  const updateJugador = async (id, patch) => {
+    const { data, error } = await supabase.from("jugadores").update(patch).eq("id", id).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setJugadores((prev) => prev.map((j) => (j.id === id ? data : j)));
+  };
+
   return (
     <div className="bg-zinc-950 min-h-screen p-6 font-sans">
       <div className="max-w-3xl mx-auto flex items-center gap-2 mb-4">
@@ -1072,9 +1398,19 @@ export default function App() {
         </div>
       )}
       {!active && (
+        <div className="max-w-3xl mx-auto flex gap-2 mb-4">
+          <button onClick={() => setView("calendario")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "calendario" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
+            Calendario
+          </button>
+          <button onClick={() => setView("plantel")} className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded ${view === "plantel" ? "bg-orange-500/20 text-orange-300" : "text-zinc-500 hover:text-zinc-300"}`}>
+            Plantel
+          </button>
+        </div>
+      )}
+      {!active && (
         loading ? (
           <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
-        ) : (
+        ) : view === "calendario" ? (
           <CalendarView
             events={events}
             onSelectEvent={setActive}
@@ -1082,10 +1418,12 @@ export default function App() {
             onDeleteEvent={deleteEvent}
             onMoveEvent={(id, date) => updateEvent(id, { date })}
           />
+        ) : (
+          <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
         )
       )}
       {active?.type === "entrenamiento" && (
-        <EntrenamientoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+        <EntrenamientoView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
       {active?.type === "partido" && (
         <PartidoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
