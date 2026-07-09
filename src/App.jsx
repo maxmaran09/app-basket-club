@@ -943,30 +943,84 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
   );
 }
 
-// Ícono de YouTube consistente en toda la app: si no hay link, queda visible pero deshabilitado
-// (transparente); si hay link, abre en pestaña nueva. "label" lo convierte en botón destacado.
-function VideoLinkButton({ url, size = 14, label }) {
-  const enabled = Boolean(url);
-  const abrir = () => enabled && window.open(url, "_blank", "noopener,noreferrer");
-
-  if (label) {
-    return (
-      <button
-        onClick={abrir}
-        disabled={!enabled}
-        className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition ${
-          enabled ? "bg-red-600/15 border-red-600/40 text-red-300 hover:bg-red-600/25" : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
-        }`}
-      >
-        <Youtube size={size} /> {label}
-      </button>
-    );
+// Convierte cualquier link de YouTube (watch?v=, youtu.be/, shorts/, embed/) en su URL embebible.
+// Devuelve null si no se pudo interpretar (para poder ofrecer un link normal como respaldo).
+function youtubeEmbedUrl(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    let id = "";
+    if (u.hostname.includes("youtu.be")) id = u.pathname.slice(1);
+    else if (u.hostname.includes("youtube.com")) {
+      if (u.pathname === "/watch") id = u.searchParams.get("v") || "";
+      else if (u.pathname.startsWith("/embed/")) id = u.pathname.slice("/embed/".length);
+      else if (u.pathname.startsWith("/shorts/")) id = u.pathname.slice("/shorts/".length);
+    }
+    id = id.split(/[?&]/)[0];
+    return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
+  } catch {
+    return null;
   }
+}
+
+// Reproductor emergente: el video corre adentro de la app, sin redirigir a YouTube.
+function VideoPlayerModal({ url, onClose }) {
+  const embedUrl = youtubeEmbedUrl(url);
   return (
-    <button onClick={abrir} disabled={!enabled} title={enabled ? "Ver video" : "Sin video cargado"}
-      className={enabled ? "text-red-400 hover:text-red-300" : "text-zinc-700 cursor-not-allowed"}>
-      <Youtube size={size} />
-    </button>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end mb-2">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200"><X size={18} /></button>
+        </div>
+        {embedUrl ? (
+          <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+            <iframe
+              src={embedUrl}
+              title="Video de YouTube"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              frameBorder="0"
+              className="absolute inset-0 w-full h-full rounded-lg"
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-400 p-4">
+            No pude interpretar este link como video de YouTube.{" "}
+            <a href={url} target="_blank" rel="noreferrer" className="text-orange-400 underline">Abrirlo en una pestaña nueva</a>.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Ícono de YouTube consistente en toda la app: si no hay link, queda visible pero deshabilitado
+// (transparente); si hay link, abre el reproductor embebido en un modal. "label" lo convierte en
+// botón destacado.
+function VideoLinkButton({ url, size = 14, label }) {
+  const [playing, setPlaying] = useState(false);
+  const enabled = Boolean(url);
+
+  return (
+    <>
+      {label ? (
+        <button
+          onClick={() => enabled && setPlaying(true)}
+          disabled={!enabled}
+          className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition ${
+            enabled ? "bg-red-600/15 border-red-600/40 text-red-300 hover:bg-red-600/25" : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
+          }`}
+        >
+          <Youtube size={size} /> {label}
+        </button>
+      ) : (
+        <button onClick={() => enabled && setPlaying(true)} disabled={!enabled} title={enabled ? "Ver video" : "Sin video cargado"}
+          className={enabled ? "text-red-400 hover:text-red-300" : "text-zinc-700 cursor-not-allowed"}>
+          <Youtube size={size} />
+        </button>
+      )}
+      {playing && <VideoPlayerModal url={url} onClose={() => setPlaying(false)} />}
+    </>
   );
 }
 
