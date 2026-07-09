@@ -58,6 +58,13 @@ function calcularEdad(fechaNacimiento) {
   return edad;
 }
 
+// Un jugador pertenece a un equipo si es su categoría/tira principal, o si figura
+// entre sus equipos adicionales (juega también en otra categoría del club).
+function jugadorEnEquipo(j, categoria, tira) {
+  if (j.categoria_origen === categoria && j.tira === tira) return true;
+  return (j.equipos_adicionales || []).some((e) => e.categoria === categoria && e.tira === tira);
+}
+
 function Chip({ children, tone = "zinc" }) {
   const map = {
     zinc: "bg-zinc-800 text-zinc-300 border-zinc-700",
@@ -556,7 +563,7 @@ function AsistenciaSection({ event, jugadores }) {
     return () => { cancelled = true; };
   }, [event.id]);
 
-  const roster = jugadores.filter((j) => j.categoria_origen === event.categoria && j.tira === event.tira);
+  const roster = jugadores.filter((j) => jugadorEnEquipo(j, event.categoria, event.tira));
 
   const setEstado = (jugadorId, estado) => {
     setEstados((prev) => ({ ...prev, [jugadorId]: prev[jugadorId] === estado ? undefined : estado }));
@@ -582,7 +589,12 @@ function AsistenciaSection({ event, jugadores }) {
             {roster.map((j) => (
               <div key={j.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
                 <span className="text-orange-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
-                <span className="text-sm text-zinc-200 flex-1">{j.nombre_apellido}</span>
+                <span className="text-sm text-zinc-200 flex-1">
+                  {j.nombre_apellido}
+                  {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
+                    <span className="ml-1.5 text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
+                  )}
+                </span>
                 <div className="flex gap-1 flex-wrap justify-end">
                   {ESTADOS_ASISTENCIA.map((es) => (
                     <button key={es} onClick={() => setEstado(j.id, es)}
@@ -1112,14 +1124,34 @@ function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMove
   );
 }
 
-function AddJugadorModal({ categoria, tira, onCancel, onSave }) {
+// Sirve para alta y edición: si viene "jugador", precarga sus datos y guarda un patch (update);
+// si no, arranca vacío con la categoría/tira del filtro activo y crea uno nuevo (insert).
+function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
   const [form, setForm] = useState({
-    dorsal: "", nombre_apellido: "", posicion: POSICIONES[0], altura: "", peso: "", fecha_nacimiento: "",
-    categoria_origen: categoria, tira: tira, notas_comentarios: "",
+    dorsal: jugador?.dorsal ?? "",
+    nombre_apellido: jugador?.nombre_apellido ?? "",
+    posicion: jugador?.posicion ?? POSICIONES[0],
+    altura: jugador?.altura ?? "",
+    peso: jugador?.peso ?? "",
+    fecha_nacimiento: jugador?.fecha_nacimiento ?? "",
+    categoria_origen: jugador?.categoria_origen ?? categoria,
+    tira: jugador?.tira ?? tira,
+    notas_comentarios: jugador?.notas_comentarios ?? "",
   });
+  const [equipos, setEquipos] = useState(jugador?.equipos_adicionales || []);
+  const [nuevoCat, setNuevoCat] = useState(CATEGORIAS[0]);
+  const [nuevoTira, setNuevoTira] = useState(TIRAS[0]);
   const [saving, setSaving] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const addEquipo = () => {
+    const esPrincipal = nuevoCat === form.categoria_origen && nuevoTira === form.tira;
+    const yaEsta = equipos.some((e) => e.categoria === nuevoCat && e.tira === nuevoTira);
+    if (esPrincipal || yaEsta) return;
+    setEquipos([...equipos, { categoria: nuevoCat, tira: nuevoTira }]);
+  };
+  const removeEquipo = (idx) => setEquipos(equipos.filter((_, i) => i !== idx));
 
   const submit = async () => {
     if (!form.nombre_apellido) return;
@@ -1134,6 +1166,7 @@ function AddJugadorModal({ categoria, tira, onCancel, onSave }) {
       categoria_origen: form.categoria_origen,
       tira: form.tira,
       notas_comentarios: form.notas_comentarios,
+      equipos_adicionales: equipos,
     });
     setSaving(false);
   };
@@ -1141,7 +1174,7 @@ function AddJugadorModal({ categoria, tira, onCancel, onSave }) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-sm mb-3">Agregar jugador</h3>
+        <h3 className="font-bold text-sm mb-3">{jugador ? "Editar jugador" : "Agregar jugador"}</h3>
         <div className="space-y-2">
           <div className="flex gap-2">
             <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -1167,9 +1200,32 @@ function AddJugadorModal({ categoria, tira, onCancel, onSave }) {
             </select>
           </div>
           <textarea placeholder="Notas / comentarios" value={form.notas_comentarios} onChange={(e) => set("notas_comentarios", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+
+          <div className="pt-2 border-t border-zinc-800">
+            <p className="text-xs text-zinc-500 mb-1">Equipos adicionales (además de {form.categoria_origen} · {form.tira})</p>
+            {equipos.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {equipos.map((e, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300">
+                    {e.categoria} · {e.tira}
+                    <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <select value={nuevoCat} onChange={(e) => setNuevoCat(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={nuevoTira} onChange={(e) => setNuevoTira(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button onClick={addEquipo} className="bg-zinc-800 hover:bg-zinc-700 text-xs px-3 rounded text-zinc-200 shrink-0">+ Agregar</button>
+            </div>
+          </div>
         </div>
         <div className="flex gap-2 mt-3">
-          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">Guardar jugador</button>
+          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugador ? "Guardar cambios" : "Guardar jugador"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
@@ -1224,10 +1280,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [tira, setTira] = useState(TIRAS[0]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [medidasTarget, setMedidasTarget] = useState(null);
 
-  const filtered = jugadores.filter((j) => j.categoria_origen === categoria && j.tira === tira);
+  const filtered = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
 
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
@@ -1259,7 +1316,13 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
             <div className="flex items-center gap-2 mb-1">
               <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
               <span className="font-medium text-sm">{j.nombre_apellido}</span>
+              {(j.categoria_origen !== categoria || j.tira !== tira) && (
+                <span className="text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
+              )}
               <span className="text-zinc-500 text-xs ml-auto">{j.posicion}</span>
+              <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
+                <PenLine size={13} />
+              </button>
               <button onClick={() => setDeleteTarget(j)} title="Eliminar jugador" className="text-zinc-600 hover:text-red-400 p-1">
                 <Trash2 size={13} />
               </button>
@@ -1268,6 +1331,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               {j.altura != null && <Chip>{j.altura} m</Chip>}
               {j.peso != null && <Chip>{j.peso} kg</Chip>}
               {calcularEdad(j.fecha_nacimiento) != null && <Chip>{calcularEdad(j.fecha_nacimiento)} años</Chip>}
+              {(j.equipos_adicionales || []).map((e, i) => (
+                <Chip key={i} tone="blue">+ {e.categoria} · {e.tira}</Chip>
+              ))}
             </div>
             {j.notas_comentarios && <p className="text-sm text-zinc-400 mb-1">{j.notas_comentarios}</p>}
             <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
@@ -1289,12 +1355,18 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         ))}
       </div>
 
-      {showAdd && (
-        <AddJugadorModal
+      {(showAdd || editTarget) && (
+        <JugadorFormModal
+          jugador={editTarget}
           categoria={categoria}
           tira={tira}
-          onCancel={() => setShowAdd(false)}
-          onSave={async (data) => { await onAddJugador(data); setShowAdd(false); }}
+          onCancel={() => { setShowAdd(false); setEditTarget(null); }}
+          onSave={async (data) => {
+            if (editTarget) await onUpdateJugador(editTarget.id, data);
+            else await onAddJugador(data);
+            setShowAdd(false);
+            setEditTarget(null);
+          }}
         />
       )}
 

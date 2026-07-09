@@ -28,13 +28,19 @@ create table if not exists public.jugadores (
   -- registra aca cada actualizacion de altura/peso con su fecha (ej:
   -- [{"fecha":"2026-08-01","altura":1.95,"peso":80}, {"fecha":"2026-08-01","test":"salto","valor":42}])
   -- sin que haga falta tocar el esquema de la tabla.
-  evaluaciones_pfs jsonb not null default '[]'::jsonb
+  evaluaciones_pfs jsonb not null default '[]'::jsonb,
+
+  -- Un jugador puede jugar ademas en otras categorias/tiras del club (ej: uno de Liga Proximo
+  -- que tambien juega en Mayores). categoria_origen/tira es su equipo natural/principal; esto
+  -- es la lista de equipos extra: [{"categoria":"Mayores","tira":"Blanca"}, ...]
+  equipos_adicionales jsonb not null default '[]'::jsonb
 );
 
--- Por si esta tabla ya existia de una corrida anterior con "edad" en vez de "fecha_nacimiento":
--- estas dos lineas son seguras de correr siempre (no hacen nada si ya estan aplicadas).
+-- Por si esta tabla ya existia de una corrida anterior: estas lineas son seguras de correr
+-- siempre (no hacen nada si ya estan aplicadas).
 alter table public.jugadores add column if not exists fecha_nacimiento date;
 alter table public.jugadores drop column if exists edad;
+alter table public.jugadores add column if not exists equipos_adicionales jsonb not null default '[]'::jsonb;
 
 create index if not exists jugadores_categoria_tira_idx on public.jugadores (categoria_origen, tira);
 
