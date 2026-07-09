@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -542,22 +542,45 @@ function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] })
   );
 }
 
-// Lista de asistencia dinámica: trae el plantel que corresponde a la categoría/tira del
-// entrenamiento y guarda cada estado contra la tabla "asistencias" (upsert por jugador+evento).
+const RPE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Semáforo deportivo: 1-3 verde (ligera/recuperación), 4-6 amarillo (moderada/aeróbica),
+// 7-8 naranja (dura/umbral), 9-10 rojo (máxima/sobrecarga).
+function rpeColorClasses(v) {
+  if (v == null || v === "") return "bg-zinc-950 border-zinc-700 text-zinc-400";
+  if (v <= 3) return "bg-emerald-500/20 border-emerald-500/50 text-emerald-300";
+  if (v <= 6) return "bg-amber-500/20 border-amber-500/50 text-amber-300";
+  if (v <= 8) return "bg-orange-500/20 border-orange-500/50 text-orange-300";
+  return "bg-red-500/20 border-red-500/50 text-red-300";
+}
+
+// Lista de asistencia dinámica + control de carga física RPE: trae el plantel que corresponde a
+// la categoría/tira del entrenamiento y guarda estado + RPE (1-10) + nota contra "asistencias"
+// (upsert por jugador+evento).
 function AsistenciaSection({ event, jugadores }) {
   const [estados, setEstados] = useState({});
+  const [rpeValores, setRpeValores] = useState({});
+  const [rpeNotas, setRpeNotas] = useState({});
+  const [notasAbiertas, setNotasAbiertas] = useState({});
+  const [cargaGeneral, setCargaGeneral] = useState(null);
   const [loadingAsist, setLoadingAsist] = useState(true);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("asistencias").select("jugador_id, estado").eq("entrenamiento_id", event.id);
+      const { data, error } = await supabase.from("asistencias").select("jugador_id, estado, rpe_valor, rpe_nota").eq("entrenamiento_id", event.id);
       if (cancelled) return;
       if (!error && data) {
-        const map = {};
-        data.forEach((r) => { map[r.jugador_id] = r.estado; });
-        setEstados(map);
+        const estMap = {}, rpeMap = {}, notaMap = {};
+        data.forEach((r) => {
+          estMap[r.jugador_id] = r.estado;
+          if (r.rpe_valor != null) rpeMap[r.jugador_id] = r.rpe_valor;
+          if (r.rpe_nota) notaMap[r.jugador_id] = r.rpe_nota;
+        });
+        setEstados(estMap);
+        setRpeValores(rpeMap);
+        setRpeNotas(notaMap);
       }
       setLoadingAsist(false);
     })();
@@ -571,44 +594,117 @@ function AsistenciaSection({ event, jugadores }) {
     setSaved(false);
   };
 
+  const setRpe = (jugadorId, valor) => {
+    setRpeValores((prev) => ({ ...prev, [jugadorId]: valor }));
+    setSaved(false);
+  };
+
+  const setNota = (jugadorId, texto) => {
+    setRpeNotas((prev) => ({ ...prev, [jugadorId]: texto }));
+    setSaved(false);
+  };
+
+  const toggleNota = (jugadorId) => setNotasAbiertas((prev) => ({ ...prev, [jugadorId]: !prev[jugadorId] }));
+
+  const asignarATodos = () => {
+    if (cargaGeneral == null) return;
+    setRpeValores((prev) => {
+      const next = { ...prev };
+      roster.forEach((j) => { next[j.id] = cargaGeneral; });
+      return next;
+    });
+    setSaved(false);
+  };
+
   const guardar = async () => {
-    const rows = Object.entries(estados).filter(([, v]) => v).map(([jugador_id, estado]) => ({ entrenamiento_id: event.id, jugador_id, estado }));
+    const jugadorIds = new Set([...Object.keys(estados), ...Object.keys(rpeValores), ...Object.keys(rpeNotas)]);
+    const rows = [...jugadorIds]
+      .filter((id) => estados[id] || rpeValores[id] != null || rpeNotas[id])
+      .map((jugador_id) => ({
+        entrenamiento_id: event.id,
+        jugador_id,
+        estado: estados[jugador_id] || "Presente",
+        rpe_valor: rpeValores[jugador_id] ?? null,
+        rpe_nota: rpeNotas[jugador_id] || null,
+      }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("asistencias").upsert(rows, { onConflict: "entrenamiento_id,jugador_id" });
     if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
   };
 
   return (
-    <Section icon={Users} title="Asistencia" accent="text-blue-400">
+    <Section icon={Users} title="Asistencia y carga física (RPE)" accent="text-blue-400">
       {loadingAsist ? (
         <p className="text-sm text-zinc-500">Cargando plantel…</p>
       ) : roster.length === 0 ? (
         <p className="text-sm text-zinc-500">No hay jugadores cargados para {event.categoria} · {event.tira}. Agregalos desde la pestaña Plantel.</p>
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2 mb-3 bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+            <span className="text-xs text-zinc-400 shrink-0">Carga general del entrenamiento (RPE):</span>
+            <div className="flex gap-1 flex-wrap">
+              {RPE_VALUES.map((n) => (
+                <button key={n} onClick={() => setCargaGeneral(n)}
+                  className={`w-7 h-7 rounded text-xs font-bold border flex items-center justify-center ${rpeColorClasses(n)} ${cargaGeneral === n ? "ring-2 ring-white/60" : ""}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <button onClick={asignarATodos} disabled={cargaGeneral == null} className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-3 py-1.5 rounded shrink-0">
+              Asignar a todos
+            </button>
+          </div>
+
           <div className="space-y-1.5 mb-3">
             {roster.map((j) => (
-              <div key={j.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-                <span className="text-orange-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
-                <span className="text-sm text-zinc-200 flex-1">
-                  {j.nombre_apellido}
-                  {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
-                    <span className="ml-1.5 text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
-                  )}
-                </span>
-                <div className="flex gap-1 flex-wrap justify-end">
-                  {ESTADOS_ASISTENCIA.map((es) => (
-                    <button key={es} onClick={() => setEstado(j.id, es)}
-                      className={`px-2 py-1 rounded text-xs border ${estados[j.id] === es ? ESTADO_ESTILO[es] : "bg-zinc-950 border-zinc-700 text-zinc-500 hover:border-zinc-600"}`}>
-                      {es}
-                    </button>
-                  ))}
+              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                  <span className="text-sm text-zinc-200 flex-1">
+                    {j.nombre_apellido}
+                    {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
+                      <span className="ml-1.5 text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
+                    )}
+                  </span>
+                  <div className="flex gap-1 flex-wrap justify-end">
+                    {ESTADOS_ASISTENCIA.map((es) => (
+                      <button key={es} onClick={() => setEstado(j.id, es)}
+                        className={`px-2 py-1 rounded text-xs border ${estados[j.id] === es ? ESTADO_ESTILO[es] : "bg-zinc-950 border-zinc-700 text-zinc-500 hover:border-zinc-600"}`}>
+                        {es}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <div className="flex items-center gap-2 mt-2 pl-9">
+                  <span className="text-xs text-zinc-500 shrink-0">RPE</span>
+                  <select
+                    value={rpeValores[j.id] ?? ""}
+                    onChange={(e) => setRpe(j.id, e.target.value ? Number(e.target.value) : undefined)}
+                    className={`text-xs rounded px-2 py-1 border font-bold ${rpeColorClasses(rpeValores[j.id])}`}
+                  >
+                    <option value="">—</option>
+                    {RPE_VALUES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <button onClick={() => toggleNota(j.id)} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
+                    <MessageSquare size={12} /> Nota{rpeNotas[j.id] ? " ✓" : ""}
+                  </button>
+                </div>
+                {notasAbiertas[j.id] && (
+                  <div className="mt-2 pl-9">
+                    <textarea
+                      value={rpeNotas[j.id] || ""}
+                      onChange={(e) => setNota(j.id, e.target.value)}
+                      placeholder="Observación individual (ej: sintió sobrecarga en el gemelo)"
+                      rows={2}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100"
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={guardar} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Guardar asistencia</button>
+            <button onClick={guardar} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Guardar Asistencia y Carga</button>
             {saved && <span className="text-emerald-400 text-xs">Guardado ✓</span>}
           </div>
         </>

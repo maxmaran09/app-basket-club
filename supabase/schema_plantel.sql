@@ -70,10 +70,19 @@ create table if not exists public.asistencias (
   jugador_id uuid not null references public.jugadores(id) on delete cascade,
   estado text not null check (estado in ('Presente','Ausente','Tarde','Lesionado')),
 
+  -- Control de carga fisica RPE (escala 1-10, semaforo deportivo en la app).
+  rpe_valor integer check (rpe_valor between 1 and 10),
+  rpe_nota text,
+
   -- Evita duplicar filas: guardar asistencia dos veces para el mismo jugador/entrenamiento
   -- actualiza el registro existente (se usa con upsert + onConflict desde la app).
   unique (entrenamiento_id, jugador_id)
 );
+
+-- Por si esta tabla ya existia de una corrida anterior (sin las columnas de RPE): seguro de
+-- correr siempre.
+alter table public.asistencias add column if not exists rpe_valor integer check (rpe_valor between 1 and 10);
+alter table public.asistencias add column if not exists rpe_nota text;
 
 create index if not exists asistencias_entrenamiento_idx on public.asistencias (entrenamiento_id);
 create index if not exists asistencias_jugador_idx on public.asistencias (jugador_id);
