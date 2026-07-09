@@ -1214,7 +1214,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
   );
 }
 
-function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent }) {
+function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
@@ -1227,6 +1227,8 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveDate, setMoveDate] = useState("");
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const equipoEvents = events.filter((e) => e.categoria === categoria && e.tira === tira);
 
@@ -1307,6 +1309,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
               const st = TIPO_ESTILO[e.type];
               const clickable = e.type === "entrenamiento" || e.type === "partido" || e.type === "individual";
               const isMoving = moveTarget === e.id;
+              const isRenaming = renameTarget === e.id;
               return (
                 <div key={e.id} className="rounded-lg border border-zinc-800">
                   <div className="flex items-center gap-1 px-1">
@@ -1316,6 +1319,9 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       <span className={`text-sm ${st.text}`}>{e.title}</span>
                       {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto" />}
                     </button>
+                    <button onClick={() => { setRenameTarget(isRenaming ? null : e.id); setRenameValue(e.title); }} title="Editar nombre" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
+                      <PenLine size={14} />
+                    </button>
                     <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
                       <CalendarClock size={14} />
                     </button>
@@ -1323,6 +1329,13 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  {isRenaming && (
+                    <div className="flex items-center gap-2 px-3 pb-2">
+                      <input value={renameValue} onChange={(ev) => setRenameValue(ev.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <button onClick={() => { if (renameValue.trim()) { onRenameEvent(e.id, renameValue.trim()); setRenameTarget(null); } }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded">Guardar</button>
+                      <button onClick={() => setRenameTarget(null)} className="text-zinc-400 text-xs px-2 py-1">Cancelar</button>
+                    </div>
+                  )}
                   {isMoving && (
                     <div className="flex items-center gap-2 px-3 pb-2">
                       <input type="date" value={moveDate} onChange={(ev) => setMoveDate(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
@@ -2061,6 +2074,7 @@ export default function App() {
             onAddEvent={addEvent}
             onDeleteEvent={deleteEvent}
             onMoveEvent={(id, date) => updateEvent(id, { date })}
+            onRenameEvent={(id, title) => updateEvent(id, { title })}
           />
         ) : view === "plantel" ? (
           <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
