@@ -19,7 +19,7 @@ create table if not exists public.eventos (
 
   -- Comunes a todo evento del calendario
   date date not null,
-  type text not null check (type in ('entrenamiento','partido','libre','optativo','especial')),
+  type text not null check (type in ('entrenamiento','partido','libre','optativo','especial','individual')),
   categoria text,
   tira text,
   title text not null,
@@ -28,6 +28,11 @@ create table if not exists public.eventos (
   "objetivoSemana" text,
   asistencia text,
   bloques jsonb not null default '[]'::jsonb,
+
+  -- Individual: plan 1 a 1 por jugador (mismo formato que un entrenamiento, pero uno por
+  -- jugador dentro del array): [{"jugadorId":"...","objetivo":"...","bloques":[...],
+  -- "horarioBasquet":"...", "cargaFisica":"Media", ...}]
+  "planesIndividuales" jsonb not null default '[]'::jsonb,
 
   -- Entrenamiento: preparacion fisica
   "horarioBasquet" text,
@@ -56,6 +61,13 @@ create table if not exists public.eventos (
   ataque jsonb not null default '{}'::jsonb,
   defensa jsonb not null default '{}'::jsonb
 );
+
+-- Por si la tabla ya existia de una corrida anterior (sin "individual" como tipo valido ni la
+-- columna de planes individuales): estas lineas son seguras de correr siempre.
+alter table public.eventos add column if not exists "planesIndividuales" jsonb not null default '[]'::jsonb;
+alter table public.eventos drop constraint if exists eventos_type_check;
+alter table public.eventos add constraint eventos_type_check
+  check (type in ('entrenamiento','partido','libre','optativo','especial','individual'));
 
 create index if not exists eventos_date_idx on public.eventos (date);
 create index if not exists eventos_categoria_tira_idx on public.eventos (categoria, tira);

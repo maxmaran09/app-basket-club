@@ -7,6 +7,7 @@ const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 
 const TIPO_ESTILO = {
   entrenamiento: { bg: "bg-blue-500/15", text: "text-blue-300", dot: "bg-blue-400", label: "Entrenamiento" },
+  individual: { bg: "bg-teal-500/15", text: "text-teal-300", dot: "bg-teal-400", label: "Individual" },
   partido: { bg: "bg-orange-500/15", text: "text-orange-300", dot: "bg-orange-400", label: "Partido" },
   libre: { bg: "bg-zinc-700/40", text: "text-zinc-400", dot: "bg-zinc-500", label: "Libre" },
   optativo: { bg: "bg-amber-500/15", text: "text-amber-300", dot: "bg-amber-400", label: "Optativo" },
@@ -616,33 +617,91 @@ function AsistenciaSection({ event, jugadores }) {
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
-  const [bloques, setBloques] = useState(event.bloques || []);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
-  const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
-
+// Reutilizable: horarios + carga/lugar + enfoque + notas del preparador físico, con Editar/Guardar.
+// Sirve tanto para el plan semanal de un entrenamiento como para el plan de cada jugador en un
+// evento Individual — "data" trae los valores actuales y "onSave" recibe el patch a persistir.
+function PreparacionFisicaSection({ data, onSave }) {
   const [editFisica, setEditFisica] = useState(false);
-  const [horarioBasquet, setHorarioBasquet] = useState(event.horarioBasquet || "");
-  const [horarioFisico, setHorarioFisico] = useState(event.horarioFisico || "");
-  const [cargaFisica, setCargaFisica] = useState(event.cargaFisica || "Media");
-  const [lugarFisico, setLugarFisico] = useState(event.lugarFisico || "Cancha");
-  const [enfoqueFisico, setEnfoqueFisico] = useState(event.enfoqueFisico || []);
-  const [notasFisicas, setNotasFisicas] = useState(event.notasFisicas || "");
+  const [horarioBasquet, setHorarioBasquet] = useState(data.horarioBasquet || "");
+  const [horarioFisico, setHorarioFisico] = useState(data.horarioFisico || "");
+  const [cargaFisica, setCargaFisica] = useState(data.cargaFisica || "Media");
+  const [lugarFisico, setLugarFisico] = useState(data.lugarFisico || "Cancha");
+  const [enfoqueFisico, setEnfoqueFisico] = useState(data.enfoqueFisico || []);
+  const [notasFisicas, setNotasFisicas] = useState(data.notasFisicas || "");
   const toggleEnfoque = (v) => setEnfoqueFisico(enfoqueFisico.includes(v) ? enfoqueFisico.filter((x) => x !== v) : [...enfoqueFisico, v]);
 
   const guardarFisica = () => {
     setEditFisica(false);
-    onUpdate({ horarioBasquet, horarioFisico, cargaFisica, lugarFisico, enfoqueFisico, notasFisicas });
+    onSave({ horarioBasquet, horarioFisico, cargaFisica, lugarFisico, enfoqueFisico, notasFisicas });
   };
+
+  return (
+    <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        {editFisica ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Horario cancha (básquet)</p>
+                <input value={horarioBasquet} onChange={(e) => setHorarioBasquet(e.target.value)} placeholder="ej: 20:00 a 21:30 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Horario físico</p>
+                <input value={horarioFisico} onChange={(e) => setHorarioFisico(e.target.value)} placeholder="ej: 19:00 a 20:00 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Carga física</p>
+                <select value={cargaFisica} onChange={(e) => setCargaFisica(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  {CARGAS_FISICAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Lugar</p>
+                <select value={lugarFisico} onChange={(e) => setLugarFisico(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  {LUGARES_FISICOS.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+            <TagPicker label="Enfoque físico" options={ENFOQUES_FISICOS} selected={enfoqueFisico} onToggle={toggleEnfoque} tone="blue" />
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Notas del preparador físico</p>
+              <textarea value={notasFisicas} onChange={(e) => setNotasFisicas(e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <button onClick={guardarFisica} className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-xs text-zinc-500">Cancha</p><p className="text-zinc-200">{horarioBasquet || "—"}</p></div>
+              <div><p className="text-xs text-zinc-500">Físico</p><p className="text-zinc-200">{horarioFisico || "—"}</p></div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded text-xs border bg-sky-500/15 text-sky-300 border-sky-500/30">Carga {cargaFisica}</span>
+              <span className="px-2 py-0.5 rounded text-xs border bg-zinc-800 text-zinc-300 border-zinc-700">{lugarFisico}</span>
+              {enfoqueFisico.map((f) => <Chip key={f}>{f}</Chip>)}
+            </div>
+            {notasFisicas && <p className="text-sm text-zinc-400 italic">"{notasFisicas}"</p>}
+            <button onClick={() => setEditFisica(true)} className="text-xs text-sky-400 hover:text-sky-300">Editar</button>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+// Reutilizable: lista de bloques de cancha con sus diagramas (secuencia de canchas por bloque).
+// "bloques"/"onChange" son controlados por quien lo use (un entrenamiento entero, o el plan de
+// un jugador puntual dentro de un evento Individual).
+function BloquesConCanchaSection({ bloques, onChange }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
+  const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
 
   const addBloque = () => {
     if (!form.titulo) return;
-    const next = [...bloques, { id: "b" + Date.now(), ...form }];
-    setBloques(next);
-    onUpdate({ bloques: next });
+    onChange([...bloques, { id: "b" + Date.now(), ...form }]);
     setForm({ inicio: "", fin: "", titulo: "", desc: "" });
     setShowForm(false);
   };
@@ -654,16 +713,84 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
       if (diagramId === "new") return { ...b, diagrams: [...diagrams, { id: "d" + Date.now(), ...state }] };
       return { ...b, diagrams: diagrams.map((d) => (d.id === diagramId ? { id: diagramId, ...state } : d)) };
     });
-    setBloques(next);
-    onUpdate({ bloques: next });
+    onChange(next);
     setEditing(null);
   };
 
   const deleteDiagram = (bloqueId, diagramId) => {
-    const next = bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b));
-    setBloques(next);
-    onUpdate({ bloques: next });
+    onChange(bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b)));
   };
+
+  return (
+    <Section icon={Clock} title="Bloque de cancha" accent="text-blue-400">
+      <div className="space-y-2">
+        {bloques.map((b) => {
+          const diagrams = b.diagrams || [];
+          return (
+            <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="flex gap-3">
+                <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
+                  <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
+
+                  <div className="mt-3 space-y-3">
+                    {diagrams.map((d, di) =>
+                      editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
+                        <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} />
+                      ) : (
+                        <div key={d.id} className="flex items-center gap-2">
+                          <CourtPreview {...d} />
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
+                            <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
+                            <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
+                      <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
+                    ) : (
+                      <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+                        <PenLine size={12} /> Agregar cancha
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm ? (
+        <div className="mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+          <div className="flex gap-2">
+            <input placeholder="Inicio (ej 0')" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Fin (ej 20')" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Título del bloque de cancha" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
+          <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
+          <div className="flex gap-2">
+            <button onClick={addBloque} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
+            <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-blue-400 text-sm mt-2 hover:text-blue-300">
+          <Plus size={15} /> Agregar bloque de cancha
+        </button>
+      )}
+    </Section>
+  );
+}
+
+function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
+  const [bloques, setBloques] = useState(event.bloques || []);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
@@ -690,125 +817,124 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
 
       <AsistenciaSection event={event} jugadores={jugadores} />
 
-      <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-          {editFisica ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1">Horario cancha (básquet)</p>
-                  <input value={horarioBasquet} onChange={(e) => setHorarioBasquet(e.target.value)} placeholder="ej: 20:00 a 21:30 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1">Horario físico</p>
-                  <input value={horarioFisico} onChange={(e) => setHorarioFisico(e.target.value)} placeholder="ej: 19:00 a 20:00 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1">Carga física</p>
-                  <select value={cargaFisica} onChange={(e) => setCargaFisica(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-                    {CARGAS_FISICAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1">Lugar</p>
-                  <select value={lugarFisico} onChange={(e) => setLugarFisico(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-                    {LUGARES_FISICOS.map((l) => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </div>
-              </div>
-              <TagPicker label="Enfoque físico" options={ENFOQUES_FISICOS} selected={enfoqueFisico} onToggle={toggleEnfoque} tone="blue" />
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Notas del preparador físico</p>
-                <textarea value={notasFisicas} onChange={(e) => setNotasFisicas(e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              </div>
-              <button onClick={guardarFisica} className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-zinc-500">Cancha</p><p className="text-zinc-200">{horarioBasquet || "—"}</p></div>
-                <div><p className="text-xs text-zinc-500">Físico</p><p className="text-zinc-200">{horarioFisico || "—"}</p></div>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="px-2 py-0.5 rounded text-xs border bg-sky-500/15 text-sky-300 border-sky-500/30">Carga {cargaFisica}</span>
-                <span className="px-2 py-0.5 rounded text-xs border bg-zinc-800 text-zinc-300 border-zinc-700">{lugarFisico}</span>
-                {enfoqueFisico.map((f) => <Chip key={f}>{f}</Chip>)}
-              </div>
-              {notasFisicas && <p className="text-sm text-zinc-400 italic">"{notasFisicas}"</p>}
-              <button onClick={() => setEditFisica(true)} className="text-xs text-sky-400 hover:text-sky-300">Editar</button>
-            </div>
-          )}
-        </div>
-      </Section>
+      <PreparacionFisicaSection data={event} onSave={onUpdate} />
 
-      <Section icon={Clock} title="Bloque de cancha" accent="text-blue-400">
-        <div className="space-y-2">
-          {bloques.map((b) => {
-            const diagrams = b.diagrams || [];
-            return (
-              <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-                <div className="flex gap-3">
-                  <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
-                    <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
-
-                    <div className="mt-3 space-y-3">
-                      {diagrams.map((d, di) =>
-                        editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
-                          <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} />
-                        ) : (
-                          <div key={d.id} className="flex items-center gap-2">
-                            <CourtPreview {...d} />
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
-                              <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
-                              <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
-                            </div>
-                          </div>
-                        )
-                      )}
-
-                      {editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
-                        <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
-                      ) : (
-                        <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-                          <PenLine size={12} /> Agregar cancha
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {showForm ? (
-          <div className="mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
-            <div className="flex gap-2">
-              <input placeholder="Inicio (ej 0')" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <input placeholder="Fin (ej 20')" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <input placeholder="Título del bloque de cancha" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            </div>
-            <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
-            <div className="flex gap-2">
-              <button onClick={addBloque} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
-              <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-blue-400 text-sm mt-2 hover:text-blue-300">
-            <Plus size={15} /> Agregar bloque de cancha
-          </button>
-        )}
-      </Section>
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} />
 
       <p className="text-xs text-zinc-600 mt-8 border-t border-zinc-800 pt-3">
         Diagramas de cancha con jugadores, balón y trayectorias con quiebres. Pendiente: biblioteca de jugadas guardadas y animación.
       </p>
+
+      {confirmDelete && (
+        <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+      )}
+    </div>
+  );
+}
+
+// Plan de trabajo de un jugador puntual dentro de un evento Individual: mismo formato que un
+// entrenamiento (objetivo, preparación física, bloques de cancha con diagramas) pero uno por
+// jugador, todos dentro del mismo evento.
+function PlanIndividualCard({ jugador, plan, onUpdate, onRemove }) {
+  const [objetivo, setObjetivo] = useState(plan.objetivo || "");
+  const [bloques, setBloques] = useState(plan.bloques || []);
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-teal-300 font-mono text-xs">#{jugador?.dorsal ?? "-"}</span>
+          <h3 className="font-bold text-sm text-zinc-100">{jugador?.nombre_apellido || "Jugador eliminado"}</h3>
+        </div>
+        <button onClick={onRemove} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
+          <Trash2 size={13} /> Quitar del plan
+        </button>
+      </div>
+
+      <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline />
+
+      <PreparacionFisicaSection data={plan} onSave={onUpdate} />
+
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} />
+    </div>
+  );
+}
+
+function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
+  const [planes, setPlanes] = useState(event.planesIndividuales || []);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const roster = jugadores.filter((j) => jugadorEnEquipo(j, event.categoria, event.tira));
+  const idsEnPlan = new Set(planes.map((p) => p.jugadorId));
+  const disponibles = roster.filter((j) => !idsEnPlan.has(j.id));
+
+  const persist = (next) => {
+    setPlanes(next);
+    onUpdate({ planesIndividuales: next });
+  };
+
+  const addJugador = (jugadorId) => {
+    if (!jugadorId) return;
+    persist([...planes, {
+      jugadorId, objetivo: "", bloques: [],
+      horarioBasquet: "", horarioFisico: "", cargaFisica: "Media", lugarFisico: "Cancha", enfoqueFisico: [], notasFisicas: "",
+    }]);
+  };
+
+  const removeJugador = (jugadorId) => persist(planes.filter((p) => p.jugadorId !== jugadorId));
+
+  const updatePlan = (jugadorId, patch) => persist(planes.map((p) => (p.jugadorId === jugadorId ? { ...p, ...patch } : p)));
+
+  return (
+    <div className="max-w-2xl mx-auto text-zinc-100">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
+          <ArrowLeft size={15} /> Volver al calendario
+        </button>
+        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+          <Trash2 size={13} /> Eliminar evento
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 text-teal-400 mb-1">
+        <Users size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Individual</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-1">{event.title}</h1>
+      <div className="flex items-center gap-2 mb-6">
+        <p className="text-zinc-500 text-sm">{event.date}</p>
+        {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
+      </div>
+
+      {disponibles.length > 0 && (
+        <div className="flex gap-2 mb-4">
+          <select
+            defaultValue=""
+            onChange={(e) => { addJugador(e.target.value); e.target.value = ""; }}
+            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100"
+          >
+            <option value="">+ Agregar jugador al plan individual</option>
+            {disponibles.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+          </select>
+        </div>
+      )}
+
+      {planes.length === 0 && (
+        <p className="text-sm text-zinc-500 mb-4">Todavía no agregaste jugadores a este plan individual.</p>
+      )}
+
+      {planes.map((plan) => {
+        const jugador = jugadores.find((j) => j.id === plan.jugadorId);
+        return (
+          <PlanIndividualCard
+            key={plan.jugadorId}
+            jugador={jugador}
+            plan={plan}
+            onUpdate={(patch) => updatePlan(plan.jugadorId, patch)}
+            onRemove={() => removeJugador(plan.jugadorId)}
+          />
+        );
+      })}
 
       {confirmDelete && (
         <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
@@ -1057,7 +1183,7 @@ function CalendarView({ events, onSelectEvent, onAddEvent, onDeleteEvent, onMove
           <div className="space-y-2 mb-3">
             {dayEvents.map((e) => {
               const st = TIPO_ESTILO[e.type];
-              const clickable = e.type === "entrenamiento" || e.type === "partido";
+              const clickable = e.type === "entrenamiento" || e.type === "partido" || e.type === "individual";
               const isMoving = moveTarget === e.id;
               return (
                 <div key={e.id} className="rounded-lg border border-zinc-800">
@@ -1496,6 +1622,9 @@ export default function App() {
       )}
       {active?.type === "entrenamiento" && (
         <EntrenamientoView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+      )}
+      {active?.type === "individual" && (
+        <IndividualView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
       )}
       {active?.type === "partido" && (
         <PartidoView event={active} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
