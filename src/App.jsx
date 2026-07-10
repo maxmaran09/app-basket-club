@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { parseCabbPdf, computeAdvancedStats } from "./pdfStats";
+import { parseCabbPdf, computeAdvancedStats, round3 } from "./pdfStats";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -2120,7 +2120,7 @@ const STATS_COLS = [
 // Tabla editable de un equipo dentro de la vista previa: todas las columnas crudas del PDF
 // como inputs chicos (estilo planilla), más un select para vincular con un jugador propio ya
 // cargado en Plantel.
-function StatsPreviewTable({ label, rows, onChangeField, jugadoresPropios }) {
+function StatsPreviewTable({ label, rows, onChangeField, onLinkChange, jugadoresPropios, jugadoresRivales }) {
   return (
     <div className="mb-4">
       <p className="text-xs text-zinc-400 mb-1">{label} ({rows.length} jugadores)</p>
@@ -2136,29 +2136,41 @@ function StatsPreviewTable({ label, rows, onChangeField, jugadoresPropios }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => (
-              <tr key={idx} className="border-t border-zinc-800">
-                <td className="px-1.5 py-1 sticky left-0 bg-zinc-950">
-                  <input value={r.nombre_jugador} onChange={(e) => onChangeField(idx, "nombre_jugador", e.target.value)}
-                    className="w-36 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
-                </td>
-                {STATS_COLS.map(([key]) => (
-                  <td key={key} className="px-1 py-1">
-                    <input type="number" value={r[key] ?? ""} onChange={(e) => onChangeField(idx, key, e.target.value === "" ? "" : Number(e.target.value))}
-                      className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
+            {rows.map((r, idx) => {
+              const linkValue = r.jugador_id ? `own:${r.jugador_id}` : r.jugador_rival_id ? `rival:${r.jugador_rival_id}` : "";
+              return (
+                <tr key={idx} className="border-t border-zinc-800">
+                  <td className="px-1.5 py-1 sticky left-0 bg-zinc-950">
+                    <input value={r.nombre_jugador} onChange={(e) => onChangeField(idx, "nombre_jugador", e.target.value)}
+                      className="w-36 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
                   </td>
-                ))}
-                <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{r.play}</td>
-                <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{Math.round((r.efg_pct || 0) * 100)}%</td>
-                <td className="px-1.5 py-1">
-                  <select value={r.jugador_id || ""} onChange={(e) => onChangeField(idx, "jugador_id", e.target.value || null)}
-                    className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs">
-                    <option value="">—</option>
-                    {jugadoresPropios.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
-                  </select>
-                </td>
-              </tr>
-            ))}
+                  {STATS_COLS.map(([key]) => (
+                    <td key={key} className="px-1 py-1">
+                      <input type="number" value={r[key] ?? ""} onChange={(e) => onChangeField(idx, key, e.target.value === "" ? "" : Number(e.target.value))}
+                        className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
+                    </td>
+                  ))}
+                  <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{r.play}</td>
+                  <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{Math.round((r.efg_pct || 0) * 100)}%</td>
+                  <td className="px-1.5 py-1">
+                    <select value={linkValue} onChange={(e) => onLinkChange(idx, e.target.value)}
+                      className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs max-w-[140px]">
+                      <option value="">—</option>
+                      {jugadoresPropios.length > 0 && (
+                        <optgroup label="Plantel propio">
+                          {jugadoresPropios.map((j) => <option key={j.id} value={`own:${j.id}`}>{j.nombre_apellido}</option>)}
+                        </optgroup>
+                      )}
+                      {jugadoresRivales.length > 0 && (
+                        <optgroup label="Plantel rival">
+                          {jugadoresRivales.map((j) => <option key={j.id} value={`rival:${j.id}`}>{j.nombre_apellido}</option>)}
+                        </optgroup>
+                      )}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -2166,7 +2178,39 @@ function StatsPreviewTable({ label, rows, onChangeField, jugadoresPropios }) {
   );
 }
 
-function EstadisticasView({ jugadores }) {
+// Fila (única) de totales oficiales del equipo, editable, tal cual la fila TOTALES del PDF.
+function EquipoTotalsRow({ label, totales, onChange }) {
+  if (!totales) return null;
+  const cols = STATS_COLS.filter(([k]) => k !== "dorsal" && k !== "minutos" && k !== "plusminus");
+  return (
+    <div className="mb-3">
+      <p className="text-xs text-zinc-400 mb-1">Totales oficiales — {label}</p>
+      <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+        <table className="text-xs text-zinc-200 border-collapse w-full">
+          <thead>
+            <tr className="bg-zinc-900 text-zinc-500">
+              {cols.map(([key, lbl]) => <th key={key} className="px-1 py-1 font-normal">{lbl}</th>)}
+              <th className="px-1 py-1 font-normal">eFG%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t border-zinc-800">
+              {cols.map(([key]) => (
+                <td key={key} className="px-1 py-1">
+                  <input type="number" value={totales[key] ?? ""} onChange={(e) => onChange(key, e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
+                </td>
+              ))}
+              <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{Math.round((totales.efg_pct || 0) * 100)}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EstadisticasView({ jugadores, equiposRivales }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
   const [preview, setPreview] = useState(null);
@@ -2174,6 +2218,8 @@ function EstadisticasView({ jugadores }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [historial, setHistorial] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
+  const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
+  const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
 
   const fetchHistorial = async () => {
     setLoadingHistorial(true);
@@ -2183,6 +2229,28 @@ function EstadisticasView({ jugadores }) {
   };
 
   useEffect(() => { fetchHistorial(); }, []);
+
+  useEffect(() => {
+    const id = preview?.equipoLocalRivalId;
+    if (!id) { setJugadoresRivalesLocal([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("jugadores_rivales").select("*").eq("equipo_rival_id", id).order("nombre_apellido", { ascending: true });
+      if (!cancelled && !error) setJugadoresRivalesLocal(data);
+    })();
+    return () => { cancelled = true; };
+  }, [preview?.equipoLocalRivalId]);
+
+  useEffect(() => {
+    const id = preview?.equipoVisitanteRivalId;
+    if (!id) { setJugadoresRivalesVisitante([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("jugadores_rivales").select("*").eq("equipo_rival_id", id).order("nombre_apellido", { ascending: true });
+      if (!cancelled && !error) setJugadoresRivalesVisitante(data);
+    })();
+    return () => { cancelled = true; };
+  }, [preview?.equipoVisitanteRivalId]);
 
   const linkJugadorPorNombre = (nombre) => {
     const norm = (s) => s.toUpperCase().replace(/\s+/g, " ").trim();
@@ -2209,10 +2277,14 @@ function EstadisticasView({ jugadores }) {
         categoria: result.categoria,
         equipoLocal: result.equipoLocal,
         equipoVisitante: result.equipoVisitante,
+        equipoLocalRivalId: "",
+        equipoVisitanteRivalId: "",
         resultadoLocal: result.equipos[0].totales?.pts ?? "",
         resultadoVisitante: result.equipos[1].totales?.pts ?? "",
-        jugadoresLocal: result.equipos[0].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador) })),
-        jugadoresVisitante: result.equipos[1].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador) })),
+        totalesLocal: result.equipos[0].totales,
+        totalesVisitante: result.equipos[1].totales,
+        jugadoresLocal: result.equipos[0].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador), jugador_rival_id: null })),
+        jugadoresVisitante: result.equipos[1].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador), jugador_rival_id: null })),
       });
       if (!result.equipos[0].jugadores.length && !result.equipos[1].jugadores.length) {
         setParseError("No encontré filas de jugadores en el PDF. Podés cargar los datos a mano abajo, o revisar que el PDF no esté escaneado como imagen.");
@@ -2232,6 +2304,23 @@ function EstadisticasView({ jugadores }) {
     });
   };
 
+  const updateLink = (lado, idx, value) => {
+    setPreview((prev) => {
+      const key = lado === "local" ? "jugadoresLocal" : "jugadoresVisitante";
+      const next = [...prev[key]];
+      const [tipo, id] = value ? value.split(":") : [null, null];
+      next[idx] = { ...next[idx], jugador_id: tipo === "own" ? id : null, jugador_rival_id: tipo === "rival" ? id : null };
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const updateTotales = (lado, field, value) => {
+    setPreview((prev) => {
+      const key = lado === "local" ? "totalesLocal" : "totalesVisitante";
+      return { ...prev, [key]: { ...prev[key], [field]: value } };
+    });
+  };
+
   const recalcularMetricas = () => {
     const recompute = (r) => ({
       ...r,
@@ -2242,10 +2331,18 @@ function EstadisticasView({ jugadores }) {
         rof: Number(r.rof) || 0, pts: Number(r.pts) || 0,
       }),
     });
+    const recomputeEfg = (t) => t && {
+      ...t,
+      efg_pct: (Number(t.t2i) || 0) + (Number(t.t3i) || 0)
+        ? round3(((Number(t.t2a) || 0) + 1.5 * (Number(t.t3a) || 0)) / ((Number(t.t2i) || 0) + (Number(t.t3i) || 0)))
+        : 0,
+    };
     setPreview((prev) => prev && ({
       ...prev,
       jugadoresLocal: prev.jugadoresLocal.map(recompute),
       jugadoresVisitante: prev.jugadoresVisitante.map(recompute),
+      totalesLocal: recomputeEfg(prev.totalesLocal),
+      totalesVisitante: recomputeEfg(prev.totalesVisitante),
     }));
   };
 
@@ -2268,12 +2365,13 @@ function EstadisticasView({ jugadores }) {
       .single();
     if (errPartido) { setSaveMsg("Error al guardar el partido: " + errPartido.message); setSaving(false); return; }
 
-    const rows = [
+    const jugadorRows = [
       ...preview.jugadoresLocal.map((j) => ({ ...j, equipo: preview.equipoLocal })),
       ...preview.jugadoresVisitante.map((j) => ({ ...j, equipo: preview.equipoVisitante })),
     ].map((j) => ({
       partido_id: partido.id,
       jugador_id: j.jugador_id || null,
+      jugador_rival_id: j.jugador_rival_id || null,
       nombre_jugador: j.nombre_jugador,
       equipo: j.equipo,
       dorsal: j.dorsal === "" ? null : j.dorsal,
@@ -2284,9 +2382,25 @@ function EstadisticasView({ jugadores }) {
       play: j.play, pos: j.pos, pplay: j.pplay, ppos: j.ppos, tov_pct: j.tov_pct, efg_pct: j.efg_pct,
     }));
 
-    if (rows.length > 0) {
-      const { error: errJug } = await supabase.from("jugador_partido_stats").insert(rows);
+    if (jugadorRows.length > 0) {
+      const { error: errJug } = await supabase.from("jugador_partido_stats").insert(jugadorRows);
       if (errJug) { setSaveMsg("El partido se guardó, pero hubo un error con los jugadores: " + errJug.message); setSaving(false); return; }
+    }
+
+    const toEquipoRow = (totales, equipo, condicion, equipoRivalId) => totales && {
+      partido_id: partido.id, equipo, condicion, equipo_rival_id: equipoRivalId || null,
+      pts: totales.pts, t2a: totales.t2a, t2i: totales.t2i, t3a: totales.t3a, t3i: totales.t3i, t1a: totales.t1a, t1i: totales.t1i,
+      rdef: totales.rdef, rof: totales.rof, rtot: totales.rtot, ast: totales.ast, rec: totales.rec, per: totales.per,
+      tc: totales.tc, tr: totales.tr, fc: totales.fc, fr: totales.fr, val: totales.val, efg_pct: totales.efg_pct,
+    };
+    const equipoRows = [
+      toEquipoRow(preview.totalesLocal, preview.equipoLocal, "LOCAL", preview.equipoLocalRivalId),
+      toEquipoRow(preview.totalesVisitante, preview.equipoVisitante, "VISITANTE", preview.equipoVisitanteRivalId),
+    ].filter(Boolean);
+
+    if (equipoRows.length > 0) {
+      const { error: errEquipo } = await supabase.from("equipo_partido_stats").insert(equipoRows);
+      if (errEquipo) { setSaveMsg("Los jugadores se guardaron, pero hubo un error con los totales de equipo: " + errEquipo.message); setSaving(false); return; }
     }
 
     setSaveMsg("Guardado ✓");
@@ -2339,12 +2453,22 @@ function EstadisticasView({ jugadores }) {
             <div>
               <p className="text-xs text-zinc-500 mb-1">Equipo local</p>
               <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-1" />
+              <select value={preview.equipoLocalRivalId} onChange={(e) => setPreview({ ...preview, equipoLocalRivalId: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
+                <option value="">Vincular equipo (Scouting Hub)…</option>
+                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+              </select>
             </div>
             <div>
               <p className="text-xs text-zinc-500 mb-1">Equipo visitante</p>
               <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-1" />
+              <select value={preview.equipoVisitanteRivalId} onChange={(e) => setPreview({ ...preview, equipoVisitanteRivalId: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
+                <option value="">Vincular equipo (Scouting Hub)…</option>
+                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+              </select>
             </div>
             <div className="flex gap-2">
               <div className="flex-1">
@@ -2360,10 +2484,17 @@ function EstadisticasView({ jugadores }) {
             </div>
           </div>
 
-          <StatsPreviewTable label={`Local — ${preview.equipoLocal}`} rows={preview.jugadoresLocal} jugadoresPropios={jugadores}
-            onChangeField={(idx, field, value) => updateField("local", idx, field, value)} />
-          <StatsPreviewTable label={`Visitante — ${preview.equipoVisitante}`} rows={preview.jugadoresVisitante} jugadoresPropios={jugadores}
-            onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)} />
+          <div className="grid sm:grid-cols-2 gap-3">
+            <EquipoTotalsRow label={preview.equipoLocal} totales={preview.totalesLocal} onChange={(field, value) => updateTotales("local", field, value)} />
+            <EquipoTotalsRow label={preview.equipoVisitante} totales={preview.totalesVisitante} onChange={(field, value) => updateTotales("visitante", field, value)} />
+          </div>
+
+          <StatsPreviewTable label={`Local — ${preview.equipoLocal}`} rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal}
+            onChangeField={(idx, field, value) => updateField("local", idx, field, value)}
+            onLinkChange={(idx, value) => updateLink("local", idx, value)} />
+          <StatsPreviewTable label={`Visitante — ${preview.equipoVisitante}`} rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante}
+            onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)}
+            onLinkChange={(idx, value) => updateLink("visitante", idx, value)} />
 
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={recalcularMetricas} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm px-3 py-1.5 rounded">
@@ -2590,7 +2721,7 @@ export default function App() {
           ) : seccionActiva === "scouting" ? (
             <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
           ) : (
-            <EstadisticasView jugadores={jugadores} />
+            <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} />
           )
         )}
         {active?.type === "entrenamiento" && (

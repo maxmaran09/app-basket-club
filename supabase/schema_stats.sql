@@ -132,7 +132,52 @@ select
 from public.jugador_partido_stats
 group by coalesce(jugador_id::text, 'r:' || jugador_rival_id::text, 'n:' || lower(trim(nombre_jugador))), equipo;
 
--- Totales de equipo por partido (suma de sus jugadores en ese partido puntual).
+-- Totales de equipo por partido, tal cual la fila TOTALES del PDF (una fila por lado). Se puede
+-- vincular a un equipo ya cargado en Scouting Hub (equipo_rival_id), igual que se vincula un
+-- jugador con jugador_id/jugador_rival_id en jugador_partido_stats.
+create table if not exists public.equipo_partido_stats (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  partido_id uuid not null references public.partidos_stats(id) on delete cascade,
+  equipo text not null,
+  condicion text not null check (condicion in ('LOCAL','VISITANTE')),
+  equipo_rival_id uuid references public.equipos_rivales(id) on delete set null,
+
+  pts integer,
+  t2a integer, t2i integer,
+  t3a integer, t3i integer,
+  t1a integer, t1i integer,
+  rdef integer, rof integer, rtot integer,
+  ast integer, rec integer, per integer,
+  tc integer, tr integer,
+  fc integer, fr integer,
+  val integer,
+  efg_pct numeric(6,3),
+
+  unique (partido_id, condicion)
+);
+
+create index if not exists equipo_partido_stats_partido_idx on public.equipo_partido_stats (partido_id);
+create index if not exists equipo_partido_stats_equipo_rival_idx on public.equipo_partido_stats (equipo_rival_id);
+
+drop trigger if exists equipo_partido_stats_set_updated_at on public.equipo_partido_stats;
+create trigger equipo_partido_stats_set_updated_at
+before update on public.equipo_partido_stats
+for each row execute function public.set_updated_at();
+
+alter table public.equipo_partido_stats enable row level security;
+drop policy if exists "equipo_partido_stats_select_all" on public.equipo_partido_stats;
+create policy "equipo_partido_stats_select_all" on public.equipo_partido_stats for select using (true);
+drop policy if exists "equipo_partido_stats_insert_all" on public.equipo_partido_stats;
+create policy "equipo_partido_stats_insert_all" on public.equipo_partido_stats for insert with check (true);
+drop policy if exists "equipo_partido_stats_update_all" on public.equipo_partido_stats;
+create policy "equipo_partido_stats_update_all" on public.equipo_partido_stats for update using (true);
+drop policy if exists "equipo_partido_stats_delete_all" on public.equipo_partido_stats;
+create policy "equipo_partido_stats_delete_all" on public.equipo_partido_stats for delete using (true);
+
+-- Totales de equipo por partido sumando jugadores (referencia/cruce, no la fuente principal).
 create or replace view public.vista_totales_equipo_partido as
 select partido_id, equipo,
   sum(pts) as pts,
@@ -145,9 +190,13 @@ select partido_id, equipo,
 from public.jugador_partido_stats
 group by partido_id, equipo;
 
--- Promedios de equipo (a partir de los totales por partido, no de sumar jugadores sueltos).
-create or replace view public.vista_promedios_equipo as
-select equipo,
+-- Promedios de equipo a partir de las filas TOTALES oficiales de cada partido (agrupa por
+-- equipo_rival_id cuando esta vinculado, si no por nombre, igual que vista_promedios_jugador).
+drop view if exists public.vista_promedios_equipo;
+create view public.vista_promedios_equipo as
+select
+  max(equipo_rival_id::text)::uuid as equipo_rival_id,
+  max(equipo) as equipo,
   count(*) as pj,
   round(avg(pts)::numeric, 1) as pts_prom,
   round(avg(t2a)::numeric, 1) as t2a_prom,
@@ -163,9 +212,9 @@ select equipo,
   round(avg(rec)::numeric, 1) as rec_prom,
   round(avg(per)::numeric, 1) as per_prom,
   round(avg(val)::numeric, 1) as val_prom,
-  round((sum(t2a) + 0.5 * sum(t3a))::numeric / nullif(sum(t2i) + sum(t3i), 0), 3) as efg_pct_prom
-from public.vista_totales_equipo_partido
-group by equipo;
+  round(avg(efg_pct)::numeric, 3) as efg_pct_prom
+from public.equipo_partido_stats
+group by coalesce(equipo_rival_id::text, 'n:' || lower(trim(equipo)));
 
 -- Record de partidos ganados/perdidos por equipo, separado por local/visitante.
 create or replace view public.vista_record_equipo as
@@ -193,5 +242,6 @@ grant select on public.vista_record_equipo to anon, authenticated;
 
 grant select, insert, update, delete on public.partidos_stats to anon, authenticated;
 grant select, insert, update, delete on public.jugador_partido_stats to anon, authenticated;
+grant select, insert, update, delete on public.equipo_partido_stats to anon, authenticated;
 
 notify pgrst, 'reload schema';

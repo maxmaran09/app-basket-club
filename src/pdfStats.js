@@ -73,7 +73,8 @@ function parseStatLine(line) {
 
   const stat = tokens.slice(-20);
   const [minStr, pts, t2ai, pT2, t3ai, pT3, t1ai, pT1, rdef, rof, rtot, ast, rec, per, tc, tr, fc, fr, val, pm] = stat;
-  if (!/^\d{1,2}:\d{2}$/.test(minStr)) return null;
+  // Hasta 2 dígitos para un jugador (ej "27:51"), hasta 3 para la fila TOTALES del equipo (ej "200:00").
+  if (!/^\d{1,3}:\d{2}$/.test(minStr)) return null;
   if (!t2ai?.includes("/") || !t3ai?.includes("/") || !t1ai?.includes("/")) return null;
 
   const [t2a, t2i] = t2ai.split("/").map(Number);
