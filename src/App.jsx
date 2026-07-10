@@ -2434,7 +2434,7 @@ function EstadisticasView({ jugadores, equiposRivales }) {
       {preview && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-bold text-zinc-100 mb-3">Vista previa — revisá y corregí antes de guardar</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
             <div>
               <p className="text-xs text-zinc-500 mb-1">Fecha</p>
               <input type="date" value={preview.fecha} onChange={(e) => setPreview({ ...preview, fecha: e.target.value })}
@@ -2450,26 +2450,6 @@ function EstadisticasView({ jugadores, equiposRivales }) {
               <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             </div>
-            <div>
-              <p className="text-xs text-zinc-500 mb-1">Equipo local</p>
-              <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-1" />
-              <select value={preview.equipoLocalRivalId} onChange={(e) => setPreview({ ...preview, equipoLocalRivalId: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
-                <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
-              </select>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500 mb-1">Equipo visitante</p>
-              <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-1" />
-              <select value={preview.equipoVisitanteRivalId} onChange={(e) => setPreview({ ...preview, equipoVisitanteRivalId: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
-                <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
-              </select>
-            </div>
             <div className="flex gap-2">
               <div className="flex-1">
                 <p className="text-xs text-zinc-500 mb-1">Res. local</p>
@@ -2484,17 +2464,39 @@ function EstadisticasView({ jugadores, equiposRivales }) {
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="border-t border-zinc-800 pt-3 mb-5">
+            <h3 className="text-sm font-bold text-blue-300 mb-2">Equipo Local</h3>
+            <div className="flex gap-2 mb-3">
+              <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
+                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              <select value={preview.equipoLocalRivalId} onChange={(e) => setPreview({ ...preview, equipoLocalRivalId: e.target.value })}
+                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                <option value="">Vincular equipo (Scouting Hub)…</option>
+                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+              </select>
+            </div>
+            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal}
+              onChangeField={(idx, field, value) => updateField("local", idx, field, value)}
+              onLinkChange={(idx, value) => updateLink("local", idx, value)} />
             <EquipoTotalsRow label={preview.equipoLocal} totales={preview.totalesLocal} onChange={(field, value) => updateTotales("local", field, value)} />
-            <EquipoTotalsRow label={preview.equipoVisitante} totales={preview.totalesVisitante} onChange={(field, value) => updateTotales("visitante", field, value)} />
           </div>
 
-          <StatsPreviewTable label={`Local — ${preview.equipoLocal}`} rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal}
-            onChangeField={(idx, field, value) => updateField("local", idx, field, value)}
-            onLinkChange={(idx, value) => updateLink("local", idx, value)} />
-          <StatsPreviewTable label={`Visitante — ${preview.equipoVisitante}`} rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante}
-            onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)}
-            onLinkChange={(idx, value) => updateLink("visitante", idx, value)} />
+          <div className="border-t border-zinc-800 pt-3 mb-5">
+            <h3 className="text-sm font-bold text-orange-300 mb-2">Equipo Visitante</h3>
+            <div className="flex gap-2 mb-3">
+              <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
+                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              <select value={preview.equipoVisitanteRivalId} onChange={(e) => setPreview({ ...preview, equipoVisitanteRivalId: e.target.value })}
+                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                <option value="">Vincular equipo (Scouting Hub)…</option>
+                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+              </select>
+            </div>
+            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante}
+              onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)}
+              onLinkChange={(idx, value) => updateLink("visitante", idx, value)} />
+            <EquipoTotalsRow label={preview.equipoVisitante} totales={preview.totalesVisitante} onChange={(field, value) => updateTotales("visitante", field, value)} />
+          </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={recalcularMetricas} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm px-3 py-1.5 rounded">
