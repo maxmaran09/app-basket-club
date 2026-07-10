@@ -47,7 +47,7 @@ create index if not exists jugadores_categoria_tira_idx on public.jugadores (cat
 drop trigger if exists jugadores_set_updated_at on public.jugadores;
 create trigger jugadores_set_updated_at
 before update on public.jugadores
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.jugadores enable row level security;
 
@@ -90,7 +90,7 @@ create index if not exists asistencias_jugador_idx on public.asistencias (jugado
 drop trigger if exists asistencias_set_updated_at on public.asistencias;
 create trigger asistencias_set_updated_at
 before update on public.asistencias
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.asistencias enable row level security;
 

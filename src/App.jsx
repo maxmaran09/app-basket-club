@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { parseCabbPdf, computeAdvancedStats, round3, normalizeName } from "./pdfStats";
+import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -1570,6 +1570,9 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
     categoria_origen: jugador?.categoria_origen ?? categoria,
     tira: jugador?.tira ?? tira,
     notas_comentarios: jugador?.notas_comentarios ?? "",
+    disponibilidad: jugador?.disponibilidad ?? "Disponible",
+    lesion_detalle: jugador?.lesion_detalle ?? "",
+    lesion_desde: jugador?.lesion_desde ?? "",
   });
   const [equipos, setEquipos] = useState(jugador?.equipos_adicionales || []);
   const [nuevoCat, setNuevoCat] = useState(CATEGORIAS[0]);
@@ -1600,6 +1603,9 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
       tira: form.tira,
       notas_comentarios: form.notas_comentarios,
       equipos_adicionales: equipos,
+      disponibilidad: form.disponibilidad,
+      lesion_detalle: form.disponibilidad === "Disponible" ? "" : form.lesion_detalle,
+      lesion_desde: form.disponibilidad === "Disponible" ? null : (form.lesion_desde || null),
     });
     setSaving(false);
   };
@@ -1633,6 +1639,21 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
             </select>
           </div>
           <textarea placeholder="Notas / comentarios" value={form.notas_comentarios} onChange={(e) => set("notas_comentarios", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+
+          <div className="pt-2 border-t border-zinc-800">
+            <p className="text-xs text-zinc-500 mb-1">Disponibilidad</p>
+            <select value={form.disponibilidad} onChange={(e) => set("disponibilidad", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-2">
+              <option value="Disponible">Disponible</option>
+              <option value="Duda">Duda</option>
+              <option value="Lesionado">Lesionado</option>
+            </select>
+            {form.disponibilidad !== "Disponible" && (
+              <div className="flex gap-2">
+                <input placeholder="Detalle (ej: esguince tobillo)" value={form.lesion_detalle} onChange={(e) => set("lesion_detalle", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <input type="date" value={form.lesion_desde} onChange={(e) => set("lesion_desde", e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+            )}
+          </div>
 
           <div className="pt-2 border-t border-zinc-800">
             <p className="text-xs text-zinc-500 mb-1">Equipos adicionales (además de {form.categoria_origen} · {form.tira})</p>
@@ -1768,6 +1789,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               {(j.categoria_origen !== categoria || j.tira !== tira) && (
                 <span className="text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
               )}
+              {j.disponibilidad && j.disponibilidad !== "Disponible" && (
+                <span className={`text-xs px-1.5 py-0.5 rounded border ${j.disponibilidad === "Lesionado" ? "bg-red-500/15 text-red-300 border-red-500/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30"}`}>
+                  {j.disponibilidad}
+                </span>
+              )}
               <span className="text-zinc-500 text-xs ml-auto">{j.posicion}</span>
               <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
                 <PenLine size={13} />
@@ -1785,6 +1811,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               ))}
             </div>
             {j.notas_comentarios && <p className="text-sm text-zinc-400 mb-1">{j.notas_comentarios}</p>}
+            {j.disponibilidad !== "Disponible" && (j.lesion_detalle || j.lesion_desde) && (
+              <p className="text-sm text-amber-300/80 mb-1">
+                {j.lesion_detalle}{j.lesion_desde ? ` (desde ${j.lesion_desde})` : ""}
+              </p>
+            )}
             <PromedioMiniStats p={promedios[j.id]} />
             <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
             {j.evaluaciones_pfs?.length > 0 && (
@@ -2446,6 +2477,7 @@ function EstadisticasView({ jugadores, equiposRivales }) {
         equipoVisitante: result.equipoVisitante,
         equipoLocalRivalId,
         equipoVisitanteRivalId,
+        equipoPropio: detectarEquipoPropio(result.equipoLocal, result.equipoVisitante),
         resultadoLocal: result.equipos[0].totales?.pts ?? "",
         resultadoVisitante: result.equipos[1].totales?.pts ?? "",
         totalesLocal: result.equipos[0].totales,
@@ -2536,6 +2568,7 @@ function EstadisticasView({ jugadores, equiposRivales }) {
         equipo_visitante: preview.equipoVisitante,
         resultado_local: preview.resultadoLocal === "" ? null : Number(preview.resultadoLocal),
         resultado_visitante: preview.resultadoVisitante === "" ? null : Number(preview.resultadoVisitante),
+        equipo_propio: preview.equipoPropio || null,
       })
       .select()
       .single();
@@ -2640,8 +2673,18 @@ function EstadisticasView({ jugadores, equiposRivales }) {
             </div>
           </div>
 
+          <div className="mb-4">
+            <p className="text-xs text-zinc-500 mb-1">¿Cuál de los dos somos nosotros? (para el Dashboard)</p>
+            <select value={preview.equipoPropio || ""} onChange={(e) => setPreview({ ...preview, equipoPropio: e.target.value || null })}
+              className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              <option value="">No se detectó — elegir</option>
+              <option value="LOCAL">Local ({preview.equipoLocal})</option>
+              <option value="VISITANTE">Visitante ({preview.equipoVisitante})</option>
+            </select>
+          </div>
+
           <div className="border-t border-zinc-800 pt-3 mb-5">
-            <h3 className="text-sm font-bold text-blue-300 mb-2">Equipo Local</h3>
+            <h3 className="text-sm font-bold text-blue-300 mb-2">Equipo Local{preview.equipoPropio === "LOCAL" ? " (nosotros)" : ""}</h3>
             <div className="flex gap-2 mb-3">
               <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -2662,7 +2705,7 @@ function EstadisticasView({ jugadores, equiposRivales }) {
           </div>
 
           <div className="border-t border-zinc-800 pt-3 mb-5">
-            <h3 className="text-sm font-bold text-orange-300 mb-2">Equipo Visitante</h3>
+            <h3 className="text-sm font-bold text-orange-300 mb-2">Equipo Visitante{preview.equipoPropio === "VISITANTE" ? " (nosotros)" : ""}</h3>
             <div className="flex gap-2 mb-3">
               <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -2719,7 +2762,376 @@ function EstadisticasView({ jugadores, equiposRivales }) {
   );
 }
 
+// Podio de 3 de una metrica del ultimo partido (sin emojis, solo numero + nombre + valor).
+function PodioMini({ titulo, filas, campo, formato }) {
+  return (
+    <div>
+      <p className="text-xs text-zinc-500 mb-1.5">{titulo}</p>
+      {filas.length === 0 ? (
+        <p className="text-xs text-zinc-600">-</p>
+      ) : (
+        <div className="space-y-1">
+          {filas.map((f, i) => (
+            <div key={f.id}>
+              <p className="text-xs text-zinc-200 truncate">{i + 1}. {f.nombre_jugador}</p>
+              <p className="text-xs text-zinc-500">{formato ? formato(f[campo]) : f[campo] ?? "-"}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Modulo "Inicio": dashboard que unifica lo mas urgente de cada modulo (Calendario, Plantel,
+// Entrenamientos, Scouting, Estadisticas) en una sola pantalla. El selector de Categoria/Tira
+// scopea agenda/cronograma de hoy/RPE/asistencia/lesionados (igual que Plantel/Entrenamientos);
+// proximo partido, lideres y tendencia son a nivel club porque jugador_partido_stats no guarda
+// categoria de forma confiable para filtrar por ahi.
+function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const hoy = todayKeyBA();
+
+  const [notas, setNotas] = useState([]);
+  const [loadingNotas, setLoadingNotas] = useState(true);
+  const [notaNueva, setNotaNueva] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("notas_staff").select("*").eq("resuelta", false).order("created_at", { ascending: false });
+      if (!cancelled && !error) setNotas(data);
+      setLoadingNotas(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const agregarNota = async () => {
+    const texto = notaNueva.trim();
+    if (!texto) return;
+    setNotaNueva("");
+    const { data, error } = await supabase.from("notas_staff").insert({ texto }).select().single();
+    if (!error) setNotas((prev) => [data, ...prev]);
+  };
+
+  const resolverNota = async (id) => {
+    setNotas((prev) => prev.filter((n) => n.id !== id));
+    await supabase.from("notas_staff").update({ resuelta: true }).eq("id", id);
+  };
+
+  const [rpeProm, setRpeProm] = useState(null);
+  const [asistenciaPct, setAsistenciaPct] = useState(null);
+  const [loadingSemana, setLoadingSemana] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingSemana(true);
+      const desde = new Date();
+      desde.setDate(desde.getDate() - 6);
+      const desdeKey = desde.toISOString().slice(0, 10);
+
+      const { data: entrenos, error: errEnt } = await supabase
+        .from("eventos")
+        .select("id")
+        .eq("type", "entrenamiento")
+        .eq("categoria", categoria)
+        .eq("tira", tira)
+        .gte("date", desdeKey)
+        .lte("date", hoy);
+
+      if (cancelled) return;
+      if (errEnt || !entrenos || entrenos.length === 0) {
+        setRpeProm(null);
+        setAsistenciaPct(null);
+        setLoadingSemana(false);
+        return;
+      }
+
+      const { data: asis, error: errAsis } = await supabase
+        .from("asistencias")
+        .select("estado, rpe_valor")
+        .in("entrenamiento_id", entrenos.map((e) => e.id));
+
+      if (cancelled) return;
+      if (!errAsis && asis) {
+        const conRpe = asis.filter((a) => a.rpe_valor != null);
+        setRpeProm(conRpe.length ? Math.round((conRpe.reduce((s, a) => s + a.rpe_valor, 0) / conRpe.length) * 10) / 10 : null);
+        const presentes = asis.filter((a) => a.estado === "Presente").length;
+        setAsistenciaPct(asis.length ? Math.round((presentes / asis.length) * 100) : null);
+      }
+      setLoadingSemana(false);
+    })();
+    return () => { cancelled = true; };
+  }, [categoria, tira, hoy]);
+
+  const [ultimoPartido, setUltimoPartido] = useState(null);
+  const [lideres, setLideres] = useState({ puntos: [], eficiencia: [], rebotes: [] });
+  const [tendencia, setTendencia] = useState([]);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingStats(true);
+      const { data: ultimo } = await supabase.from("partidos_stats").select("*").order("fecha", { ascending: false }).limit(1).maybeSingle();
+      if (cancelled) return;
+      setUltimoPartido(ultimo);
+
+      if (ultimo?.equipo_propio) {
+        const ladoPropio = ultimo.equipo_propio === "VISITANTE" ? ultimo.equipo_visitante : ultimo.equipo_local;
+        const { data: filas } = await supabase.from("jugador_partido_stats").select("*").eq("partido_id", ultimo.id).eq("equipo", ladoPropio);
+        if (!cancelled && filas) {
+          setLideres({
+            puntos: [...filas].sort((a, b) => b.pts - a.pts).slice(0, 3),
+            eficiencia: [...filas].filter((f) => (f.t2i || 0) + (f.t3i || 0) > 0).sort((a, b) => (b.efg_pct || 0) - (a.efg_pct || 0)).slice(0, 3),
+            rebotes: [...filas].sort((a, b) => b.rtot - a.rtot).slice(0, 3),
+          });
+        }
+      }
+
+      const { data: ultimos3 } = await supabase.from("partidos_stats").select("*").not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(3);
+      if (!cancelled && ultimos3) {
+        setTendencia(
+          ultimos3
+            .map((p) => ({
+              fecha: p.fecha,
+              rival: p.equipo_propio === "LOCAL" ? p.equipo_visitante : p.equipo_local,
+              favor: p.equipo_propio === "LOCAL" ? p.resultado_local : p.resultado_visitante,
+              contra: p.equipo_propio === "LOCAL" ? p.resultado_visitante : p.resultado_local,
+            }))
+            .reverse()
+        );
+      }
+      setLoadingStats(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const lesionados = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira) && j.disponibilidad && j.disponibilidad !== "Disponible");
+
+  const proximoPartido = events.filter((e) => e.type === "partido" && e.date >= hoy).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  const rivalProximo = proximoPartido ? equiposRivales.find((eq) => eq.id === proximoPartido.rival_id) : null;
+  const diasParaPartido = proximoPartido ? Math.round((new Date(proximoPartido.date) - new Date(hoy)) / 86400000) : null;
+
+  const en7dias = (() => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const agenda = events
+    .filter((e) => e.categoria === categoria && e.tira === tira && e.date >= hoy && e.date <= en7dias)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const entrenoHoy = events.find((e) => e.type === "entrenamiento" && e.categoria === categoria && e.tira === tira && e.date === hoy) || null;
+
+  const semaforoRpe = (v) => (v == null ? "text-zinc-500" : v <= 3 ? "text-emerald-400" : v <= 6 ? "text-yellow-400" : v <= 8 ? "text-orange-400" : "text-red-400");
+
+  return (
+    <div className="max-w-6xl mx-auto text-zinc-100">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-zinc-400">
+          <Home size={18} />
+          <span className="text-xs font-bold uppercase tracking-widest">Inicio</span>
+        </div>
+        <div className="flex gap-2">
+          <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={tira} onChange={(e) => setTira(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* 1. Banner de cuenta regresiva */}
+      <div className="bg-gradient-to-r from-orange-600/20 to-zinc-900 border border-orange-500/30 rounded-xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap">
+        {proximoPartido ? (
+          <>
+            <div className="min-w-0">
+              <p className="text-xs text-orange-300 font-bold uppercase tracking-wide mb-1">
+                {diasParaPartido === 0 ? "Partido hoy" : diasParaPartido === 1 ? "Partido mañana" : `Faltan ${diasParaPartido} días`}
+              </p>
+              <p className="text-lg font-bold truncate">vs {rivalProximo?.nombre_club || proximoPartido.rival || "Rival a definir"}</p>
+              <p className="text-sm text-zinc-400">
+                {proximoPartido.date}
+                {proximoPartido.horario ? ` · ${proximoPartido.horario}` : ""}
+                {proximoPartido.condicion ? ` · ${proximoPartido.condicion}` : ""}
+              </p>
+            </div>
+            <button onClick={() => onSelectEvent(proximoPartido)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded shrink-0">
+              <Swords size={14} /> Ver informe táctico
+            </button>
+          </>
+        ) : (
+          <p className="text-sm text-zinc-400">No hay ningún partido próximo cargado en el calendario.</p>
+        )}
+      </div>
+
+      {/* 2. Indicadores clave */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
+          <p className="text-xs text-zinc-500 mb-1">RPE promedio semanal</p>
+          <p className={`text-2xl font-bold ${semaforoRpe(rpeProm)}`}>{loadingSemana ? "…" : rpeProm ?? "-"}</p>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
+          <p className="text-xs text-zinc-500 mb-1">Lesionados / enfermería</p>
+          <p className={`text-2xl font-bold ${lesionados.length > 0 ? "text-red-400" : "text-zinc-100"}`}>{lesionados.length}</p>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
+          <p className="text-xs text-zinc-500 mb-1">% Asistencia (última semana)</p>
+          <p className="text-2xl font-bold text-zinc-100">{loadingSemana ? "…" : asistenciaPct != null ? `${asistenciaPct}%` : "-"}</p>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
+          <p className="text-xs text-zinc-500 mb-1.5 flex items-center gap-1"><MessageSquare size={12} /> Notas del staff</p>
+          <div className="flex gap-1 mb-1.5">
+            <input
+              value={notaNueva}
+              onChange={(e) => setNotaNueva(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") agregarNota(); }}
+              placeholder="Nueva alerta…"
+              className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100"
+            />
+            <button onClick={agregarNota} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 rounded shrink-0"><Plus size={13} /></button>
+          </div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {loadingNotas ? (
+              <p className="text-xs text-zinc-600">Cargando…</p>
+            ) : notas.length === 0 ? (
+              <p className="text-xs text-zinc-600">Sin alertas pendientes.</p>
+            ) : (
+              notas.map((n) => (
+                <div key={n.id} className="flex items-center gap-1.5 text-xs text-zinc-300">
+                  <button onClick={() => resolverNota(n.id)} title="Marcar resuelta" className="text-zinc-600 hover:text-emerald-400 shrink-0"><X size={11} /></button>
+                  <span className="truncate">{n.texto}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Bloque central: agenda 7 dias + cronograma de hoy */}
+      <div className="grid lg:grid-cols-2 gap-4 mb-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3 text-zinc-400">
+            <Calendar size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Próximos 7 días — {categoria} · {tira}</h3>
+          </div>
+          {agenda.length === 0 ? (
+            <p className="text-sm text-zinc-500">No hay eventos programados para {categoria} · {tira} en los próximos 7 días.</p>
+          ) : (
+            <div className="space-y-1">
+              {agenda.map((e) => {
+                const st = TIPO_ESTILO[e.type];
+                const clickable = e.type === "entrenamiento" || e.type === "individual" || e.type === "partido";
+                const row = (
+                  <>
+                    <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
+                    <span className="text-xs text-zinc-500 w-16 shrink-0">{e.date}</span>
+                    <span className={`text-sm ${st.text} truncate flex-1`}>{e.title}</span>
+                  </>
+                );
+                return clickable ? (
+                  <button key={e.id} onClick={() => onSelectEvent(e)} className="w-full flex items-center gap-2 text-left hover:bg-zinc-800/60 rounded px-1.5 py-1">
+                    {row}
+                  </button>
+                ) : (
+                  <div key={e.id} className="flex items-center gap-2 px-1.5 py-1">{row}</div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3 text-blue-400">
+            <Clock size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Entrenamiento de hoy</h3>
+          </div>
+          {!entrenoHoy ? (
+            <p className="text-sm text-zinc-500">No hay entrenamiento cargado hoy para {categoria} · {tira}.</p>
+          ) : (
+            <>
+              <button onClick={() => onSelectEvent(entrenoHoy)} className="text-sm font-medium text-blue-300 hover:text-blue-200 mb-2 block truncate text-left">
+                {entrenoHoy.title}
+              </button>
+              {(entrenoHoy.bloques || []).length === 0 ? (
+                <p className="text-sm text-zinc-500">Todavía no tiene bloques cargados.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {entrenoHoy.bloques.map((b) => (
+                    <div key={b.id} className="flex gap-2 text-sm">
+                      <span className="text-blue-300 font-mono text-xs whitespace-nowrap w-16 shrink-0 pt-0.5">{b.inicio}–{b.fin}</span>
+                      <span className="text-zinc-300 truncate">{b.titulo}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Bloque inferior analitico: lideres del ultimo partido + tendencia */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3 text-orange-400">
+            <Trophy size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Líderes — último partido</h3>
+          </div>
+          {loadingStats ? (
+            <p className="text-sm text-zinc-500">Cargando…</p>
+          ) : !ultimoPartido ? (
+            <p className="text-sm text-zinc-500">Todavía no hay partidos cargados en Estadísticas.</p>
+          ) : !ultimoPartido.equipo_propio ? (
+            <p className="text-sm text-amber-400">Este partido no tiene definido qué lado somos nosotros — corregilo en Estadísticas para ver los líderes.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <PodioMini titulo="Puntos" filas={lideres.puntos} campo="pts" />
+              <PodioMini titulo="Eficiencia (eFG%)" filas={lideres.eficiencia} campo="efg_pct" formato={(v) => `${Math.round((v || 0) * 100)}%`} />
+              <PodioMini titulo="Rebotes" filas={lideres.rebotes} campo="rtot" />
+            </div>
+          )}
+        </div>
+
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3 text-orange-400">
+            <BarChart3 size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Tendencia — últimos 3 partidos</h3>
+          </div>
+          {loadingStats ? (
+            <p className="text-sm text-zinc-500">Cargando…</p>
+          ) : tendencia.length === 0 ? (
+            <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido.</p>
+          ) : (
+            <div className="space-y-2">
+              {tendencia.map((t, i) => {
+                const max = Math.max(t.favor || 0, t.contra || 0, 1);
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between text-xs text-zinc-500 mb-0.5 gap-2">
+                      <span className="truncate">{t.fecha} vs {t.rival}</span>
+                      <span className={`shrink-0 ${t.favor > t.contra ? "text-emerald-400" : "text-red-400"}`}>{t.favor ?? "-"} - {t.contra ?? "-"}</span>
+                    </div>
+                    <div className="flex gap-1 h-1.5">
+                      <div className="bg-emerald-500 rounded" style={{ width: `${((t.favor || 0) / max) * 50}%` }} />
+                      <div className="bg-red-500 rounded" style={{ width: `${((t.contra || 0) / max) * 50}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
+  { id: "inicio", label: "Inicio", icon: Home },
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "plantel", label: "Plantel", icon: Users },
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
@@ -2732,7 +3144,7 @@ export default function App() {
   const [jugadores, setJugadores] = useState([]);
   const [equiposRivales, setEquiposRivales] = useState([]);
   const [active, setActive] = useState(null);
-  const [seccionActiva, setSeccionActiva] = useState("calendario"); // "calendario" | "plantel" | "scouting"
+  const [seccionActiva, setSeccionActiva] = useState("inicio"); // "inicio" | "calendario" | "plantel" | "scouting" | ...
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
   });
@@ -2890,6 +3302,8 @@ export default function App() {
         {!active && (
           loading ? (
             <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
+          ) : seccionActiva === "inicio" ? (
+            <InicioView events={events} jugadores={jugadores} equiposRivales={equiposRivales} onSelectEvent={setActive} />
           ) : seccionActiva === "calendario" ? (
             <CalendarView
               events={events}

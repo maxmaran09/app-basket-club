@@ -72,11 +72,27 @@ alter table public.eventos add constraint eventos_type_check
 create index if not exists eventos_date_idx on public.eventos (date);
 create index if not exists eventos_categoria_tira_idx on public.eventos (categoria, tira);
 
--- Mantiene "updatedAt" al dia en cada UPDATE.
+-- Mantiene "updatedAt" al dia en cada UPDATE. Solo para "eventos", que es la unica tabla con
+-- columnas en camelCase (ver comentario al principio de este archivo). El resto de las tablas
+-- (snake_case: jugadores, asistencias, equipos_rivales, partidos_stats, etc.) usan
+-- set_updated_at_snake() de mas abajo — son dos funciones separadas a proposito, porque una
+-- funcion de trigger reusada entre tablas con nombres de columna distintos revienta en runtime
+-- ("record new has no field ...") apenas se ejecuta un UPDATE sobre la tabla que no matchea.
 create or replace function public.set_updated_at()
 returns trigger as $$
 begin
   new."updatedAt" = now();
+  return new;
+end;
+$$ language plpgsql;
+
+-- Misma idea que la de arriba, pero para "updated_at" (snake_case) — la usan todas las demas
+-- tablas del proyecto (jugadores, asistencias, equipos_rivales, jugadores_rivales, partidos_stats,
+-- jugador_partido_stats, equipo_partido_stats).
+create or replace function public.set_updated_at_snake()
+returns trigger as $$
+begin
+  new.updated_at = now();
   return new;
 end;
 $$ language plpgsql;

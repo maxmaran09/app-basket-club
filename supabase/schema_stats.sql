@@ -26,7 +26,7 @@ create table if not exists public.partidos_stats (
 drop trigger if exists partidos_stats_set_updated_at on public.partidos_stats;
 create trigger partidos_stats_set_updated_at
 before update on public.partidos_stats
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.partidos_stats enable row level security;
 drop policy if exists "partidos_stats_select_all" on public.partidos_stats;
@@ -86,7 +86,7 @@ create index if not exists jugador_partido_stats_jugador_rival_idx on public.jug
 drop trigger if exists jugador_partido_stats_set_updated_at on public.jugador_partido_stats;
 create trigger jugador_partido_stats_set_updated_at
 before update on public.jugador_partido_stats
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.jugador_partido_stats enable row level security;
 drop policy if exists "jugador_partido_stats_select_all" on public.jugador_partido_stats;
@@ -165,7 +165,7 @@ create index if not exists equipo_partido_stats_equipo_rival_idx on public.equip
 drop trigger if exists equipo_partido_stats_set_updated_at on public.equipo_partido_stats;
 create trigger equipo_partido_stats_set_updated_at
 before update on public.equipo_partido_stats
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.equipo_partido_stats enable row level security;
 drop policy if exists "equipo_partido_stats_select_all" on public.equipo_partido_stats;

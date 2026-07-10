@@ -10,6 +10,18 @@ export const round3 = (n) => Math.round(n * 1000) / 1000;
 // mayúsculas/espacios — es la clave que usan las tablas de alias para "recordar" un vínculo.
 export const normalizeName = (s) => (s || "").toUpperCase().replace(/\s+/g, " ").trim();
 
+// Nombre del club propio tal como aparece en el encabezado del PDF de la CABB — se usa para
+// detectar solo, al guardar un partido, si jugamos de local o visitante (necesario para calcular
+// "puntos a favor vs en contra" en el dashboard). Si un PDF puntual lo escribe distinto, el
+// usuario corrige el lado a mano en la vista previa de Estadísticas.
+export const NOMBRE_CLUB_PROPIO = "NAUTICO HACOAJ";
+
+export function detectarEquipoPropio(equipoLocal, equipoVisitante) {
+  if (normalizeName(equipoLocal) === NOMBRE_CLUB_PROPIO) return "LOCAL";
+  if (normalizeName(equipoVisitante) === NOMBRE_CLUB_PROPIO) return "VISITANTE";
+  return null;
+}
+
 // Métricas avanzadas: PLAY = T2I+T3I+0.44*T1I+PER, POS = PLAY-ROF, PPLAY = PTS/PLAY,
 // PPOS = PTS/POS, TOV% = PER/PLAY, eFG% = (T2A+1.5*T3A)/(T2I+T3I). Se usa tanto al parsear
 // el PDF como al "recalcular" en la vista previa después de una corrección manual.

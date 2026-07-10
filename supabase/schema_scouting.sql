@@ -24,7 +24,7 @@ create index if not exists equipos_rivales_nombre_idx on public.equipos_rivales 
 drop trigger if exists equipos_rivales_set_updated_at on public.equipos_rivales;
 create trigger equipos_rivales_set_updated_at
 before update on public.equipos_rivales
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.equipos_rivales enable row level security;
 drop policy if exists "equipos_rivales_select_all" on public.equipos_rivales;
@@ -60,7 +60,7 @@ create index if not exists jugadores_rivales_equipo_idx on public.jugadores_riva
 drop trigger if exists jugadores_rivales_set_updated_at on public.jugadores_rivales;
 create trigger jugadores_rivales_set_updated_at
 before update on public.jugadores_rivales
-for each row execute function public.set_updated_at();
+for each row execute function public.set_updated_at_snake();
 
 alter table public.jugadores_rivales enable row level security;
 drop policy if exists "jugadores_rivales_select_all" on public.jugadores_rivales;
