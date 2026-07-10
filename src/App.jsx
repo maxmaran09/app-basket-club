@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { parseCabbPdf, computeAdvancedStats } from "./pdfStats";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -2106,11 +2107,307 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
   );
 }
 
+// Columnas crudas editables de la vista previa (todas numéricas salvo el nombre y el vínculo).
+const STATS_COLS = [
+  ["dorsal", "Dorsal"], ["minutos", "Min"], ["pts", "PTS"],
+  ["t2a", "T2A"], ["t2i", "T2I"], ["t3a", "T3A"], ["t3i", "T3I"], ["t1a", "T1A"], ["t1i", "T1I"],
+  ["rdef", "RD"], ["rof", "RO"], ["rtot", "RT"],
+  ["ast", "AST"], ["rec", "REC"], ["per", "PER"],
+  ["tc", "TC"], ["tr", "TR"], ["fc", "FC"], ["fr", "FR"],
+  ["val", "VAL"], ["plusminus", "+/-"],
+];
+
+// Tabla editable de un equipo dentro de la vista previa: todas las columnas crudas del PDF
+// como inputs chicos (estilo planilla), más un select para vincular con un jugador propio ya
+// cargado en Plantel.
+function StatsPreviewTable({ label, rows, onChangeField, jugadoresPropios }) {
+  return (
+    <div className="mb-4">
+      <p className="text-xs text-zinc-400 mb-1">{label} ({rows.length} jugadores)</p>
+      <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+        <table className="text-xs text-zinc-200 border-collapse w-full">
+          <thead>
+            <tr className="bg-zinc-900 text-zinc-500">
+              <th className="px-1.5 py-1 text-left sticky left-0 bg-zinc-900 z-10">Jugador</th>
+              {STATS_COLS.map(([key, lbl]) => <th key={key} className="px-1 py-1 font-normal">{lbl}</th>)}
+              <th className="px-1 py-1 font-normal">PLAY</th>
+              <th className="px-1 py-1 font-normal">eFG%</th>
+              <th className="px-1.5 py-1 font-normal">Vincular</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => (
+              <tr key={idx} className="border-t border-zinc-800">
+                <td className="px-1.5 py-1 sticky left-0 bg-zinc-950">
+                  <input value={r.nombre_jugador} onChange={(e) => onChangeField(idx, "nombre_jugador", e.target.value)}
+                    className="w-36 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
+                </td>
+                {STATS_COLS.map(([key]) => (
+                  <td key={key} className="px-1 py-1">
+                    <input type="number" value={r[key] ?? ""} onChange={(e) => onChangeField(idx, key, e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs" />
+                  </td>
+                ))}
+                <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{r.play}</td>
+                <td className="px-1 py-1 text-zinc-500 whitespace-nowrap">{Math.round((r.efg_pct || 0) * 100)}%</td>
+                <td className="px-1.5 py-1">
+                  <select value={r.jugador_id || ""} onChange={(e) => onChangeField(idx, "jugador_id", e.target.value || null)}
+                    className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs">
+                    <option value="">—</option>
+                    {jugadoresPropios.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EstadisticasView({ jugadores }) {
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [historial, setHistorial] = useState([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(true);
+
+  const fetchHistorial = async () => {
+    setLoadingHistorial(true);
+    const { data, error } = await supabase.from("partidos_stats").select("*").order("fecha", { ascending: false });
+    if (!error) setHistorial(data);
+    setLoadingHistorial(false);
+  };
+
+  useEffect(() => { fetchHistorial(); }, []);
+
+  const linkJugadorPorNombre = (nombre) => {
+    const norm = (s) => s.toUpperCase().replace(/\s+/g, " ").trim();
+    const match = jugadores.find((j) => norm(j.nombre_apellido) === norm(nombre));
+    return match ? match.id : null;
+  };
+
+  const handleFile = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setParsing(true);
+    setParseError("");
+    setPreview(null);
+    setSaveMsg("");
+    try {
+      const result = await parseCabbPdf(f);
+      if (!result.equipoLocal || !result.equipoVisitante) {
+        setParseError('No pude leer el encabezado del PDF (equipos/torneo). Revisá que sea un PDF de estadísticas de la CABB (Gesdeportiva) y que tenga texto seleccionable, no un escaneo.');
+      }
+      setPreview({
+        fecha: todayKeyBA(),
+        torneo: result.torneo,
+        categoria: result.categoria,
+        equipoLocal: result.equipoLocal,
+        equipoVisitante: result.equipoVisitante,
+        resultadoLocal: result.equipos[0].totales?.pts ?? "",
+        resultadoVisitante: result.equipos[1].totales?.pts ?? "",
+        jugadoresLocal: result.equipos[0].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador) })),
+        jugadoresVisitante: result.equipos[1].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador) })),
+      });
+      if (!result.equipos[0].jugadores.length && !result.equipos[1].jugadores.length) {
+        setParseError("No encontré filas de jugadores en el PDF. Podés cargar los datos a mano abajo, o revisar que el PDF no esté escaneado como imagen.");
+      }
+    } catch (err) {
+      setParseError("Error al leer el PDF: " + err.message);
+    }
+    setParsing(false);
+  };
+
+  const updateField = (lado, idx, field, value) => {
+    setPreview((prev) => {
+      const key = lado === "local" ? "jugadoresLocal" : "jugadoresVisitante";
+      const next = [...prev[key]];
+      next[idx] = { ...next[idx], [field]: value };
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const recalcularMetricas = () => {
+    const recompute = (r) => ({
+      ...r,
+      ...computeAdvancedStats({
+        t2a: Number(r.t2a) || 0, t2i: Number(r.t2i) || 0,
+        t3a: Number(r.t3a) || 0, t3i: Number(r.t3i) || 0,
+        t1i: Number(r.t1i) || 0, per: Number(r.per) || 0,
+        rof: Number(r.rof) || 0, pts: Number(r.pts) || 0,
+      }),
+    });
+    setPreview((prev) => prev && ({
+      ...prev,
+      jugadoresLocal: prev.jugadoresLocal.map(recompute),
+      jugadoresVisitante: prev.jugadoresVisitante.map(recompute),
+    }));
+  };
+
+  const guardar = async () => {
+    if (!preview) return;
+    setSaving(true);
+    setSaveMsg("");
+    const { data: partido, error: errPartido } = await supabase
+      .from("partidos_stats")
+      .insert({
+        fecha: preview.fecha,
+        torneo: preview.torneo || null,
+        categoria: preview.categoria || null,
+        equipo_local: preview.equipoLocal,
+        equipo_visitante: preview.equipoVisitante,
+        resultado_local: preview.resultadoLocal === "" ? null : Number(preview.resultadoLocal),
+        resultado_visitante: preview.resultadoVisitante === "" ? null : Number(preview.resultadoVisitante),
+      })
+      .select()
+      .single();
+    if (errPartido) { setSaveMsg("Error al guardar el partido: " + errPartido.message); setSaving(false); return; }
+
+    const rows = [
+      ...preview.jugadoresLocal.map((j) => ({ ...j, equipo: preview.equipoLocal })),
+      ...preview.jugadoresVisitante.map((j) => ({ ...j, equipo: preview.equipoVisitante })),
+    ].map((j) => ({
+      partido_id: partido.id,
+      jugador_id: j.jugador_id || null,
+      nombre_jugador: j.nombre_jugador,
+      equipo: j.equipo,
+      dorsal: j.dorsal === "" ? null : j.dorsal,
+      minutos: j.minutos === "" ? null : j.minutos,
+      pts: j.pts, t2a: j.t2a, t2i: j.t2i, t3a: j.t3a, t3i: j.t3i, t1a: j.t1a, t1i: j.t1i,
+      rdef: j.rdef, rof: j.rof, rtot: j.rtot, ast: j.ast, rec: j.rec, per: j.per,
+      tc: j.tc, tr: j.tr, fc: j.fc, fr: j.fr, val: j.val, plusminus: j.plusminus,
+      play: j.play, pos: j.pos, pplay: j.pplay, ppos: j.ppos, tov_pct: j.tov_pct, efg_pct: j.efg_pct,
+    }));
+
+    if (rows.length > 0) {
+      const { error: errJug } = await supabase.from("jugador_partido_stats").insert(rows);
+      if (errJug) { setSaveMsg("El partido se guardó, pero hubo un error con los jugadores: " + errJug.message); setSaving(false); return; }
+    }
+
+    setSaveMsg("Guardado ✓");
+    setPreview(null);
+    fetchHistorial();
+    setSaving(false);
+  };
+
+  const eliminarPartido = async (id) => {
+    const { error } = await supabase.from("partidos_stats").delete().eq("id", id);
+    if (!error) setHistorial((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <BarChart3 size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Estadísticas</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-4">Cargar partido (PDF de la CABB)</h1>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
+        <label className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
+          <Upload size={15} /> Elegir PDF de estadísticas
+          <input type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+        </label>
+        {parsing && <p className="text-sm text-zinc-500 mt-2">Leyendo el PDF…</p>}
+        {parseError && <p className="text-sm text-amber-400 mt-2">{parseError}</p>}
+      </div>
+
+      {preview && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
+          <h2 className="text-sm font-bold text-zinc-100 mb-3">Vista previa — revisá y corregí antes de guardar</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Fecha</p>
+              <input type="date" value={preview.fecha} onChange={(e) => setPreview({ ...preview, fecha: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Torneo / fase</p>
+              <input value={preview.torneo} onChange={(e) => setPreview({ ...preview, torneo: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Categoría</p>
+              <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Equipo local</p>
+              <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Equipo visitante</p>
+              <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <p className="text-xs text-zinc-500 mb-1">Res. local</p>
+                <input type="number" value={preview.resultadoLocal} onChange={(e) => setPreview({ ...preview, resultadoLocal: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-zinc-500 mb-1">Res. visitante</p>
+                <input type="number" value={preview.resultadoVisitante} onChange={(e) => setPreview({ ...preview, resultadoVisitante: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+            </div>
+          </div>
+
+          <StatsPreviewTable label={`Local — ${preview.equipoLocal}`} rows={preview.jugadoresLocal} jugadoresPropios={jugadores}
+            onChangeField={(idx, field, value) => updateField("local", idx, field, value)} />
+          <StatsPreviewTable label={`Visitante — ${preview.equipoVisitante}`} rows={preview.jugadoresVisitante} jugadoresPropios={jugadores}
+            onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)} />
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={recalcularMetricas} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm px-3 py-1.5 rounded">
+              Recalcular métricas
+            </button>
+            <button onClick={guardar} disabled={saving} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">
+              {saving ? "Guardando…" : "Guardar estadísticas"}
+            </button>
+            <button onClick={() => setPreview(null)} className="text-zinc-400 text-sm px-3 py-1.5">Descartar</button>
+            {saveMsg && <span className={saveMsg.startsWith("Error") ? "text-red-400 text-xs" : "text-emerald-400 text-xs"}>{saveMsg}</span>}
+          </div>
+        </div>
+      )}
+
+      <Section icon={Trophy} title="Partidos cargados" accent="text-blue-400">
+        {loadingHistorial ? (
+          <p className="text-sm text-zinc-500">Cargando…</p>
+        ) : historial.length === 0 ? (
+          <p className="text-sm text-zinc-500">Todavía no cargaste ningún partido.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {historial.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <span className="text-xs text-zinc-500 w-24 shrink-0">{p.fecha}</span>
+                <span className="text-sm text-zinc-200 flex-1 truncate">
+                  {p.equipo_local} {p.resultado_local ?? "-"} vs {p.resultado_visitante ?? "-"} {p.equipo_visitante}
+                </span>
+                {p.categoria && <Chip>{p.categoria}</Chip>}
+                <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "plantel", label: "Plantel", icon: Users },
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
   { id: "scouting", label: "Scouting", icon: Swords },
+  { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
 ];
 
 export default function App() {
@@ -2290,8 +2587,10 @@ export default function App() {
             <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
           ) : seccionActiva === "entrenamientos" ? (
             <EntrenamientosView events={events} onSelectEvent={setActive} />
-          ) : (
+          ) : seccionActiva === "scouting" ? (
             <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
+          ) : (
+            <EstadisticasView jugadores={jugadores} />
           )
         )}
         {active?.type === "entrenamiento" && (
