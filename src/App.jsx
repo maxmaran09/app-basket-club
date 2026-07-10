@@ -2501,7 +2501,7 @@ function EquipoTotalsRow({ label, totales, onChange }) {
   );
 }
 
-function EstadisticasView({ jugadores, equiposRivales }) {
+function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
   const [preview, setPreview] = useState(null);
@@ -2774,16 +2774,18 @@ function EstadisticasView({ jugadores, equiposRivales }) {
       </div>
       <h1 className="text-2xl font-bold mb-4">Cargar partido (PDF de la CABB)</h1>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
-        <label className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
-          <Upload size={15} /> Elegir PDF de estadísticas
-          <input type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
-        </label>
-        {parsing && <p className="text-sm text-zinc-500 mt-2">Leyendo el PDF…</p>}
-        {parseError && <p className="text-sm text-amber-400 mt-2">{parseError}</p>}
-      </div>
+      {!soloLectura && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
+          <label className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
+            <Upload size={15} /> Elegir PDF de estadísticas
+            <input type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+          </label>
+          {parsing && <p className="text-sm text-zinc-500 mt-2">Leyendo el PDF…</p>}
+          {parseError && <p className="text-sm text-amber-400 mt-2">{parseError}</p>}
+        </div>
+      )}
 
-      {preview && (
+      {!soloLectura && preview && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-bold text-zinc-100 mb-3">Vista previa — revisá y corregí antes de guardar</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
@@ -2895,7 +2897,9 @@ function EstadisticasView({ jugadores, equiposRivales }) {
                   {p.equipo_local} {p.resultado_local ?? "-"} vs {p.resultado_visitante ?? "-"} {p.equipo_visitante}
                 </span>
                 {p.categoria && <Chip>{p.categoria}</Chip>}
-                <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
+                {!soloLectura && (
+                  <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
+                )}
               </div>
             ))}
           </div>
@@ -3417,7 +3421,7 @@ export default function App() {
   }
 
   const navItemsVisibles = NAV_ITEMS.filter((item) => puedeVerSeccion(rol, item.id));
-  const soloLecturaScouting = !esStaffCompleto(rol);
+  const soloLecturaGeneral = !esStaffCompleto(rol);
 
   return (
     <div className="bg-zinc-950 min-h-screen font-sans md:flex">
@@ -3517,12 +3521,12 @@ export default function App() {
               } />
               <Route path="/scouting" element={
                 <ProtectedRoute seccionId="scouting">
-                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaScouting} />
+                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} />
                 </ProtectedRoute>
               } />
               <Route path="/estadisticas" element={
                 <ProtectedRoute seccionId="estadisticas">
-                  <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} />
+                  <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} soloLectura={soloLecturaGeneral} />
                 </ProtectedRoute>
               } />
               <Route path="*" element={<Navigate to={rutaDeSeccion(seccionInicialDe(rol))} replace />} />

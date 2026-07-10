@@ -21,7 +21,7 @@ export const ROL_LABELS = {
 export const SECCIONES_POR_ROL = {
   [ROLES.HEAD_COACH]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
   [ROLES.ASISTENTE_TECNICO]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
-  [ROLES.PREPARADOR_FISICO]: ["inicio", "calendario"],
+  [ROLES.PREPARADOR_FISICO]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
   [ROLES.JUGADOR]: ["calendario", "scouting"],
 };
 

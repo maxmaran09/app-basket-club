@@ -30,28 +30,31 @@ create table if not exists public.perfiles (
 
 alter table public.perfiles enable row level security;
 
-drop policy if exists "perfiles_select_propio_o_staff" on public.perfiles;
-create policy "perfiles_select_propio_o_staff" on public.perfiles for select to authenticated
-  using (
-    id = auth.uid()
-    or exists (
-      select 1 from public.perfiles p
-      where p.id = auth.uid() and p.rol in ('head_coach', 'asistente_tecnico')
-    )
-  );
--- Sin policies de insert/update/delete: los perfiles se administran a mano desde el SQL
--- Editor (o el dashboard), nunca desde la app con la anon/authenticated key.
-
 -- Funciones helper para usar dentro de las policies de RLS de todas las tablas. security
 -- definer + search_path fijo para que no dependan de (ni sean secuestrables por) el
 -- search_path de quien las llama, y para poder leer "perfiles"/"jugadores" aunque la policy
 -- de esas tablas le niegue el select directo al rol que está consultando (ej: un jugador no
 -- puede hacer select de "jugadores", pero necesita que esta función resuelva su categoria/tira).
+-- Ademas, al ser security definer, esta funcion corre sin pasar por RLS (el dueño de la
+-- funcion hace de "puente" con privilegios propios) -- por eso hay que usarla DENTRO de la
+-- policy de "perfiles" en vez de un subselect a la propia tabla: un subselect directo a
+-- "perfiles" desde su propia policy dispara la misma policy de nuevo (para poder resolver
+-- CADA fila candidata) y termina en "infinite recursion detected in policy for relation
+-- perfiles" -- pasando por la funcion se corta la recursion.
 create or replace function public.mi_rol()
 returns text
 language sql stable security definer set search_path = public as $$
   select rol from public.perfiles where id = auth.uid();
 $$;
+
+drop policy if exists "perfiles_select_propio_o_staff" on public.perfiles;
+create policy "perfiles_select_propio_o_staff" on public.perfiles for select to authenticated
+  using (
+    id = auth.uid()
+    or public.mi_rol() in ('head_coach', 'asistente_tecnico')
+  );
+-- Sin policies de insert/update/delete: los perfiles se administran a mano desde el SQL
+-- Editor (o el dashboard), nunca desde la app con la anon/authenticated key.
 
 create or replace function public.mi_jugador_id()
 returns uuid
@@ -221,14 +224,14 @@ drop policy if exists "notas_staff_delete_all" on public.notas_staff;
 create policy "notas_staff_delete_all" on public.notas_staff for delete to authenticated
   using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 
--- Estadisticas (partidos_stats, jugador_partido_stats, equipo_partido_stats, alias_*): modulo
--- bloqueado por completo para PF y Jugador (ninguno de los dos lo tiene en su matriz de
--- permisos). Las vistas agregadas (vista_promedios_jugador, vista_promedios_equipo, etc.) NO
--- se tocan: siguen sin RLS propia y bypasean estas policies igual que antes, por eso Jugador
--- sigue viendo promedios de rivales en Scouting aunque no pueda leer estas tablas base.
+-- Estadisticas (partidos_stats, jugador_partido_stats, equipo_partido_stats, alias_*): PF
+-- tiene lectura (puede consultar partidos/promedios ya cargados) pero no escritura (no sube
+-- PDFs ni edita nada); Jugador sigue sin ningun acceso (no es una de sus 2 secciones). Las
+-- vistas agregadas (vista_promedios_jugador, vista_promedios_equipo, etc.) NO se tocan: siguen
+-- sin RLS propia y bypasean estas policies igual que antes.
 drop policy if exists "partidos_stats_select_all" on public.partidos_stats;
 create policy "partidos_stats_select_all" on public.partidos_stats for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "partidos_stats_insert_all" on public.partidos_stats;
 create policy "partidos_stats_insert_all" on public.partidos_stats for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -241,7 +244,7 @@ create policy "partidos_stats_delete_all" on public.partidos_stats for delete to
 
 drop policy if exists "jugador_partido_stats_select_all" on public.jugador_partido_stats;
 create policy "jugador_partido_stats_select_all" on public.jugador_partido_stats for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "jugador_partido_stats_insert_all" on public.jugador_partido_stats;
 create policy "jugador_partido_stats_insert_all" on public.jugador_partido_stats for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -254,7 +257,7 @@ create policy "jugador_partido_stats_delete_all" on public.jugador_partido_stats
 
 drop policy if exists "equipo_partido_stats_select_all" on public.equipo_partido_stats;
 create policy "equipo_partido_stats_select_all" on public.equipo_partido_stats for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "equipo_partido_stats_insert_all" on public.equipo_partido_stats;
 create policy "equipo_partido_stats_insert_all" on public.equipo_partido_stats for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -267,7 +270,7 @@ create policy "equipo_partido_stats_delete_all" on public.equipo_partido_stats f
 
 drop policy if exists "alias_equipo_select_all" on public.alias_equipo;
 create policy "alias_equipo_select_all" on public.alias_equipo for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "alias_equipo_insert_all" on public.alias_equipo;
 create policy "alias_equipo_insert_all" on public.alias_equipo for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -280,7 +283,7 @@ create policy "alias_equipo_delete_all" on public.alias_equipo for delete to aut
 
 drop policy if exists "alias_jugador_select_all" on public.alias_jugador;
 create policy "alias_jugador_select_all" on public.alias_jugador for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "alias_jugador_insert_all" on public.alias_jugador;
 create policy "alias_jugador_insert_all" on public.alias_jugador for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -293,7 +296,7 @@ create policy "alias_jugador_delete_all" on public.alias_jugador for delete to a
 
 drop policy if exists "alias_jugador_rival_select_all" on public.alias_jugador_rival;
 create policy "alias_jugador_rival_select_all" on public.alias_jugador_rival for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
 drop policy if exists "alias_jugador_rival_insert_all" on public.alias_jugador_rival;
 create policy "alias_jugador_rival_insert_all" on public.alias_jugador_rival for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
