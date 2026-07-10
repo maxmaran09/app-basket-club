@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName } from "./pdfStats";
 
@@ -788,6 +788,15 @@ function PreparacionFisicaSection({ data, onSave }) {
   );
 }
 
+// Clona un array de bloques (y sus diagramas) con ids nuevos, para duplicar sin pisar el original.
+function clonarBloques(bloques) {
+  return (bloques || []).map((b, i) => ({
+    ...b,
+    id: "b" + Date.now() + "-" + i,
+    diagrams: (b.diagrams || []).map((d, j) => ({ ...d, id: "d" + Date.now() + "-" + i + "-" + j })),
+  }));
+}
+
 // Reutilizable: lista de bloques de cancha con sus diagramas (secuencia de canchas por bloque).
 // "bloques"/"onChange" son controlados por quien lo use (un entrenamiento entero, o el plan de
 // un jugador puntual dentro de un evento Individual).
@@ -818,6 +827,13 @@ function BloquesConCanchaSection({ bloques, onChange }) {
     onChange(bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b)));
   };
 
+  const duplicateBloque = (bloqueId) => {
+    const idx = bloques.findIndex((b) => b.id === bloqueId);
+    if (idx === -1) return;
+    const [copia] = clonarBloques([bloques[idx]]);
+    onChange([...bloques.slice(0, idx + 1), copia, ...bloques.slice(idx + 1)]);
+  };
+
   return (
     <Section icon={Clock} title="Bloque de cancha" accent="text-blue-400">
       <div className="space-y-2">
@@ -828,8 +844,15 @@ function BloquesConCanchaSection({ bloques, onChange }) {
               <div className="flex gap-3">
                 <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
-                  <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
+                      <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
+                    </div>
+                    <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400 shrink-0">
+                      <Copy size={13} /> Duplicar
+                    </button>
+                  </div>
 
                   <div className="mt-3 space-y-3">
                     {diagrams.map((d, di) =>
@@ -932,20 +955,34 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
 // Plan de trabajo de un jugador puntual dentro de un evento Individual: mismo formato que un
 // entrenamiento (objetivo, preparación física, bloques de cancha con diagramas) pero uno por
 // jugador, todos dentro del mismo evento.
-function PlanIndividualCard({ jugador, plan, onUpdate, onRemove }) {
+function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate }) {
   const [objetivo, setObjetivo] = useState(plan.objetivo || "");
   const [bloques, setBloques] = useState(plan.bloques || []);
 
+  const sinAsignar = !plan.jugadorId;
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-teal-300 font-mono text-xs">#{jugador?.dorsal ?? "-"}</span>
-          <h3 className="font-bold text-sm text-zinc-100">{jugador?.nombre_apellido || "Jugador eliminado"}</h3>
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-teal-300 font-mono text-xs shrink-0">#{jugador?.dorsal ?? "-"}</span>
+          <select
+            value={plan.jugadorId || ""}
+            onChange={(e) => onUpdate({ jugadorId: e.target.value })}
+            className={"bg-zinc-950 border rounded px-2 py-1 text-sm font-bold min-w-0 " + (sinAsignar ? "border-amber-600 text-amber-400" : "border-zinc-700 text-zinc-100")}
+          >
+            <option value="">Sin asignar — elegí un jugador</option>
+            {opcionesJugador.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+          </select>
         </div>
-        <button onClick={onRemove} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
-          <Trash2 size={13} /> Quitar del plan
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button onClick={onDuplicate} title="Duplicar plan completo" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
+            <Copy size={13} /> Duplicar
+          </button>
+          <button onClick={onRemove} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
+            <Trash2 size={13} /> Quitar del plan
+          </button>
+        </div>
       </div>
 
       <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline />
@@ -961,8 +998,12 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
   const [planes, setPlanes] = useState(event.planesIndividuales || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Los planes ya guardados antes de esta función no tienen "id" propio (se identificaban por
+  // jugadorId, que ahora es editable). planKey da un identificador estable para ambos casos.
+  const planKey = (p) => p.id || p.jugadorId;
+
   const roster = jugadores.filter((j) => jugadorEnEquipo(j, event.categoria, event.tira));
-  const idsEnPlan = new Set(planes.map((p) => p.jugadorId));
+  const idsEnPlan = new Set(planes.map((p) => p.jugadorId).filter(Boolean));
   const disponibles = roster.filter((j) => !idsEnPlan.has(j.id));
 
   const persist = (next) => {
@@ -973,14 +1014,22 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
   const addJugador = (jugadorId) => {
     if (!jugadorId) return;
     persist([...planes, {
-      jugadorId, objetivo: "", bloques: [],
+      id: "p" + Date.now(), jugadorId, objetivo: "", bloques: [],
       horarioBasquet: "", horarioFisico: "", cargaFisica: "Media", lugarFisico: "Cancha", enfoqueFisico: [], notasFisicas: "",
     }]);
   };
 
-  const removeJugador = (jugadorId) => persist(planes.filter((p) => p.jugadorId !== jugadorId));
+  const removePlan = (planId) => persist(planes.filter((p) => planKey(p) !== planId));
 
-  const updatePlan = (jugadorId, patch) => persist(planes.map((p) => (p.jugadorId === jugadorId ? { ...p, ...patch } : p)));
+  const updatePlan = (planId, patch) => persist(planes.map((p) => (planKey(p) === planId ? { ...p, ...patch } : p)));
+
+  const duplicatePlan = (planId) => {
+    const idx = planes.findIndex((p) => planKey(p) === planId);
+    if (idx === -1) return;
+    const original = planes[idx];
+    const copia = { ...original, id: "p" + Date.now(), jugadorId: "", bloques: clonarBloques(original.bloques) };
+    persist([...planes.slice(0, idx + 1), copia, ...planes.slice(idx + 1)]);
+  };
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
@@ -1021,14 +1070,18 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
       )}
 
       {planes.map((plan) => {
+        const pid = planKey(plan);
         const jugador = jugadores.find((j) => j.id === plan.jugadorId);
+        const opcionesJugador = roster.filter((j) => j.id === plan.jugadorId || !idsEnPlan.has(j.id));
         return (
           <PlanIndividualCard
-            key={plan.jugadorId}
+            key={pid}
             jugador={jugador}
             plan={plan}
-            onUpdate={(patch) => updatePlan(plan.jugadorId, patch)}
-            onRemove={() => removeJugador(plan.jugadorId)}
+            opcionesJugador={opcionesJugador}
+            onUpdate={(patch) => updatePlan(pid, patch)}
+            onRemove={() => removePlan(pid)}
+            onDuplicate={() => duplicatePlan(pid)}
           />
         );
       })}
