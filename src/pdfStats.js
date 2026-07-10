@@ -6,6 +6,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 export const round2 = (n) => Math.round(n * 100) / 100;
 export const round3 = (n) => Math.round(n * 1000) / 1000;
 
+// Normaliza un nombre (de equipo o jugador) para comparar de forma exacta pero insensible a
+// mayúsculas/espacios — es la clave que usan las tablas de alias para "recordar" un vínculo.
+export const normalizeName = (s) => (s || "").toUpperCase().replace(/\s+/g, " ").trim();
+
 // Métricas avanzadas: PLAY = T2I+T3I+0.44*T1I+PER, POS = PLAY-ROF, PPLAY = PTS/PLAY,
 // PPOS = PTS/POS, TOV% = PER/PLAY, eFG% = (T2A+1.5*T3A)/(T2I+T3I). Se usa tanto al parsear
 // el PDF como al "recalcular" en la vista previa después de una corrección manual.

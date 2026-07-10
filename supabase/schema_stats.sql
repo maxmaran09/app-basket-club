@@ -235,6 +235,66 @@ from (
 ) t
 group by equipo, condicion;
 
+-- Alias: recuerda que nombre EXACTO (normalizado) tal como aparece en un PDF corresponde a que
+-- equipo/jugador ya cargado, para no tener que vincular a mano cada vez que subís un PDF del
+-- mismo equipo o jugador. Coincidencia exacta a propósito (no "parecida"), para no vincular mal
+-- a alguien por error — si el nombre viene escrito distinto, se vincula una vez más a mano y
+-- ahí queda guardado ese nuevo alias tambien.
+create table if not exists public.alias_equipo (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre_pdf text not null unique,
+  equipo_rival_id uuid not null references public.equipos_rivales(id) on delete cascade
+);
+
+alter table public.alias_equipo enable row level security;
+drop policy if exists "alias_equipo_select_all" on public.alias_equipo;
+create policy "alias_equipo_select_all" on public.alias_equipo for select using (true);
+drop policy if exists "alias_equipo_insert_all" on public.alias_equipo;
+create policy "alias_equipo_insert_all" on public.alias_equipo for insert with check (true);
+drop policy if exists "alias_equipo_update_all" on public.alias_equipo;
+create policy "alias_equipo_update_all" on public.alias_equipo for update using (true);
+drop policy if exists "alias_equipo_delete_all" on public.alias_equipo;
+create policy "alias_equipo_delete_all" on public.alias_equipo for delete using (true);
+
+create table if not exists public.alias_jugador (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre_pdf text not null unique,
+  jugador_id uuid not null references public.jugadores(id) on delete cascade
+);
+
+alter table public.alias_jugador enable row level security;
+drop policy if exists "alias_jugador_select_all" on public.alias_jugador;
+create policy "alias_jugador_select_all" on public.alias_jugador for select using (true);
+drop policy if exists "alias_jugador_insert_all" on public.alias_jugador;
+create policy "alias_jugador_insert_all" on public.alias_jugador for insert with check (true);
+drop policy if exists "alias_jugador_update_all" on public.alias_jugador;
+create policy "alias_jugador_update_all" on public.alias_jugador for update using (true);
+drop policy if exists "alias_jugador_delete_all" on public.alias_jugador;
+create policy "alias_jugador_delete_all" on public.alias_jugador for delete using (true);
+
+-- Un jugador rival se guarda por nombre + equipo (el mismo apellido puede repetirse en dos
+-- equipos distintos, asi que el alias queda acotado a ese equipo puntual).
+create table if not exists public.alias_jugador_rival (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nombre_pdf text not null,
+  equipo_rival_id uuid not null references public.equipos_rivales(id) on delete cascade,
+  jugador_rival_id uuid not null references public.jugadores_rivales(id) on delete cascade,
+  unique (nombre_pdf, equipo_rival_id)
+);
+
+alter table public.alias_jugador_rival enable row level security;
+drop policy if exists "alias_jugador_rival_select_all" on public.alias_jugador_rival;
+create policy "alias_jugador_rival_select_all" on public.alias_jugador_rival for select using (true);
+drop policy if exists "alias_jugador_rival_insert_all" on public.alias_jugador_rival;
+create policy "alias_jugador_rival_insert_all" on public.alias_jugador_rival for insert with check (true);
+drop policy if exists "alias_jugador_rival_update_all" on public.alias_jugador_rival;
+create policy "alias_jugador_rival_update_all" on public.alias_jugador_rival for update using (true);
+drop policy if exists "alias_jugador_rival_delete_all" on public.alias_jugador_rival;
+create policy "alias_jugador_rival_delete_all" on public.alias_jugador_rival for delete using (true);
+
 grant select on public.vista_promedios_jugador to anon, authenticated;
 grant select on public.vista_totales_equipo_partido to anon, authenticated;
 grant select on public.vista_promedios_equipo to anon, authenticated;
@@ -243,5 +303,8 @@ grant select on public.vista_record_equipo to anon, authenticated;
 grant select, insert, update, delete on public.partidos_stats to anon, authenticated;
 grant select, insert, update, delete on public.jugador_partido_stats to anon, authenticated;
 grant select, insert, update, delete on public.equipo_partido_stats to anon, authenticated;
+grant select, insert, update, delete on public.alias_equipo to anon, authenticated;
+grant select, insert, update, delete on public.alias_jugador to anon, authenticated;
+grant select, insert, update, delete on public.alias_jugador_rival to anon, authenticated;
 
 notify pgrst, 'reload schema';

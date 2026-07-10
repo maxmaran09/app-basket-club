@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { parseCabbPdf, computeAdvancedStats, round3 } from "./pdfStats";
+import { parseCabbPdf, computeAdvancedStats, round3, normalizeName } from "./pdfStats";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -2220,6 +2220,46 @@ function EstadisticasView({ jugadores, equiposRivales }) {
   const [loadingHistorial, setLoadingHistorial] = useState(true);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
+  const [aliasEquipo, setAliasEquipo] = useState({});
+  const [aliasJugador, setAliasJugador] = useState({});
+  const [aliasJugadorRival, setAliasJugadorRival] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [eq, ju, jr] = await Promise.all([
+        supabase.from("alias_equipo").select("*"),
+        supabase.from("alias_jugador").select("*"),
+        supabase.from("alias_jugador_rival").select("*"),
+      ]);
+      if (cancelled) return;
+      if (!eq.error && eq.data) setAliasEquipo(Object.fromEntries(eq.data.map((a) => [a.nombre_pdf, a.equipo_rival_id])));
+      if (!ju.error && ju.data) setAliasJugador(Object.fromEntries(ju.data.map((a) => [a.nombre_pdf, a.jugador_id])));
+      if (!jr.error && jr.data) setAliasJugadorRival(Object.fromEntries(jr.data.map((a) => [`${a.equipo_rival_id}::${a.nombre_pdf}`, a.jugador_rival_id])));
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistAliasEquipo = async (nombrePdf, equipoRivalId) => {
+    const norm = normalizeName(nombrePdf);
+    if (!norm || !equipoRivalId) return;
+    setAliasEquipo((prev) => ({ ...prev, [norm]: equipoRivalId }));
+    await supabase.from("alias_equipo").upsert({ nombre_pdf: norm, equipo_rival_id: equipoRivalId }, { onConflict: "nombre_pdf" });
+  };
+
+  const persistAliasJugador = async (nombrePdf, jugadorId) => {
+    const norm = normalizeName(nombrePdf);
+    if (!norm || !jugadorId) return;
+    setAliasJugador((prev) => ({ ...prev, [norm]: jugadorId }));
+    await supabase.from("alias_jugador").upsert({ nombre_pdf: norm, jugador_id: jugadorId }, { onConflict: "nombre_pdf" });
+  };
+
+  const persistAliasJugadorRival = async (nombrePdf, equipoRivalId, jugadorRivalId) => {
+    const norm = normalizeName(nombrePdf);
+    if (!norm || !equipoRivalId || !jugadorRivalId) return;
+    setAliasJugadorRival((prev) => ({ ...prev, [`${equipoRivalId}::${norm}`]: jugadorRivalId }));
+    await supabase.from("alias_jugador_rival").upsert({ nombre_pdf: norm, equipo_rival_id: equipoRivalId, jugador_rival_id: jugadorRivalId }, { onConflict: "nombre_pdf,equipo_rival_id" });
+  };
 
   const fetchHistorial = async () => {
     setLoadingHistorial(true);
@@ -2253,8 +2293,9 @@ function EstadisticasView({ jugadores, equiposRivales }) {
   }, [preview?.equipoVisitanteRivalId]);
 
   const linkJugadorPorNombre = (nombre) => {
-    const norm = (s) => s.toUpperCase().replace(/\s+/g, " ").trim();
-    const match = jugadores.find((j) => norm(j.nombre_apellido) === norm(nombre));
+    const norm = normalizeName(nombre);
+    if (aliasJugador[norm]) return aliasJugador[norm];
+    const match = jugadores.find((j) => normalizeName(j.nombre_apellido) === norm);
     return match ? match.id : null;
   };
 
@@ -2271,20 +2312,29 @@ function EstadisticasView({ jugadores, equiposRivales }) {
       if (!result.equipoLocal || !result.equipoVisitante) {
         setParseError('No pude leer el encabezado del PDF (equipos/torneo). Revisá que sea un PDF de estadísticas de la CABB (Gesdeportiva) y que tenga texto seleccionable, no un escaneo.');
       }
+      const equipoLocalRivalId = aliasEquipo[normalizeName(result.equipoLocal)] || "";
+      const equipoVisitanteRivalId = aliasEquipo[normalizeName(result.equipoVisitante)] || "";
+      const mapJugador = (j, equipoRivalId) => {
+        const jugadorId = linkJugadorPorNombre(j.nombre_jugador);
+        const jugadorRivalId = !jugadorId && equipoRivalId
+          ? aliasJugadorRival[`${equipoRivalId}::${normalizeName(j.nombre_jugador)}`] || null
+          : null;
+        return { ...j, jugador_id: jugadorId, jugador_rival_id: jugadorRivalId };
+      };
       setPreview({
         fecha: todayKeyBA(),
         torneo: result.torneo,
         categoria: result.categoria,
         equipoLocal: result.equipoLocal,
         equipoVisitante: result.equipoVisitante,
-        equipoLocalRivalId: "",
-        equipoVisitanteRivalId: "",
+        equipoLocalRivalId,
+        equipoVisitanteRivalId,
         resultadoLocal: result.equipos[0].totales?.pts ?? "",
         resultadoVisitante: result.equipos[1].totales?.pts ?? "",
         totalesLocal: result.equipos[0].totales,
         totalesVisitante: result.equipos[1].totales,
-        jugadoresLocal: result.equipos[0].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador), jugador_rival_id: null })),
-        jugadoresVisitante: result.equipos[1].jugadores.map((j) => ({ ...j, jugador_id: linkJugadorPorNombre(j.nombre_jugador), jugador_rival_id: null })),
+        jugadoresLocal: result.equipos[0].jugadores.map((j) => mapJugador(j, equipoLocalRivalId)),
+        jugadoresVisitante: result.equipos[1].jugadores.map((j) => mapJugador(j, equipoVisitanteRivalId)),
       });
       if (!result.equipos[0].jugadores.length && !result.equipos[1].jugadores.length) {
         setParseError("No encontré filas de jugadores en el PDF. Podés cargar los datos a mano abajo, o revisar que el PDF no esté escaneado como imagen.");
@@ -2308,8 +2358,17 @@ function EstadisticasView({ jugadores, equiposRivales }) {
     setPreview((prev) => {
       const key = lado === "local" ? "jugadoresLocal" : "jugadoresVisitante";
       const next = [...prev[key]];
+      const row = next[idx];
       const [tipo, id] = value ? value.split(":") : [null, null];
-      next[idx] = { ...next[idx], jugador_id: tipo === "own" ? id : null, jugador_rival_id: tipo === "rival" ? id : null };
+      next[idx] = { ...row, jugador_id: tipo === "own" ? id : null, jugador_rival_id: tipo === "rival" ? id : null };
+
+      if (tipo === "own" && id) {
+        persistAliasJugador(row.nombre_jugador, id);
+      } else if (tipo === "rival" && id) {
+        const equipoRivalId = lado === "local" ? prev.equipoLocalRivalId : prev.equipoVisitanteRivalId;
+        if (equipoRivalId) persistAliasJugadorRival(row.nombre_jugador, equipoRivalId, id);
+      }
+
       return { ...prev, [key]: next };
     });
   };
@@ -2469,7 +2528,11 @@ function EstadisticasView({ jugadores, equiposRivales }) {
             <div className="flex gap-2 mb-3">
               <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <select value={preview.equipoLocalRivalId} onChange={(e) => setPreview({ ...preview, equipoLocalRivalId: e.target.value })}
+              <select value={preview.equipoLocalRivalId} onChange={(e) => {
+                const value = e.target.value;
+                setPreview((prev) => ({ ...prev, equipoLocalRivalId: value }));
+                if (value) persistAliasEquipo(preview.equipoLocal, value);
+              }}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
                 <option value="">Vincular equipo (Scouting Hub)…</option>
                 {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
@@ -2486,7 +2549,11 @@ function EstadisticasView({ jugadores, equiposRivales }) {
             <div className="flex gap-2 mb-3">
               <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <select value={preview.equipoVisitanteRivalId} onChange={(e) => setPreview({ ...preview, equipoVisitanteRivalId: e.target.value })}
+              <select value={preview.equipoVisitanteRivalId} onChange={(e) => {
+                const value = e.target.value;
+                setPreview((prev) => ({ ...prev, equipoVisitanteRivalId: value }));
+                if (value) persistAliasEquipo(preview.equipoVisitante, value);
+              }}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
                 <option value="">Vincular equipo (Scouting Hub)…</option>
                 {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
