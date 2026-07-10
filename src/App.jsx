@@ -1716,8 +1716,24 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [medidasTarget, setMedidasTarget] = useState(null);
+  const [promedios, setPromedios] = useState({});
 
   const filtered = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+
+  useEffect(() => {
+    if (jugadores.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_promedios_jugador")
+        .select("*")
+        .in("jugador_id", jugadores.map((j) => j.id));
+      if (!cancelled && !error && data) {
+        setPromedios(Object.fromEntries(data.map((p) => [p.jugador_id, p])));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [jugadores]);
 
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
@@ -1769,6 +1785,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               ))}
             </div>
             {j.notas_comentarios && <p className="text-sm text-zinc-400 mb-1">{j.notas_comentarios}</p>}
+            <PromedioMiniStats p={promedios[j.id]} />
             <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
             {j.evaluaciones_pfs?.length > 0 && (
               <details className="mt-1">
@@ -1985,6 +2002,23 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
   );
 }
 
+// Resumen compacto de promedios (de vista_promedios_jugador / vista_promedios_equipo) para
+// mostrar dentro de una fila de jugador o de la ficha de un equipo. "null" si todavía no hay
+// partidos cargados en Estadísticas para ese jugador/equipo.
+function PromedioMiniStats({ p }) {
+  if (!p) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1">
+      <Chip tone="blue">{p.pj} PJ</Chip>
+      <Chip tone="blue">{p.pts_prom} PTS</Chip>
+      <Chip tone="blue">{p.rtot_prom} RT</Chip>
+      <Chip tone="blue">{p.ast_prom} AST</Chip>
+      <Chip tone="blue">{p.rec_prom} REC</Chip>
+      <Chip tone="blue">{Math.round((p.efg_pct_prom || 0) * 100)}% eFG</Chip>
+    </div>
+  );
+}
+
 // Ficha completa de un equipo rival: notas/video colectivo editable + plantel de jugadores
 // rivales (propia tabla relacional, se reusa desde cualquier partido contra este equipo).
 function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
@@ -1996,6 +2030,8 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
   const [editJugador, setEditJugador] = useState(null);
   const [deleteJugador, setDeleteJugador] = useState(null);
   const [showEditEquipo, setShowEditEquipo] = useState(false);
+  const [promedioEquipo, setPromedioEquipo] = useState(null);
+  const [promediosJugadores, setPromediosJugadores] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -2004,6 +2040,25 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
       if (cancelled) return;
       if (!error) setJugadoresRivales(data);
       setLoading(false);
+
+      if (!error && data.length > 0) {
+        const { data: proms, error: errProms } = await supabase
+          .from("vista_promedios_jugador")
+          .select("*")
+          .in("jugador_rival_id", data.map((j) => j.id));
+        if (!cancelled && !errProms && proms) {
+          setPromediosJugadores(Object.fromEntries(proms.map((p) => [p.jugador_rival_id, p])));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [equipo.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("vista_promedios_equipo").select("*").eq("equipo_rival_id", equipo.id).maybeSingle();
+      if (!cancelled && !error) setPromedioEquipo(data);
     })();
     return () => { cancelled = true; };
   }, [equipo.id]);
@@ -2043,6 +2098,14 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
 
       <EditableField label="Notas colectivas" icon={Shield} accent="text-orange-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline />
 
+      <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-orange-400">
+        {promedioEquipo ? (
+          <PromedioMiniStats p={promedioEquipo} />
+        ) : (
+          <p className="text-sm text-zinc-500">Todavía no hay partidos de este equipo vinculados en Estadísticas.</p>
+        )}
+      </Section>
+
       <Section icon={Youtube} title="Video colectivo" accent="text-orange-400">
         <div className="flex items-center gap-2 mb-2">
           <Youtube size={14} className="text-zinc-500 shrink-0" />
@@ -2069,6 +2132,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
                 {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
                 {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
                 {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
+                <PromedioMiniStats p={promediosJugadores[j.id]} />
               </div>
             ))}
           </div>

@@ -7,21 +7,33 @@ Soy entrenador (DT) de un equipo de primera división de básquet. Hoy el staff 
 - Uso: tanto en celular (cancha, viajes) como en compu (armando planificación) — pensado como una **PWA** (una sola base de código, funciona en navegador y se puede instalar en el celular, con uso offline parcial).
 - Permisos: todo el staff edita por igual (no hace falta un sistema de roles complejo al inicio), pero conviene guardar historial de quién cambió qué.
 
-Ya existe un **prototipo funcional en React** (datos en memoria, sin backend todavía) que sirve como punto de partida de la UI y el modelo de datos: `staff-basquet-app.jsx` (y una versión standalone sin dependencias de build en `staff-basquet-app-standalone.html`).
+## Estado actual
 
-## Próximo paso pedido
+El sistema ya está en producción, en uso real por el staff:
 
-Armar un proyecto React/Vite real a partir de `staff-basquet-app.jsx` que corra con `npm run dev`, manteniendo toda la funcionalidad ya construida, como base para después sumar backend (base de datos + multiusuario).
+- **Stack**: React + Vite (todo en `src/App.jsx`) + Tailwind v4, sin backend propio — Supabase (Postgres + PostgREST + RLS abierta, sin login todavía) como única base de datos.
+- **Deploy**: GitHub ([maxmaran09/app-basket-club](https://github.com/maxmaran09/app-basket-club)) → Vercel (front, redeploy automático en cada push) + Supabase (DB).
+- **Módulos implementados y deployados**: Calendario, Entrenamientos (con bloques de cancha, RPE de carga física), Individual (planes 1 a 1 por jugador), Plantel, Scouting Hub (con partidos y plan de juego), Estadísticas (carga de PDF de la CABB). Detalle de cada uno más abajo.
+- **Navegación**: sidebar colapsable en desktop / bottom bar en mobile, con 5 secciones (Calendario, Plantel, Entrenamientos, Scouting, Estadísticas).
+- **Branding**: escudo de Náutico Hacoaj ya cargado; paleta de colores del club todavía no definida (ver Notas de diseño).
+- Workflow de trabajo: cambios se prueban localmente (`npm run dev`), el dueño del proyecto corre el SQL en Supabase cuando aplica, y el commit/push a git se hace solo cuando lo pide explícitamente — nunca de forma proactiva.
 
 ## Módulos y modelo de datos
 
 ### Calendario (módulo central)
 Vista mensual, cada evento enlaza a su ficha (entrenamiento o partido). Tipos de evento: `entrenamiento`, `partido`, `libre`, `optativo`, `especial`. Basado en cómo hoy se arma la pestaña "Calendario Formato Mensual" de la planilla real (grilla mensual con texto libre por celda, que en el sistema pasa a ser un evento real).
 
-### Entrenamientos
-Ficha por sesión: fecha, objetivo de la semana, asistencia, y una lista de **bloques de trabajo** (rango de minutos + título + descripción del ejercicio) — reflejando cómo está organizada hoy la pestaña "Federal 2026 - Temporada Regular + Post Temporada" (semanas en columnas, bloques de tiempo tipo `0'-5': Charla`, `5'-20': 5v0 Spacing`, etc).
+### Plantel (jugadores propios)
+Roster del club: nombre, fecha de nacimiento (edad calculada), historial de altura/peso, y soporte para jugadores que juegan en más de una categoría/tira a la vez (`equipos_adicionales`). Filtro por matriz Categoría/Tira usado en toda la app (Calendario, Entrenamientos, Individual) para saber qué jugadores corresponden a cada evento.
 
-**Diagramas de cancha por bloque** (ya implementado en el prototipo, inspirado en la app "Basketball Playbook"):
+### Entrenamientos
+Ficha por sesión: fecha, objetivo de la semana, asistencia, y una lista de **bloques de trabajo** (rango de minutos + título + descripción del ejercicio) — reflejando cómo está organizada hoy la pestaña "Federal 2026 - Temporada Regular + Post Temporada" (semanas en columnas, bloques de tiempo tipo `0'-5': Charla`, `5'-20': 5v0 Spacing`, etc). Cada bloque se puede **duplicar** (clona horario/título/descripción/diagramas) para repetir una dinámica sin recrearla.
+
+**Control de carga física (RPE)**: por jugador, escala 1-10 con semáforo de color (1-3 verde, 4-6 amarillo, 7-8 naranja, 9-10 rojo) + nota, cargable individualmente o con "Asignar a todos".
+
+**Evento Individual**: variante de Entrenamiento para trabajo 1 a 1 — un mismo evento contiene un plan por jugador (objetivo, prep. física, bloques de cancha propios), reutilizando los mismos componentes de bloques/diagramas. Cada plan tiene un jugador asignado editable (se puede corregir sin borrar todo) y se puede **duplicar el plan completo** de un jugador a otro cuando dos hicieron el mismo trabajo.
+
+**Diagramas de cancha por bloque** (inspirado en la app "Basketball Playbook"):
 - Herramientas: Mover, + Jugador ofensivo, + Jugador defensivo, Balón, Pase, Dribbling, Corte, Cortina, Borrar.
 - Jugadores: círculos numerados, ofensivos en azul, defensivos en rojo con "X" + número, se agregan tocando la cancha y se arrastran con la herramienta "Mover".
 - Balón: se asigna a un jugador con la herramienta "Balón" (un puntito naranja al lado del jugador).
@@ -34,23 +46,29 @@ Ficha por sesión: fecha, objetivo de la semana, asistencia, y una lista de **bl
 - Implementado con SVG (no canvas), para que los elementos (jugadores, líneas) sean objetos manipulables y no un dibujo de trazo libre.
 - Pendiente a futuro: acercar más la funcionalidad a la app "Basketball Playbook" (biblioteca de drills/jugadas guardadas, animación de la jugada, exportar como imagen/PDF, plantillas reutilizables).
 
-### Partidos y Scouting rival
-Ficha por partido, calcada de la pestaña real "Plan de Juego":
-- Header: rival, fecha, jornada, condición (local/visitante), horario, citación, resultado.
-- **Scouting colectivo**: lista de características del rival (bullets editables) + campo de **link de YouTube** para video colectivo del rival.
-- **Plantel rival**: tabla con número, nombre, características, posición, categoría, y **link de YouTube** por jugador (scouting individual).
+### Partidos y Scouting rival (Scouting Hub)
+Ficha por partido, calcada de la pestaña real "Plan de Juego", enlazada al **Scouting Hub** (`equipos_rivales`/`jugadores_rivales`):
+- Header editable: rival (con vínculo relacional al equipo rival cargado en el Hub), fecha, jornada, condición (local/visitante), horario, citación, resultado.
+- **Scouting colectivo**: lista de características del rival (bullets editables) + video de YouTube embebido (reproductor in-app, no redirección externa) para scouting colectivo.
+- **Plantel rival**: tabla con número, nombre, características, posición, categoría, y video de YouTube embebido por jugador (scouting individual).
 - **Plan de juego — ataque**: texto libre + chips de **Transición** (Libre, Alto, Bajo, Pantalón) y **Set ofensivo** (Camiseta, Puño, Fijo, Uno, Cuerno) — biblioteca de sistemas propios reutilizable entre partidos.
 - **Plan de juego — defensa**: texto libre + chips de **Defensa de cortinas** (0, 1, 2, 0+Show, Trap, Switch, Ice/Rojo) + claves + "directos"/"indirectos".
 
-### Estadísticas (prioridad baja, funcionalidad futura)
-Hay una tercera planilla ("Estadísticas - Liga Federal 2026") que procesa datos descargados de la app de la CABB para generar estadísticas del torneo por jugador y equipo (PJ, minutos, puntos, %T2/%T3/%T1, rebotes, asistencias, recuperos, pérdidas, PER, eFG%, etc.) y resultados por condición. Se contempla como módulo de estadísticas enlazado a Jugador y Partido, pero es la última prioridad de desarrollo.
+### Estadísticas
+Módulo implementado (adelantado respecto a la prioridad original de Fase 3). Reemplaza la planilla "Estadísticas - Liga Federal 2026":
+- Se sube el **PDF de estadísticas de la CABB** (formato Gesdeportiva) y se parsea 100% client-side (`pdfjs-dist`, sin backend), extrayendo jugadores y totales de ambos equipos.
+- Calcula métricas avanzadas (PLAY, POS, PPLAY, PPOS, TOV%, eFG%) verificadas contra el script de Power Query que se usaba antes en Excel.
+- Vista previa editable antes de guardar (por equipo: nombre + jugadores + totales), con vínculo a jugadores propios (Plantel) o rivales (Scouting Hub).
+- **Alias automático**: la primera vez que se vincula a mano un equipo o jugador de un PDF, se guarda el nombre exacto → id elegido. En próximas cargas del mismo equipo/jugador, el vínculo se autocompleta solo.
+- Guarda en Supabase: `partidos_stats`, `jugador_partido_stats`, `equipo_partido_stats` (+ `alias_equipo`, `alias_jugador`, `alias_jugador_rival`).
+- Pendiente: que Scouting tome promedios de estas estadísticas, y las vistas de "resumen oponentes"/resultados por condición que hoy existen en la planilla vieja.
 
 ## Roadmap general
 
-1. **Fase 1 (MVP)**: Calendario + Entrenamientos + Partidos con scouting/plan de juego, todo enlazado, multiusuario con login simple.
-2. **Fase 2**: Biblioteca de ejercicios/jugadas reutilizables, fichas de jugadores propios y rivales más completas, historial de cambios visible.
-3. **Fase 3**: Notificaciones, comentarios por ficha, importador de datos históricos desde Google Sheets, módulo de estadísticas (CABB).
+1. **Fase 1 (MVP)**: ✅ Calendario + Entrenamientos + Partidos con scouting/plan de juego, todo enlazado. ⏳ Login/multiusuario real todavía no implementado (por ahora todo el staff edita sin autenticar, vía RLS abierta).
+2. **Fase 2**: ✅ Fichas de jugadores propios (Plantel) y rivales (Scouting Hub) más completas. ⏳ Biblioteca de ejercicios/jugadas reutilizables (hoy solo se puede duplicar un bloque puntual, no hay biblioteca ni plantillas guardadas). ⏳ Historial de cambios visible.
+3. **Fase 3**: ✅ Módulo de estadísticas (CABB) — adelantado, ya en producción. ⏳ Notificaciones, comentarios por ficha, importador de datos históricos desde Google Sheets.
 
 ## Notas de diseño
 
-Todavía no se definió el diseño visual final (colores, escudo del club) — eso se suma más adelante cuando el dueño del proyecto pase el logo y los colores del club. Por ahora el prototipo usa un estilo oscuro (zinc/naranja) solo funcional, no definitivo.
+El escudo de Náutico Hacoaj ya está cargado en la app. Todavía no se definió la paleta de colores final del club — la app sigue usando un estilo oscuro (zinc/naranja) funcional, no definitivo, hasta que se sumen los colores oficiales.
