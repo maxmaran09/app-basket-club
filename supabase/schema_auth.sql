@@ -4,14 +4,15 @@
 -- IMPORTANTE - orden de ejecucion en produccion (la app ya esta en uso real):
 --   1. Activar Supabase Auth (Authentication > Providers > Email, ya deberia estar activo).
 --   2. Crear en Authentication > Users una cuenta por cada persona del staff actual
---      (y de los jugadores, si van a tener login ya mismo).
+--      (y una cuenta compartida por categoria/tira si van a habilitar jugadores ya mismo --
+--      "jugador" es un login compartido por equipo, no uno por persona, ver mas abajo).
 --   3. Correr este script completo.
 --   4. Para cada usuario creado en el paso 2, insertar su fila en perfiles, por ejemplo:
 --        insert into public.perfiles (id, nombre_completo, rol)
 --        values ('<uuid del usuario en auth.users>', 'Nombre Apellido', 'head_coach');
---      Para un jugador, ademas hay que setear jugador_id:
---        insert into public.perfiles (id, nombre_completo, rol, jugador_id)
---        values ('<uuid>', 'Nombre Apellido', 'jugador', '<id de su fila en jugadores>');
+--      Para una cuenta de jugadores, ademas hay que setear categoria/tira:
+--        insert into public.perfiles (id, nombre_completo, rol, categoria, tira)
+--        values ('<uuid>', 'Jugadores Mayores - Blanca', 'jugador', 'Mayores', 'Blanca');
 --   5. Recien ahi el login funciona para todos. Si se corre este script ANTES de crear las
 --      cuentas/perfiles del paso 2-4, la app queda inutilizable para todo el staff hasta que
 --      cada uno tenga su fila en perfiles (las policies de abajo dependen de mi_rol()).
@@ -22,11 +23,16 @@ create table if not exists public.perfiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nombre_completo text,
   rol text not null check (rol in ('head_coach', 'asistente_tecnico', 'preparador_fisico', 'jugador')),
-  -- Solo se completa cuando rol = 'jugador': a que fila de "jugadores" corresponde este login,
-  -- para poder filtrar su Calendario por su propia categoria/tira.
-  jugador_id uuid references public.jugadores(id) on delete set null,
+  -- Solo se completan cuando rol = 'jugador': el login de jugadores es UNA cuenta compartida
+  -- por categoria/tira (todos los jugadores de un mismo equipo comparten el mismo
+  -- email/contrasena), no una cuenta por persona -- por eso categoria/tira quedan fijas aca,
+  -- en vez de resolverse a traves de una fila puntual de "jugadores".
+  categoria text,
+  tira text,
   created_at timestamptz not null default now()
 );
+alter table public.perfiles add column if not exists categoria text;
+alter table public.perfiles add column if not exists tira text;
 
 alter table public.perfiles enable row level security;
 
@@ -56,50 +62,41 @@ create policy "perfiles_select_propio_o_staff" on public.perfiles for select to 
 -- Sin policies de insert/update/delete: los perfiles se administran a mano desde el SQL
 -- Editor (o el dashboard), nunca desde la app con la anon/authenticated key.
 
-create or replace function public.mi_jugador_id()
-returns uuid
-language sql stable security definer set search_path = public as $$
-  select jugador_id from public.perfiles where id = auth.uid();
-$$;
-
 create or replace function public.mi_categoria()
 returns text
 language sql stable security definer set search_path = public as $$
-  select j.categoria_origen from public.jugadores j
-  join public.perfiles p on p.jugador_id = j.id
-  where p.id = auth.uid();
+  select categoria from public.perfiles where id = auth.uid();
 $$;
 
 create or replace function public.mi_tira()
 returns text
 language sql stable security definer set search_path = public as $$
-  select j.tira from public.jugadores j
-  join public.perfiles p on p.jugador_id = j.id
-  where p.id = auth.uid();
+  select tira from public.perfiles where id = auth.uid();
 $$;
 
--- Vista de solo lectura para que un Jugador vea EN SU CALENDARIO que hay entrenamiento/plan
--- individual tal dia, sin exponerle las columnas sensibles (bloques, objetivoSemana,
--- planesIndividuales de sus compañeros) que viven en esas mismas filas de "eventos". Se crea
--- sin "security_invoker" (igual que vista_promedios_jugador en schema_stats.sql), asi corre
--- con los privilegios de quien la creo y no la bloquea la policy restrictiva de "eventos" para
--- el rol jugador (ver mas abajo) — la vista es la unica puerta a esas fechas, y solo deja
--- pasar 6 columnas inofensivas.
+-- Vista de solo lectura para que una cuenta de Jugador (compartida por categoria/tira) vea EN
+-- SU CALENDARIO que hay entrenamiento tal dia, sin exponerle las columnas sensibles (bloques,
+-- objetivoSemana) que viven en esas mismas filas de "eventos". No incluye eventos tipo
+-- "individual": al ser un login compartido por todo el equipo (no una cuenta por jugador), no
+-- hay forma de filtrar "es MI sesion 1 a 1" -- se opta por no mostrar individuales en absoluto
+-- antes que mostrarle a todo el equipo la sesion privada de un companero. Se crea sin
+-- "security_invoker" (igual que vista_promedios_jugador en schema_stats.sql), asi corre con los
+-- privilegios de quien la creo y no la bloquea la policy restrictiva de "eventos" para el rol
+-- jugador (ver mas abajo) — la vista es la unica puerta a esas fechas, y solo deja pasar 6
+-- columnas inofensivas.
 create or replace view public.vista_calendario_jugador as
 select e.id, e.date, e.type, e.categoria, e.tira, e.title
 from public.eventos e
-where e.type in ('entrenamiento', 'individual')
+where e.type = 'entrenamiento'
   and e.categoria = public.mi_categoria()
-  and e.tira = public.mi_tira()
-  and (
-    e.type = 'entrenamiento'
-    or exists (
-      select 1 from jsonb_array_elements(e."planesIndividuales") el
-      where (el ->> 'jugadorId')::uuid = public.mi_jugador_id()
-    )
-  );
+  and e.tira = public.mi_tira();
 
 grant select on public.vista_calendario_jugador to authenticated;
+
+-- Ya no se usa (el login de jugadores dejo de ser por persona y paso a ser compartido por
+-- categoria/tira). Se dropea DESPUES de reemplazar la vista de arriba (que antes dependia de
+-- esta funcion) -- si se dropeara antes, "drop function" fallaria por esa dependencia.
+drop function if exists public.mi_jugador_id();
 
 -- ============================================================================
 -- Policies por tabla. Reemplazan los "using (true)" abiertos originales (MVP sin login) por
