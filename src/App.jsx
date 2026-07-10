@@ -1741,6 +1741,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
 
   const filtered = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
 
+  const eliminarEvaluacion = (jugador, idx) => {
+    const next = (jugador.evaluaciones_pfs || []).filter((_, i) => i !== idx);
+    onUpdateJugador(jugador.id, { evaluaciones_pfs: next });
+  };
+
   useEffect(() => {
     if (jugadores.length === 0) return;
     let cancelled = false;
@@ -1822,11 +1827,16 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               <details className="mt-1">
                 <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Ver evolución ({j.evaluaciones_pfs.length})</summary>
                 <ul className="mt-1 space-y-0.5">
-                  {[...j.evaluaciones_pfs].reverse().map((ev, i) => (
-                    <li key={i} className="text-xs text-zinc-400">
-                      {ev.fecha}
-                      {ev.altura != null ? ` · ${ev.altura} m` : ""}
-                      {ev.peso != null ? ` · ${ev.peso} kg` : ""}
+                  {j.evaluaciones_pfs.map((ev, i) => ({ ev, i })).reverse().map(({ ev, i }) => (
+                    <li key={i} className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <span>
+                        {ev.fecha}
+                        {ev.altura != null ? ` · ${ev.altura} m` : ""}
+                        {ev.peso != null ? ` · ${ev.peso} kg` : ""}
+                      </span>
+                      <button onClick={() => eliminarEvaluacion(j, i)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-0.5">
+                        <Trash2 size={11} />
+                      </button>
                     </li>
                   ))}
                 </ul>
