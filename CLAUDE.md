@@ -5,18 +5,33 @@
 Soy entrenador (DT) de un equipo de primera división de básquet. Hoy el staff técnico trabaja con varias planillas de Google Sheets sueltas (calendario, planificación de entrenamientos, plan de juego/scouting por partido). El objetivo es reemplazar eso por un sistema único, interconectado, usable desde web y celular por igual, donde todo el cuerpo técnico pueda cargar y consultar información sin duplicar datos ni pisarse versiones.
 
 - Uso: tanto en celular (cancha, viajes) como en compu (armando planificación) — pensado como una **PWA** (una sola base de código, funciona en navegador y se puede instalar en el celular, con uso offline parcial).
-- Permisos: todo el staff edita por igual (no hace falta un sistema de roles complejo al inicio), pero conviene guardar historial de quién cambió qué.
+- Permisos: sistema de login con 4 roles (Head Coach, Asistente Técnico, Preparador Físico, Jugador) — detalle en "Autenticación y Roles" más abajo. Decisión tomada: no se va a implementar historial de quién cambió qué (se evaluó y se descartó).
 
 ## Estado actual
 
 El sistema ya está en producción, en uso real por el staff:
 
-- **Stack**: React + Vite (todo en `src/App.jsx`) + Tailwind v4, sin backend propio — Supabase (Postgres + PostgREST + RLS abierta, sin login todavía) como única base de datos.
-- **Deploy**: GitHub ([maxmaran09/app-basket-club](https://github.com/maxmaran09/app-basket-club)) → Vercel (front, redeploy automático en cada push) + Supabase (DB).
-- **Módulos implementados y deployados**: Inicio (dashboard), Calendario, Entrenamientos (con bloques de cancha, RPE de carga física), Individual (planes 1 a 1 por jugador), Plantel, Scouting Hub (con partidos y plan de juego), Estadísticas (carga de PDF de la CABB). Detalle de cada uno más abajo.
-- **Navegación**: sidebar colapsable en desktop / bottom bar en mobile, con 6 secciones (Inicio, Calendario, Plantel, Entrenamientos, Scouting, Estadísticas). Inicio es la pantalla que abre por defecto.
+- **Stack**: React + Vite (todo en `src/App.jsx`) + Tailwind v4 + react-router-dom (rutas reales), sin backend propio — Supabase (Postgres + PostgREST + Auth + RLS por rol) como única base de datos.
+- **Deploy**: GitHub ([maxmaran09/app-basket-club](https://github.com/maxmaran09/app-basket-club)) → Vercel (front, redeploy automático en cada push) + Supabase (DB + Auth). `vercel.json` con rewrite de SPA para que las rutas de React Router no tiren 404 al refrescar.
+- **Módulos implementados y deployados**: Login/Auth con roles, Inicio (dashboard), Calendario, Entrenamientos (con bloques de cancha, RPE de carga física), Individual (planes 1 a 1 por jugador), Plantel (con importador CSV), Scouting Hub (con partidos, plan de juego, e importador CSV de plantel rival), Estadísticas (carga de PDF de la CABB). Detalle de cada uno más abajo.
+- **Navegación**: sidebar colapsable en desktop / bottom bar en mobile, con hasta 6 secciones (Inicio, Calendario, Plantel, Entrenamientos, Scouting, Estadísticas) filtradas según el rol logueado — ver "Autenticación y Roles". Inicio es la pantalla que abre por defecto para los roles que la tienen.
 - **Branding**: escudo de Náutico Hacoaj ya cargado; paleta de colores del club todavía no definida (ver Notas de diseño).
 - Workflow de trabajo: cambios se prueban localmente (`npm run dev`), el dueño del proyecto corre el SQL en Supabase cuando aplica, y el commit/push a git se hace solo cuando lo pide explícitamente — nunca de forma proactiva.
+
+## Autenticación y Roles (RBAC)
+
+Login con Supabase Auth (email + contraseña, sin auto-registro — las cuentas las crea el dueño del proyecto a mano desde el dashboard de Supabase). Rutas reales con react-router-dom; sin sesión, cualquier ruta redirige a `/login`.
+
+El rol se guarda en la tabla `public.perfiles` (vinculada a `auth.users` por `id`), no en metadata del usuario — permite políticas RLS reales del lado de la base, no solo ocultar botones en la interfaz. Función helper `mi_rol()` (`security definer`) para usar dentro de las policies de cualquier tabla sin caer en recursión.
+
+**4 roles:**
+- **Head Coach** / **Asistente Técnico**: acceso total de lectura y escritura a todos los módulos, sin diferencias entre ambos.
+- **Preparador Físico**: ve las 6 secciones del nav. Edita Inicio (notas del staff), Calendario (entrar a fichas), Plantel (solo campos médicos/físicos — disponibilidad/lesión/evaluaciones; nombre/dorsal/posición/categoría quedan de solo lectura), y dentro de una ficha de Entrenamiento/Individual el bloque de Asistencia+RPE y Preparación física. El resto (bloques de cancha, Scouting, Estadísticas, alta/baja de jugadores) es de solo lectura.
+- **Jugador**: pensado como **una cuenta compartida por categoría/tira** (todos los jugadores de un mismo equipo comparten el mismo login), no una cuenta por persona — por eso `perfiles` tiene columnas `categoria`/`tira` propias para este rol. Solo ve Calendario (fijo a su categoría/tira, sin poder cambiarlo) y Scouting, ambos de solo lectura. Dentro del Calendario solo puede abrir fichas de Partido (ve scouting rival + plan de juego propio); Entrenamiento e Individual no se pueden abrir. Las fechas de Entrenamiento sí aparecen en su calendario (vía la vista `vista_calendario_jugador`, que expone únicamente fecha/tipo/categoría/tira/título) pero sin exponer bloques ni objetivo de la semana. Los eventos tipo Individual no se muestran nunca en este rol: al ser una cuenta compartida por todo el equipo, no hay forma de filtrar "es mi sesión 1 a 1" sin exponer la de un compañero.
+
+**RLS**: reescritas las 12 tablas que antes tenían policies abiertas (`using (true)`) para basarse en `mi_rol()`/`mi_categoria()`/`mi_tira()`. Detalle completo y comentado en `supabase/schema_auth.sql`.
+
+**Decisión tomada**: no se va a implementar historial de cambios ("quién editó qué") — se evaluó como parte de este trabajo y se descartó explícitamente.
 
 ## Módulos y modelo de datos
 
@@ -69,8 +84,8 @@ Módulo implementado (adelantado respecto a la prioridad original de Fase 3). Re
 
 ## Roadmap general
 
-1. **Fase 1 (MVP)**: ✅ Calendario + Entrenamientos + Partidos con scouting/plan de juego, todo enlazado. ⏳ Login/multiusuario real todavía no implementado (por ahora todo el staff edita sin autenticar, vía RLS abierta).
-2. **Fase 2**: ✅ Fichas de jugadores propios (Plantel) y rivales (Scouting Hub) más completas. ⏳ Biblioteca de ejercicios/jugadas reutilizables (hoy solo se puede duplicar un bloque puntual, no hay biblioteca ni plantillas guardadas). ⏳ Historial de cambios visible.
+1. **Fase 1 (MVP)**: ✅ Calendario + Entrenamientos + Partidos con scouting/plan de juego, todo enlazado. ✅ Login multiusuario con roles (RBAC) — Head Coach, Asistente Técnico, Preparador Físico, Jugador (ver "Autenticación y Roles").
+2. **Fase 2**: ✅ Fichas de jugadores propios (Plantel) y rivales (Scouting Hub) más completas. ⏳ Biblioteca de ejercicios/jugadas reutilizables (hoy solo se puede duplicar un bloque puntual, no hay biblioteca ni plantillas guardadas). ❌ Historial de cambios visible — descartado, no se va a implementar.
 3. **Fase 3**: ✅ Módulo de estadísticas (CABB) — adelantado, ya en producción, con promedios conectados a Scouting/Plantel. ⏳ Notificaciones, comentarios por ficha, importador de datos históricos desde Google Sheets.
 4. **Extra (no estaba en el roadmap original)**: ✅ Módulo Inicio (dashboard) — pantalla de arranque con lo más urgente de cada módulo en un solo lugar.
 
