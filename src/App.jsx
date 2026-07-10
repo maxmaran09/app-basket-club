@@ -1,9 +1,15 @@
 import React, { useState, useRef, useEffect, useId } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home } from "lucide-react";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
 import ImportadorCSVPropio from "./ImportadorCSVPropio";
+import ImportadorCSVRival from "./ImportadorCSVRival";
+import { useAuth } from "./AuthContext";
+import LoginView from "./LoginView";
+import ProtectedRoute from "./ProtectedRoute";
+import { ROLES, ROL_LABELS, SECCIONES_POR_ROL, puedeVerSeccion, seccionInicialDe, rutaDeSeccion, esStaffCompleto, nivelBloque, TIPOS_EVENTO_ABRIBLES_JUGADOR } from "./permisos";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -86,7 +92,7 @@ function Section({ icon: Icon, title, children, accent = "text-zinc-400" }) {
   );
 }
 
-function TagPicker({ label, options, selected, onToggle, tone = "orange" }) {
+function TagPicker({ label, options, selected, onToggle, tone = "orange", soloLectura = false }) {
   const activeCls = tone === "blue" ? "bg-sky-500/20 border-sky-500/50 text-sky-300" : "bg-orange-500/20 border-orange-500/50 text-orange-300";
   return (
     <div className="mb-3">
@@ -95,8 +101,8 @@ function TagPicker({ label, options, selected, onToggle, tone = "orange" }) {
         {options.map((op) => {
           const active = selected.includes(op);
           return (
-            <button key={op} onClick={() => onToggle(op)}
-              className={`px-2.5 py-1 rounded text-xs border mr-1.5 mb-1.5 transition ${active ? activeCls : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600"}`}>
+            <button key={op} disabled={soloLectura} onClick={() => onToggle(op)}
+              className={`px-2.5 py-1 rounded text-xs border mr-1.5 mb-1.5 transition ${active ? activeCls : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600"} ${soloLectura ? "cursor-default opacity-80" : ""}`}>
               {op}
             </button>
           );
@@ -106,7 +112,7 @@ function TagPicker({ label, options, selected, onToggle, tone = "orange" }) {
   );
 }
 
-function EditableField({ label, icon, value, onSave, accent = "text-blue-400", multiline = false }) {
+function EditableField({ label, icon, value, onSave, accent = "text-blue-400", multiline = false, soloLectura = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -130,7 +136,9 @@ function EditableField({ label, icon, value, onSave, accent = "text-blue-400", m
       ) : (
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm text-zinc-300 flex-1">{value || <span className="text-zinc-600">Sin datos.</span>}</p>
-          <button onClick={startEdit} className="text-xs text-blue-400 hover:text-blue-300 shrink-0">Editar</button>
+          {!soloLectura && (
+            <button onClick={startEdit} className="text-xs text-blue-400 hover:text-blue-300 shrink-0">Editar</button>
+          )}
         </div>
       )}
     </Section>
@@ -715,7 +723,7 @@ function AsistenciaSection({ event, jugadores }) {
 // Reutilizable: horarios + carga/lugar + enfoque + notas del preparador físico, con Editar/Guardar.
 // Sirve tanto para el plan semanal de un entrenamiento como para el plan de cada jugador en un
 // evento Individual — "data" trae los valores actuales y "onSave" recibe el patch a persistir.
-function PreparacionFisicaSection({ data, onSave }) {
+function PreparacionFisicaSection({ data, onSave, soloLectura }) {
   const [editFisica, setEditFisica] = useState(false);
   const [horarioBasquet, setHorarioBasquet] = useState(data.horarioBasquet || "");
   const [horarioFisico, setHorarioFisico] = useState(data.horarioFisico || "");
@@ -778,7 +786,9 @@ function PreparacionFisicaSection({ data, onSave }) {
               {enfoqueFisico.map((f) => <Chip key={f}>{f}</Chip>)}
             </div>
             {notasFisicas && <p className="text-sm text-zinc-400 italic">"{notasFisicas}"</p>}
-            <button onClick={() => setEditFisica(true)} className="text-xs text-sky-400 hover:text-sky-300">Editar</button>
+            {!soloLectura && (
+              <button onClick={() => setEditFisica(true)} className="text-xs text-sky-400 hover:text-sky-300">Editar</button>
+            )}
           </div>
         )}
       </div>
@@ -798,7 +808,7 @@ function clonarBloques(bloques) {
 // Reutilizable: lista de bloques de cancha con sus diagramas (secuencia de canchas por bloque).
 // "bloques"/"onChange" son controlados por quien lo use (un entrenamiento entero, o el plan de
 // un jugador puntual dentro de un evento Individual).
-function BloquesConCanchaSection({ bloques, onChange }) {
+function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
@@ -847,28 +857,34 @@ function BloquesConCanchaSection({ bloques, onChange }) {
                       <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
                       <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
                     </div>
-                    <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400 shrink-0">
-                      <Copy size={13} /> Duplicar
-                    </button>
+                    {!soloLectura && (
+                      <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400 shrink-0">
+                        <Copy size={13} /> Duplicar
+                      </button>
+                    )}
                   </div>
 
                   <div className="mt-3 space-y-3">
                     {diagrams.map((d, di) =>
-                      editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
+                      !soloLectura && editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
                         <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} />
                       ) : (
                         <div key={d.id} className="flex items-center gap-2">
                           <CourtPreview {...d} />
                           <div className="flex flex-col gap-1">
                             <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
-                            <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
-                            <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                            {!soloLectura && (
+                              <>
+                                <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
+                                <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )
                     )}
 
-                    {editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
+                    {soloLectura ? null : editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
                       <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
                     ) : (
                       <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
@@ -883,7 +899,7 @@ function BloquesConCanchaSection({ bloques, onChange }) {
         })}
       </div>
 
-      {showForm ? (
+      {soloLectura ? null : showForm ? (
         <div className="mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
           <div className="flex gap-2">
             <input placeholder="Inicio (ej 0')" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -905,10 +921,14 @@ function BloquesConCanchaSection({ bloques, onChange }) {
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
+function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores, rol }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
+
+  const headerSoloLectura = nivelBloque(rol, "entrenamiento", "header") !== "rw";
+  const prepFisicaSoloLectura = nivelBloque(rol, "entrenamiento", "preparacionFisica") !== "rw";
+  const bloquesSoloLectura = nivelBloque(rol, "entrenamiento", "bloquesCancha") !== "rw";
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
@@ -916,9 +936,11 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
-        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
-          <Trash2 size={13} /> Eliminar evento
-        </button>
+        {!headerSoloLectura && (
+          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+            <Trash2 size={13} /> Eliminar evento
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-blue-400 mb-1">
@@ -931,13 +953,13 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
         {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
       </div>
 
-      <EditableField label="Objetivo de la semana" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline />
+      <EditableField label="Objetivo de la semana" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline soloLectura={headerSoloLectura} />
 
       <AsistenciaSection event={event} jugadores={jugadores} />
 
-      <PreparacionFisicaSection data={event} onSave={onUpdate} />
+      <PreparacionFisicaSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
-      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} />
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} />
 
       <p className="text-xs text-zinc-600 mt-8 border-t border-zinc-800 pt-3">
         Diagramas de cancha con jugadores, balón y trayectorias con quiebres. Pendiente: biblioteca de jugadas guardadas y animación.
@@ -953,48 +975,58 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores }) {
 // Plan de trabajo de un jugador puntual dentro de un evento Individual: mismo formato que un
 // entrenamiento (objetivo, preparación física, bloques de cancha con diagramas) pero uno por
 // jugador, todos dentro del mismo evento.
-function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate }) {
+function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate, rol }) {
   const [objetivo, setObjetivo] = useState(plan.objetivo || "");
   const [bloques, setBloques] = useState(plan.bloques || []);
 
   const sinAsignar = !plan.jugadorId;
+  const headerSoloLectura = nivelBloque(rol, "individual", "header") !== "rw";
+  const prepFisicaSoloLectura = nivelBloque(rol, "individual", "preparacionFisica") !== "rw";
+  const bloquesSoloLectura = nivelBloque(rol, "individual", "bloquesCancha") !== "rw";
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-teal-300 font-mono text-xs shrink-0">#{jugador?.dorsal ?? "-"}</span>
-          <select
-            value={plan.jugadorId || ""}
-            onChange={(e) => onUpdate({ jugadorId: e.target.value })}
-            className={"bg-zinc-950 border rounded px-2 py-1 text-sm font-bold min-w-0 " + (sinAsignar ? "border-amber-600 text-amber-400" : "border-zinc-700 text-zinc-100")}
-          >
-            <option value="">Sin asignar — elegí un jugador</option>
-            {opcionesJugador.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
-          </select>
+          {headerSoloLectura ? (
+            <span className="text-sm font-bold text-zinc-100">{jugador?.nombre_apellido ?? "Sin asignar"}</span>
+          ) : (
+            <select
+              value={plan.jugadorId || ""}
+              onChange={(e) => onUpdate({ jugadorId: e.target.value })}
+              className={"bg-zinc-950 border rounded px-2 py-1 text-sm font-bold min-w-0 " + (sinAsignar ? "border-amber-600 text-amber-400" : "border-zinc-700 text-zinc-100")}
+            >
+              <option value="">Sin asignar — elegí un jugador</option>
+              {opcionesJugador.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+            </select>
+          )}
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button onClick={onDuplicate} title="Duplicar plan completo" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
-            <Copy size={13} /> Duplicar
-          </button>
-          <button onClick={onRemove} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
-            <Trash2 size={13} /> Quitar del plan
-          </button>
-        </div>
+        {!headerSoloLectura && (
+          <div className="flex items-center gap-3 shrink-0">
+            <button onClick={onDuplicate} title="Duplicar plan completo" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
+              <Copy size={13} /> Duplicar
+            </button>
+            <button onClick={onRemove} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
+              <Trash2 size={13} /> Quitar del plan
+            </button>
+          </div>
+        )}
       </div>
 
-      <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline />
+      <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline soloLectura={headerSoloLectura} />
 
-      <PreparacionFisicaSection data={plan} onSave={onUpdate} />
+      <PreparacionFisicaSection data={plan} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
-      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} />
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} />
     </div>
   );
 }
 
-function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
+function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol }) {
   const [planes, setPlanes] = useState(event.planesIndividuales || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const headerSoloLectura = nivelBloque(rol, "individual", "header") !== "rw";
 
   // Los planes ya guardados antes de esta función no tienen "id" propio (se identificaban por
   // jugadorId, que ahora es editable). planKey da un identificador estable para ambos casos.
@@ -1035,9 +1067,11 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
-        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
-          <Trash2 size={13} /> Eliminar evento
-        </button>
+        {!headerSoloLectura && (
+          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+            <Trash2 size={13} /> Eliminar evento
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-teal-400 mb-1">
@@ -1050,7 +1084,7 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
         {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
       </div>
 
-      {disponibles.length > 0 && (
+      {!headerSoloLectura && disponibles.length > 0 && (
         <div className="flex gap-2 mb-4">
           <select
             defaultValue=""
@@ -1080,6 +1114,7 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete }) {
             onUpdate={(patch) => updatePlan(pid, patch)}
             onRemove={() => removePlan(pid)}
             onDuplicate={() => duplicatePlan(pid)}
+            rol={rol}
           />
         );
       })}
@@ -1166,7 +1201,8 @@ function VideoLinkButton({ url, size = 14, label }) {
   );
 }
 
-function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
+function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol }) {
+  const soloLectura = nivelBloque(rol, "partido", "todo") !== "rw";
   const [rivalId, setRivalId] = useState(event.rival_id || "");
   const [jugadoresRivales, setJugadoresRivales] = useState([]);
   const [loadingRival, setLoadingRival] = useState(true);
@@ -1235,9 +1271,11 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
-        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
-          <Trash2 size={13} /> Eliminar evento
-        </button>
+        {!soloLectura && (
+          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+            <Trash2 size={13} /> Eliminar evento
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-orange-400 mb-1">
@@ -1246,7 +1284,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
       </div>
       <h1 className="text-2xl font-bold mb-2">vs {equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}</h1>
 
-      {editHeader ? (
+      {editHeader && !soloLectura ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2 mb-2">
           <div className="flex gap-2">
             <input value={jornada} onChange={(e) => setJornada(e.target.value)} placeholder="Jornada (ej: Fecha 3, Playoff — Juego 1)" className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -1271,18 +1309,24 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
           <Chip>Citación {citacion || "—"}</Chip>
           <Chip>{event.date}</Chip>
           {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
-          <button onClick={() => setEditHeader(true)} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <PenLine size={12} /> Editar
-          </button>
+          {!soloLectura && (
+            <button onClick={() => setEditHeader(true)} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+              <PenLine size={12} /> Editar
+            </button>
+          )}
         </div>
       )}
 
       <div className="flex items-center gap-2 mb-6">
         <p className="text-xs text-zinc-500">Rival:</p>
-        <select value={rivalId} onChange={(e) => cambiarRival(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
-          <option value="">(sin asignar)</option>
-          {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
-        </select>
+        {soloLectura ? (
+          <Chip>{equipoRival?.nombre_club || "(sin asignar)"}</Chip>
+        ) : (
+          <select value={rivalId} onChange={(e) => cambiarRival(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
+            <option value="">(sin asignar)</option>
+            {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
+          </select>
+        )}
       </div>
 
       <Section icon={Shield} title="Scouting colectivo" accent="text-orange-400">
@@ -1323,9 +1367,9 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
       </Section>
 
       <Section icon={Swords} title="Plan de juego — ataque" accent="text-orange-400">
-        <textarea value={planAtaque} onChange={(e) => setPlanAtaque(e.target.value)} onBlur={() => onUpdate({ planAtaque })} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3" rows={3} />
-        <TagPicker label="Transición" options={SISTEMAS.transicion} selected={ataqueTags} onToggle={onToggleTransicion} />
-        <TagPicker label="Set ofensivo" options={SISTEMAS.set} selected={setTags} onToggle={onToggleSet} />
+        <textarea value={planAtaque} onChange={(e) => setPlanAtaque(e.target.value)} onBlur={() => onUpdate({ planAtaque })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
+        <TagPicker label="Transición" options={SISTEMAS.transicion} selected={ataqueTags} onToggle={onToggleTransicion} soloLectura={soloLectura} />
+        <TagPicker label="Set ofensivo" options={SISTEMAS.set} selected={setTags} onToggle={onToggleSet} soloLectura={soloLectura} />
         {event.ataque?.claves?.length > 0 && (
           <ul className="space-y-1 mt-2">
             {event.ataque.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-orange-500" />{c}</li>)}
@@ -1334,8 +1378,8 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
       </Section>
 
       <Section icon={Shield} title="Plan de juego — defensa" accent="text-orange-400">
-        <textarea value={planDefensa} onChange={(e) => setPlanDefensa(e.target.value)} onBlur={() => onUpdate({ planDefensa })} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3" rows={3} />
-        <TagPicker label="Defensa de cortinas" options={SISTEMAS.cortinas} selected={cortinaTags} onToggle={onToggleCortina} />
+        <textarea value={planDefensa} onChange={(e) => setPlanDefensa(e.target.value)} onBlur={() => onUpdate({ planDefensa })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
+        <TagPicker label="Defensa de cortinas" options={SISTEMAS.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
         {event.defensa?.claves?.length > 0 && (
           <ul className="space-y-1 mb-2 mt-2">
             {event.defensa.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-orange-500" />{c}</li>)}
@@ -1362,7 +1406,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete }) {
   );
 }
 
-function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent }) {
+function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent, rol }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
@@ -1377,8 +1421,33 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
   const [moveDate, setMoveDate] = useState("");
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [eventosPropios, setEventosPropios] = useState([]); // solo se llena para rol jugador (vista_calendario_jugador)
 
-  const equipoEvents = events.filter((e) => e.categoria === categoria && e.tira === tira);
+  const esJugador = rol === ROLES.JUGADOR;
+  const puedeEditarEventos = esStaffCompleto(rol);
+  const tiposClickeables = esJugador ? TIPOS_EVENTO_ABRIBLES_JUGADOR : ["entrenamiento", "partido", "individual"];
+
+  // Un Jugador no puede elegir categoria/tira (queda fijo a la suya) y ademas necesita traer
+  // las fechas de entrenamiento/individual desde una vista aparte, porque "eventos" le niega
+  // esas filas por RLS (ver supabase/schema_auth.sql: eventos_select_all + vista_calendario_jugador).
+  useEffect(() => {
+    if (!esJugador) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: cat }, { data: tir }, { data: propios }] = await Promise.all([
+        supabase.rpc("mi_categoria"),
+        supabase.rpc("mi_tira"),
+        supabase.from("vista_calendario_jugador").select("*"),
+      ]);
+      if (cancelled) return;
+      if (cat) setCategoria(cat);
+      if (tir) setTira(tir);
+      setEventosPropios(propios || []);
+    })();
+    return () => { cancelled = true; };
+  }, [esJugador]);
+
+  const equipoEvents = [...events, ...eventosPropios].filter((e) => e.categoria === categoria && e.tira === tira);
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -1414,16 +1483,20 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select value={categoria} onChange={(e) => selectEquipo(e.target.value, tira)}
-          className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={tira} onChange={(e) => selectEquipo(categoria, e.target.value)}
-          className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-          {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-      </div>
+      {esJugador ? (
+        <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select value={categoria} onChange={(e) => selectEquipo(e.target.value, tira)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={tira} onChange={(e) => selectEquipo(categoria, e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="grid grid-cols-7 gap-1 mb-1">
         {DIAS.map((d) => <div key={d} className="text-center text-xs text-zinc-500 font-medium py-1">{d}</div>)}
@@ -1455,7 +1528,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
           <div className="space-y-2 mb-3">
             {dayEvents.map((e) => {
               const st = TIPO_ESTILO[e.type];
-              const clickable = e.type === "entrenamiento" || e.type === "partido" || e.type === "individual";
+              const clickable = tiposClickeables.includes(e.type);
               const isMoving = moveTarget === e.id;
               const isRenaming = renameTarget === e.id;
               return (
@@ -1467,15 +1540,19 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       <span className={`text-sm ${st.text}`}>{e.title}</span>
                       {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto" />}
                     </button>
-                    <button onClick={() => { setRenameTarget(isRenaming ? null : e.id); setRenameValue(e.title); }} title="Editar nombre" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
-                      <PenLine size={14} />
-                    </button>
-                    <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
-                      <CalendarClock size={14} />
-                    </button>
-                    <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-1.5 shrink-0">
-                      <Trash2 size={14} />
-                    </button>
+                    {puedeEditarEventos && (
+                      <>
+                        <button onClick={() => { setRenameTarget(isRenaming ? null : e.id); setRenameValue(e.title); }} title="Editar nombre" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
+                          <PenLine size={14} />
+                        </button>
+                        <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
+                          <CalendarClock size={14} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-1.5 shrink-0">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                   {isRenaming && (
                     <div className="flex items-center gap-2 px-3 pb-2">
@@ -1496,7 +1573,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
             })}
           </div>
 
-          {showAdd ? (
+          {!puedeEditarEventos ? null : showAdd ? (
             <div className="space-y-2 pt-2 border-t border-zinc-800">
               <input value={newEv.title} onChange={(e) => setNewEv({ ...newEv, title: e.target.value })} placeholder="Título del evento" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
               <select value={newEv.type} onChange={(e) => setNewEv({ ...newEv, type: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm">
@@ -1557,7 +1634,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
 
 // Sirve para alta y edición: si viene "jugador", precarga sus datos y guarda un patch (update);
 // si no, arranca vacío con la categoría/tira del filtro activo y crea uno nuevo (insert).
-function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
+function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamposMedicos = false }) {
   const [form, setForm] = useState({
     dorsal: jugador?.dorsal ?? "",
     nombre_apellido: jugador?.nombre_apellido ?? "",
@@ -1611,32 +1688,36 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-sm mb-3">{jugador ? "Editar jugador" : "Agregar jugador"}</h3>
+        <h3 className="font-bold text-sm mb-3">{soloCamposMedicos ? `Ficha médica/física — ${jugador?.nombre_apellido}` : jugador ? "Editar jugador" : "Agregar jugador"}</h3>
         <div className="space-y-2">
-          <div className="flex gap-2">
-            <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          </div>
-          <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-            {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <div className="flex gap-2">
-            <input placeholder="Altura (m)" type="number" step="0.01" value={form.altura} onChange={(e) => set("altura", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Peso (kg)" type="number" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          </div>
-          <div>
-            <p className="text-xs text-zinc-500 mb-1">Fecha de nacimiento</p>
-            <input type="date" value={form.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          </div>
-          <div className="flex gap-2">
-            <select value={form.categoria_origen} onChange={(e) => set("categoria_origen", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select value={form.tira} onChange={(e) => set("tira", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-              {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <textarea placeholder="Notas / comentarios" value={form.notas_comentarios} onChange={(e) => set("notas_comentarios", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          {!soloCamposMedicos && (
+            <>
+              <div className="flex gap-2">
+                <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+              <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <input placeholder="Altura (m)" type="number" step="0.01" value={form.altura} onChange={(e) => set("altura", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <input placeholder="Peso (kg)" type="number" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Fecha de nacimiento</p>
+                <input type="date" value={form.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              </div>
+              <div className="flex gap-2">
+                <select value={form.categoria_origen} onChange={(e) => set("categoria_origen", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={form.tira} onChange={(e) => set("tira", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <textarea placeholder="Notas / comentarios" value={form.notas_comentarios} onChange={(e) => set("notas_comentarios", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </>
+          )}
 
           <div className="pt-2 border-t border-zinc-800">
             <p className="text-xs text-zinc-500 mb-1">Disponibilidad</p>
@@ -1653,28 +1734,30 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave }) {
             )}
           </div>
 
-          <div className="pt-2 border-t border-zinc-800">
-            <p className="text-xs text-zinc-500 mb-1">Equipos adicionales (además de {form.categoria_origen} · {form.tira})</p>
-            {equipos.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {equipos.map((e, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300">
-                    {e.categoria} · {e.tira}
-                    <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
-                  </span>
-                ))}
+          {!soloCamposMedicos && (
+            <div className="pt-2 border-t border-zinc-800">
+              <p className="text-xs text-zinc-500 mb-1">Equipos adicionales (además de {form.categoria_origen} · {form.tira})</p>
+              {equipos.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {equipos.map((e, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300">
+                      {e.categoria} · {e.tira}
+                      <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <select value={nuevoCat} onChange={(e) => setNuevoCat(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                  {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={nuevoTira} onChange={(e) => setNuevoTira(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                  {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button onClick={addEquipo} className="bg-zinc-800 hover:bg-zinc-700 text-xs px-3 rounded text-zinc-200 shrink-0">+ Agregar</button>
               </div>
-            )}
-            <div className="flex gap-2">
-              <select value={nuevoCat} onChange={(e) => setNuevoCat(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
-                {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <select value={nuevoTira} onChange={(e) => setNuevoTira(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
-                {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <button onClick={addEquipo} className="bg-zinc-800 hover:bg-zinc-700 text-xs px-3 rounded text-zinc-200 shrink-0">+ Agregar</button>
             </div>
-          </div>
+          )}
         </div>
         <div className="flex gap-2 mt-3">
           <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugador ? "Guardar cambios" : "Guardar jugador"}</button>
@@ -1728,7 +1811,9 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   );
 }
 
-function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores }) {
+function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, rol }) {
+  const puedeAltaBaja = esStaffCompleto(rol);
+  const soloCamposMedicos = !esStaffCompleto(rol);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [tira, setTira] = useState(TIRAS[0]);
   const [showAdd, setShowAdd] = useState(false);
@@ -1768,6 +1853,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
       </div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Jugadores</h1>
+        {puedeAltaBaja && (
         <div className="flex items-center gap-2">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
             <Upload size={15} /> Importar CSV
@@ -1776,6 +1862,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
             <Plus size={15} /> Agregar jugador
           </button>
         </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -1807,9 +1894,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
                 <PenLine size={13} />
               </button>
-              <button onClick={() => setDeleteTarget(j)} title="Eliminar jugador" className="text-zinc-600 hover:text-red-400 p-1">
-                <Trash2 size={13} />
-              </button>
+              {puedeAltaBaja && (
+                <button onClick={() => setDeleteTarget(j)} title="Eliminar jugador" className="text-zinc-600 hover:text-red-400 p-1">
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap gap-1.5 mb-1">
               {j.altura != null && <Chip>{j.altura} m</Chip>}
@@ -1855,6 +1944,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           jugador={editTarget}
           categoria={categoria}
           tira={tira}
+          soloCamposMedicos={soloCamposMedicos}
           onCancel={() => { setShowAdd(false); setEditTarget(null); }}
           onSave={async (data) => {
             if (editTarget) await onUpdateJugador(editTarget.id, data);
@@ -2075,12 +2165,13 @@ function PromedioMiniStats({ p }) {
 
 // Ficha completa de un equipo rival: notas/video colectivo editable + plantel de jugadores
 // rivales (propia tabla relacional, se reusa desde cualquier partido contra este equipo).
-function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
+function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
   const [jugadoresRivales, setJugadoresRivales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notas, setNotas] = useState(equipo.notas_colectivas || "");
   const [videoUrl, setVideoUrl] = useState(equipo.video_colectivo_url || "");
   const [showAddJugador, setShowAddJugador] = useState(false);
+  const [showImportJugadores, setShowImportJugadores] = useState(false);
   const [editJugador, setEditJugador] = useState(null);
   const [deleteJugador, setDeleteJugador] = useState(null);
   const [showEditEquipo, setShowEditEquipo] = useState(false);
@@ -2132,6 +2223,10 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
     if (!error) setJugadoresRivales((prev) => prev.filter((j) => j.id !== id));
     setDeleteJugador(null);
   };
+  const importJugadoresRivales = (nuevos) => {
+    setJugadoresRivales((prev) => [...prev, ...nuevos]);
+    setShowImportJugadores(false);
+  };
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
@@ -2139,9 +2234,11 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver a Scouting Hub
         </button>
-        <button onClick={() => setShowEditEquipo(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-blue-400 text-xs">
-          <PenLine size={13} /> Editar equipo
-        </button>
+        {!soloLectura && (
+          <button onClick={() => setShowEditEquipo(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-blue-400 text-xs">
+            <PenLine size={13} /> Editar equipo
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-orange-400 mb-1">
@@ -2150,7 +2247,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
       </div>
       <h1 className="text-2xl font-bold mb-6">{equipo.nombre_club}</h1>
 
-      <EditableField label="Notas colectivas" icon={Shield} accent="text-orange-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline />
+      <EditableField label="Notas colectivas" icon={Shield} accent="text-orange-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline soloLectura={soloLectura} />
 
       <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-orange-400">
         {promedioEquipo ? (
@@ -2163,7 +2260,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
       <Section icon={Youtube} title="Video colectivo" accent="text-orange-400">
         <div className="flex items-center gap-2 mb-2">
           <Youtube size={14} className="text-zinc-500 shrink-0" />
-          <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onBlur={() => onUpdateEquipo({ video_colectivo_url: videoUrl })} placeholder="Link de YouTube — video colectivo" className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onBlur={() => onUpdateEquipo({ video_colectivo_url: videoUrl })} disabled={soloLectura} placeholder="Link de YouTube — video colectivo" className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 disabled:opacity-80" />
         </div>
         <VideoLinkButton url={videoUrl} label="Ver Video de Partido" />
       </Section>
@@ -2180,8 +2277,12 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
                   <span className="font-medium text-sm">{j.nombre_apellido}</span>
                   <VideoLinkButton url={j.video_individual_url} size={13} />
                   <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
-                  <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-1"><PenLine size={12} /></button>
-                  <button onClick={() => setDeleteJugador(j)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                  {!soloLectura && (
+                    <>
+                      <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-1"><PenLine size={12} /></button>
+                      <button onClick={() => setDeleteJugador(j)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                    </>
+                  )}
                 </div>
                 {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
                 {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
@@ -2191,9 +2292,16 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
             ))}
           </div>
         )}
-        <button onClick={() => setShowAddJugador(true)} className="flex items-center gap-1.5 text-orange-400 text-sm hover:text-orange-300">
-          <Plus size={15} /> Agregar jugador rival
-        </button>
+        {!soloLectura && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowAddJugador(true)} className="flex items-center gap-1.5 text-orange-400 text-sm hover:text-orange-300">
+              <Plus size={15} /> Agregar jugador rival
+            </button>
+            <button onClick={() => setShowImportJugadores(true)} className="flex items-center gap-1.5 text-zinc-500 text-sm hover:text-zinc-300">
+              <Upload size={13} /> Importar CSV
+            </button>
+          </div>
+        )}
       </Section>
 
       {showAddJugador && (
@@ -2201,6 +2309,13 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
       )}
       {editJugador && (
         <JugadorRivalFormModal jugadorRival={editJugador} onCancel={() => setEditJugador(null)} onSave={(data) => updateJugadorRival(editJugador.id, data)} />
+      )}
+      {showImportJugadores && (
+        <ImportadorCSVRival
+          equipoRivalId={equipo.id}
+          onCancel={() => setShowImportJugadores(false)}
+          onImported={importJugadoresRivales}
+        />
       )}
       {deleteJugador && (
         <ConfirmDeleteModal itemLabel={deleteJugador.nombre_apellido} subject="jugador rival" onCancel={() => setDeleteJugador(null)} onConfirm={() => removeJugadorRival(deleteJugador.id)} />
@@ -2216,7 +2331,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo }) {
   );
 }
 
-function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo }) {
+function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -2229,6 +2344,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         equipo={selected}
         onBack={() => setSelectedId(null)}
         onUpdateEquipo={(patch) => onUpdateEquipo(selected.id, patch)}
+        soloLectura={soloLectura}
       />
     );
   }
@@ -2241,9 +2357,11 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       </div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Equipos rivales</h1>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
-          <Plus size={15} /> Agregar equipo rival
-        </button>
+        {!soloLectura && (
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+            <Plus size={15} /> Agregar equipo rival
+          </button>
+        )}
       </div>
 
       {equiposRivales.length === 0 && <p className="text-sm text-zinc-500">Todavía no cargaste ningún equipo rival.</p>}
@@ -2256,9 +2374,11 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
               {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{eq.notas_colectivas}</p>}
             </button>
             <VideoLinkButton url={eq.video_colectivo_url} size={14} />
-            <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-1">
-              <Trash2 size={13} />
-            </button>
+            {!soloLectura && (
+              <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-1">
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -3163,24 +3283,30 @@ const NAV_ITEMS = [
 ];
 
 export default function App() {
+  const { session, rol, loading: authLoading, signOut } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [events, setEvents] = useState([]);
   const [jugadores, setJugadores] = useState([]);
   const [equiposRivales, setEquiposRivales] = useState([]);
   const [active, setActive] = useState(null);
-  const [seccionActiva, setSeccionActiva] = useState("inicio"); // "inicio" | "calendario" | "plantel" | "scouting" | ...
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
   });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const irASeccion = (id) => { setActive(null); setSeccionActiva(id); };
+  // "inicio" vive en "/", el resto de las secciones son "/<id>" (ver rutaDeSeccion en permisos.js).
+  const seccionActiva = location.pathname === "/" ? "inicio" : location.pathname.slice(1);
+  const irASeccion = (id) => { setActive(null); navigate(rutaDeSeccion(id)); };
 
   useEffect(() => {
     try { localStorage.setItem("sidebarCollapsed", sidebarCollapsed ? "1" : "0"); } catch {}
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    if (!session) { setEvents([]); setLoading(false); return; }
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase.from("eventos").select("*").order("date", { ascending: true });
@@ -3190,9 +3316,10 @@ export default function App() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
+    if (!session) { setJugadores([]); return; }
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase.from("jugadores").select("*").order("nombre_apellido", { ascending: true });
@@ -3200,9 +3327,10 @@ export default function App() {
       if (!error) setJugadores(data);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
+    if (!session) { setEquiposRivales([]); return; }
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase.from("equipos_rivales").select("*").order("nombre_club", { ascending: true });
@@ -3210,7 +3338,7 @@ export default function App() {
       if (!error) setEquiposRivales(data);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [session]);
 
   const addEvent = async (ev) => {
     const { data, error } = await supabase.from("eventos").insert(ev).select().single();
@@ -3272,6 +3400,25 @@ export default function App() {
     setEquiposRivales((prev) => prev.filter((e) => e.id !== id));
   };
 
+  if (location.pathname === "/login") {
+    return <LoginView />;
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 text-sm">
+        Cargando…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  const navItemsVisibles = NAV_ITEMS.filter((item) => puedeVerSeccion(rol, item.id));
+  const soloLecturaScouting = !esStaffCompleto(rol);
+
   return (
     <div className="bg-zinc-950 min-h-screen font-sans md:flex">
       {/* Sidebar fija — solo escritorio, colapsable a solo íconos */}
@@ -3286,7 +3433,7 @@ export default function App() {
           )}
         </div>
         <nav className="flex flex-col gap-1 flex-1">
-          {NAV_ITEMS.map((item) => {
+          {navItemsVisibles.map((item) => {
             const Icon = item.icon;
             const isActive = !active && seccionActiva === item.id;
             return (
@@ -3304,6 +3451,14 @@ export default function App() {
             );
           })}
         </nav>
+        {!sidebarCollapsed && <p className="px-3 mb-1 text-[11px] text-zinc-600 truncate">{ROL_LABELS[rol] ?? rol}</p>}
+        <button
+          onClick={signOut}
+          title={sidebarCollapsed ? "Cerrar sesión" : undefined}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:bg-zinc-800 hover:text-red-400 ${sidebarCollapsed ? "justify-center px-0" : ""}`}
+        >
+          <LogOut size={14} /> {!sidebarCollapsed && "Cerrar sesión"}
+        </button>
         <button
           onClick={() => setSidebarCollapsed((v) => !v)}
           title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
@@ -3329,36 +3484,59 @@ export default function App() {
         {!active && (
           loading ? (
             <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
-          ) : seccionActiva === "inicio" ? (
-            <InicioView events={events} jugadores={jugadores} equiposRivales={equiposRivales} onSelectEvent={setActive} />
-          ) : seccionActiva === "calendario" ? (
-            <CalendarView
-              events={events}
-              equiposRivales={equiposRivales}
-              onSelectEvent={setActive}
-              onAddEvent={addEvent}
-              onDeleteEvent={deleteEvent}
-              onMoveEvent={(id, date) => updateEvent(id, { date })}
-              onRenameEvent={(id, title) => updateEvent(id, { title })}
-            />
-          ) : seccionActiva === "plantel" ? (
-            <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} />
-          ) : seccionActiva === "entrenamientos" ? (
-            <EntrenamientosView events={events} onSelectEvent={setActive} />
-          ) : seccionActiva === "scouting" ? (
-            <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} />
           ) : (
-            <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} />
+            <Routes>
+              <Route path="/" element={
+                <ProtectedRoute seccionId="inicio">
+                  <InicioView events={events} jugadores={jugadores} equiposRivales={equiposRivales} onSelectEvent={setActive} rol={rol} />
+                </ProtectedRoute>
+              } />
+              <Route path="/calendario" element={
+                <ProtectedRoute seccionId="calendario">
+                  <CalendarView
+                    events={events}
+                    equiposRivales={equiposRivales}
+                    onSelectEvent={setActive}
+                    onAddEvent={addEvent}
+                    onDeleteEvent={deleteEvent}
+                    onMoveEvent={(id, date) => updateEvent(id, { date })}
+                    onRenameEvent={(id, title) => updateEvent(id, { title })}
+                    rol={rol}
+                  />
+                </ProtectedRoute>
+              } />
+              <Route path="/plantel" element={
+                <ProtectedRoute seccionId="plantel">
+                  <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} rol={rol} />
+                </ProtectedRoute>
+              } />
+              <Route path="/entrenamientos" element={
+                <ProtectedRoute seccionId="entrenamientos">
+                  <EntrenamientosView events={events} onSelectEvent={setActive} />
+                </ProtectedRoute>
+              } />
+              <Route path="/scouting" element={
+                <ProtectedRoute seccionId="scouting">
+                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaScouting} />
+                </ProtectedRoute>
+              } />
+              <Route path="/estadisticas" element={
+                <ProtectedRoute seccionId="estadisticas">
+                  <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} />
+                </ProtectedRoute>
+              } />
+              <Route path="*" element={<Navigate to={rutaDeSeccion(seccionInicialDe(rol))} replace />} />
+            </Routes>
           )
         )}
         {active?.type === "entrenamiento" && (
-          <EntrenamientoView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <EntrenamientoView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
         )}
         {active?.type === "individual" && (
-          <IndividualView event={active} jugadores={jugadores} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <IndividualView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
         )}
         {active?.type === "partido" && (
-          <PartidoView event={active} equiposRivales={equiposRivales} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <PartidoView event={active} equiposRivales={equiposRivales} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
         )}
       </main>
 
@@ -3367,7 +3545,7 @@ export default function App() {
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900 border-t border-zinc-800 flex items-stretch"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {NAV_ITEMS.map((item) => {
+        {navItemsVisibles.map((item) => {
           const Icon = item.icon;
           const isActive = !active && seccionActiva === item.id;
           return (

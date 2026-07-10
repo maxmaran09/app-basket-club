@@ -1,92 +1,57 @@
-﻿import React, { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Upload, X, Download, CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
-import { normalizarHeader, parseCSV, buscarEnLista, fechaValida, descargarCSV } from "./csvUtils";
+import { POSICIONES } from "./constants";
+import { normalizarHeader, parseCSV, buscarEnLista, descargarCSV } from "./csvUtils";
 
-// Encabezados de columna aceptados en el CSV -> nombre de columna real en la tabla "jugadores".
-// Se normalizan (minúsculas, sin acentos, espacios -> "_") antes de buscarlos acá.
+// Encabezados de columna aceptados en el CSV -> nombre de columna real en la tabla
+// "jugadores_rivales". Se normalizan (minúsculas, sin acentos, espacios -> "_") antes de
+// buscarlos acá.
 const HEADER_ALIASES = {
   dorsal: "dorsal",
   nombre_apellido: "nombre_apellido",
   nombre: "nombre_apellido",
   nombre_y_apellido: "nombre_apellido",
   posicion: "posicion",
-  altura: "altura",
-  peso: "peso",
-  fecha_nacimiento: "fecha_nacimiento",
-  categoria_principal: "categoria_origen",
-  categoria_origen: "categoria_origen",
-  tira_principal: "tira",
-  tira: "tira",
-  notas: "notas_comentarios",
-  notas_comentarios: "notas_comentarios",
-  disponibilidad: "disponibilidad",
-  detalle_lesion: "lesion_detalle",
-  lesion_detalle: "lesion_detalle",
-  fecha_lesion_desde: "lesion_desde",
-  lesion_desde: "lesion_desde",
-  equipos_adicionales: "equipos_adicionales",
+  categoria: "categoria",
+  cualidades_ataque: "cualidades_ataque",
+  ataque: "cualidades_ataque",
+  fortalezas: "cualidades_ataque",
+  cualidades_defensa: "cualidades_defensa",
+  defensa: "cualidades_defensa",
+  debilidades: "debilidades",
+  video_individual_url: "video_individual_url",
+  video: "video_individual_url",
+  video_url: "video_individual_url",
+  link_video: "video_individual_url",
 };
 
 const CSV_HEADERS_TEMPLATE = [
-  "dorsal", "nombre_apellido", "posicion", "altura", "peso", "fecha_nacimiento",
-  "categoria_principal", "tira_principal", "notas", "disponibilidad",
-  "detalle_lesion", "fecha_lesion_desde", "equipos_adicionales",
+  "dorsal", "nombre_apellido", "posicion", "categoria",
+  "cualidades_ataque", "cualidades_defensa", "debilidades", "video_individual_url",
 ];
 
-// Fila de instrucciones: a propósito no cumple ningún formato válido (posicion, fechas,
-// categoría, etc. traen el texto de ayuda en vez de un valor real) para que si alguien se
-// olvida de borrarla antes de importar, el propio validador la marque como fila con error
-// y no la cargue por accidente.
+// Fila de instrucciones: a propósito no cumple el formato de "posicion" (trae el texto de
+// ayuda en vez de un valor real) para que si alguien se olvida de borrarla antes de importar,
+// el propio validador la marque como fila con error y no la cargue por accidente.
 const CSV_FILA_INSTRUCCIONES = [
   "Nº opcional",
   "▲ BORRAR ESTA FILA (es solo ayuda) ▲",
   POSICIONES.join(" / "),
-  "en metros, ej: 1.90",
-  "en kg, entero",
-  "AAAA-MM-DD",
-  `${CATEGORIAS.join(" / ")} (vacío = usa la categoría del filtro activo)`,
-  `${TIRAS.join(" / ")} (vacío = usa la tira del filtro activo)`,
+  "texto libre, ej: Mayor / U21 (opcional)",
   "texto libre, opcional",
-  "Disponible / Duda / Lesionado (vacío = Disponible)",
-  "obligatorio si disponibilidad no es Disponible",
-  "AAAA-MM-DD, obligatorio si disponibilidad no es Disponible",
-  "Categoria:Tira|Categoria2:Tira2 (opcional)",
+  "texto libre, opcional",
+  "texto libre, opcional",
+  "link de YouTube, opcional",
 ];
 
 const CSV_FILAS_EJEMPLO = [
   CSV_FILA_INSTRUCCIONES,
-  ["7", "Juan Pérez", "Base", "1.85", "78", "2001-04-12", "Mayores", "Blanca", "Buen tiro exterior, capitán", "Disponible", "", "", "Liga Próximo:Blanca"],
-  ["23", "Marcos Díaz", "Pivot", "2.02", "102", "1999-11-02", "Mayores", "Blanca", "", "Lesionado", "Esguince de tobillo", "2026-06-30", ""],
+  ["4", "Nicolás Gómez", "Base", "Mayor", "Buen manejo de pelota, tira bien de afuera", "Se cierra mucho en pick and roll", "Bajo de estatura para su posición", "https://www.youtube.com/watch?v=ejemplo"],
+  ["15", "Tomás Ibarra", "Pivot", "U21", "", "Buen bloqueador y reboteador", "Poca movilidad lateral", ""],
 ];
 
-// Formato simple para equipos_adicionales en la celda: "Categoria:Tira|Categoria2:Tira2"
-function parseEquiposAdicionales(raw, principal) {
-  const errores = [];
-  const lista = [];
-  if (!raw || !raw.trim()) return { lista, errores };
-  const vistos = new Set();
-  for (const par of raw.split("|").map((p) => p.trim()).filter(Boolean)) {
-    const [catRaw, tiraRaw] = par.split(":").map((s) => (s ?? "").trim());
-    if (!catRaw || !tiraRaw) { errores.push(`equipos_adicionales: "${par}" no tiene el formato Categoría:Tira`); continue; }
-    const categoria = buscarEnLista(catRaw, CATEGORIAS);
-    const tira = buscarEnLista(tiraRaw, TIRAS);
-    if (!categoria) { errores.push(`equipos_adicionales: categoría "${catRaw}" no es válida`); continue; }
-    if (!tira) { errores.push(`equipos_adicionales: tira "${tiraRaw}" no es válida`); continue; }
-    if (categoria === principal.categoria && tira === principal.tira) {
-      errores.push(`equipos_adicionales: ${categoria} · ${tira} duplica el equipo principal`);
-      continue;
-    }
-    const key = `${categoria}|${tira}`;
-    if (vistos.has(key)) { errores.push(`equipos_adicionales: ${categoria} · ${tira} está repetido`); continue; }
-    vistos.add(key);
-    lista.push({ categoria, tira });
-  }
-  return { lista, errores };
-}
-
-function validarFila(raw, numeroFila, categoriaDefault, tiraDefault) {
+function validarFilaRival(raw, numeroFila) {
   const errores = [];
   const warnings = [];
   const data = {};
@@ -109,77 +74,28 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault) {
     data.posicion = pos || posicionRaw;
   } else data.posicion = null;
 
-  const alturaRaw = (raw.altura || "").trim();
-  if (alturaRaw) {
-    const n = Number(alturaRaw.replace(",", "."));
-    if (Number.isNaN(n) || n <= 0 || n >= 10) errores.push(`altura "${alturaRaw}" inválida`);
-    data.altura = !Number.isNaN(n) ? Math.round(n * 100) / 100 : null;
-  } else data.altura = null;
+  data.categoria = (raw.categoria || "").trim();
+  data.cualidades_ataque = (raw.cualidades_ataque || "").trim();
+  data.cualidades_defensa = (raw.cualidades_defensa || "").trim();
+  data.debilidades = (raw.debilidades || "").trim();
 
-  const pesoRaw = (raw.peso || "").trim();
-  if (pesoRaw) {
-    const n = Number(pesoRaw.replace(",", "."));
-    if (Number.isNaN(n) || n <= 0) errores.push(`peso "${pesoRaw}" inválido`);
-    else {
-      const entero = Math.round(n);
-      if (entero !== n) warnings.push(`peso redondeado de ${n} a ${entero} kg (la columna es entera)`);
-      data.peso = entero;
-    }
-  } else data.peso = null;
-
-  const nacRaw = (raw.fecha_nacimiento || "").trim();
-  if (nacRaw) {
-    if (!fechaValida(nacRaw)) errores.push(`fecha_nacimiento "${nacRaw}" debe tener formato YYYY-MM-DD`);
-    data.fecha_nacimiento = fechaValida(nacRaw) ? nacRaw : null;
-  } else data.fecha_nacimiento = null;
-
-  const catRaw = (raw.categoria_origen || "").trim() || categoriaDefault;
-  const categoria = buscarEnLista(catRaw, CATEGORIAS);
-  if (!categoria) errores.push(`categoria_principal "${catRaw}" inválida`);
-  data.categoria_origen = categoria || catRaw;
-
-  const tiraRaw = (raw.tira || "").trim() || tiraDefault;
-  const tira = buscarEnLista(tiraRaw, TIRAS);
-  if (!tira) errores.push(`tira_principal "${tiraRaw}" inválida`);
-  data.tira = tira || tiraRaw;
-
-  data.notas_comentarios = (raw.notas_comentarios || "").trim();
-
-  const dispRaw = (raw.disponibilidad || "").trim();
-  const disponibilidad = dispRaw ? buscarEnLista(dispRaw, ["Disponible", "Duda", "Lesionado"]) : "Disponible";
-  if (dispRaw && !disponibilidad) errores.push(`disponibilidad "${dispRaw}" inválida (usar: Disponible, Duda, Lesionado)`);
-  data.disponibilidad = disponibilidad || dispRaw || "Disponible";
-
-  const detalle = (raw.lesion_detalle || "").trim();
-  const desde = (raw.lesion_desde || "").trim();
-  if (data.disponibilidad !== "Disponible") {
-    if (!detalle) errores.push("lesion_detalle es obligatorio cuando disponibilidad no es Disponible");
-    if (!desde) errores.push("fecha_lesion_desde es obligatoria cuando disponibilidad no es Disponible");
-    else if (!fechaValida(desde)) errores.push(`fecha_lesion_desde "${desde}" debe tener formato YYYY-MM-DD`);
-    data.lesion_detalle = detalle;
-    data.lesion_desde = fechaValida(desde) ? desde : null;
-  } else {
-    data.lesion_detalle = "";
-    data.lesion_desde = null;
+  const video = (raw.video_individual_url || "").trim();
+  if (video && !/^https?:\/\//i.test(video)) {
+    warnings.push(`video_individual_url "${video}" no empieza con http(s), revisá que sea un link válido`);
   }
-
-  const { lista: equiposAdicionales, errores: erroresEquipos } = parseEquiposAdicionales(
-    raw.equipos_adicionales,
-    { categoria: data.categoria_origen, tira: data.tira }
-  );
-  errores.push(...erroresEquipos);
-  data.equipos_adicionales = equiposAdicionales;
+  data.video_individual_url = video;
 
   return { numeroFila, data, errores, warnings, valida: errores.length === 0 };
 }
 
 function descargarPlantilla() {
-  descargarCSV("plantilla_plantel_propio.csv", [CSV_HEADERS_TEMPLATE, ...CSV_FILAS_EJEMPLO]);
+  descargarCSV("plantilla_plantel_rival.csv", [CSV_HEADERS_TEMPLATE, ...CSV_FILAS_EJEMPLO]);
 }
 
-// Carga masiva de Plantel propio desde un .csv: FileReader -> parseo -> previsualización
-// con validación fila por fila -> bulk insert a Supabase de solo las filas válidas.
-export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onCancel, onImported }) {
+// Carga masiva del plantel de un equipo rival desde un .csv: FileReader -> parseo ->
+// previsualización con validación fila por fila -> bulk insert a Supabase de solo las
+// filas válidas, todas asociadas al mismo equipo_rival_id.
+export default function ImportadorCSVRival({ equipoRivalId, onCancel, onImported }) {
   const [fase, setFase] = useState("carga"); // carga | preview | importando | listo
   const [filas, setFilas] = useState([]);
   const [errorArchivo, setErrorArchivo] = useState("");
@@ -215,7 +131,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
           .map((r, idx) => {
             const raw = {};
             campos.forEach((campo, i) => { if (campo) raw[campo] = r[i] ?? ""; });
-            return validarFila(raw, idx + 2, categoriaDefault, tiraDefault);
+            return validarFilaRival(raw, idx + 2);
           });
         setFilas(validadas);
         setFase("preview");
@@ -239,8 +155,8 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
   const importar = async () => {
     setFase("importando");
     setErrorImport("");
-    const payload = validas.map((f) => f.data);
-    const { data, error } = await supabase.from("jugadores").insert(payload).select();
+    const payload = validas.map((f) => ({ ...f.data, equipo_rival_id: equipoRivalId }));
+    const { data, error } = await supabase.from("jugadores_rivales").insert(payload).select();
     if (error) {
       setErrorImport(error.message);
       setFase("preview");
@@ -258,7 +174,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-zinc-800 shrink-0">
-          <h3 className="font-bold text-sm flex items-center gap-2"><Upload size={16} /> Importar plantel desde CSV</h3>
+          <h3 className="font-bold text-sm flex items-center gap-2"><Upload size={16} /> Importar plantel rival desde CSV</h3>
           <button onClick={onCancel} className="text-zinc-500 hover:text-zinc-300 p-1"><X size={16} /></button>
         </div>
 
@@ -266,8 +182,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
           {fase === "carga" && (
             <div className="space-y-3">
               <p className="text-xs text-zinc-400">
-                Las filas que no traigan categoria_principal/tira_principal se cargan con el filtro activo:{" "}
-                <strong>{categoriaDefault} · {tiraDefault}</strong>.
+                Los jugadores importados se agregan al plantel de este equipo rival.
               </p>
               <button onClick={descargarPlantilla} className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300">
                 <Download size={13} /> Descargar plantilla CSV de ejemplo
@@ -311,15 +226,14 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
               </div>
 
               <div className="overflow-x-auto border border-zinc-800 rounded-lg">
-                <table className="w-full text-xs min-w-[640px]">
+                <table className="w-full text-xs min-w-[520px]">
                   <thead className="bg-zinc-950 text-zinc-500">
                     <tr>
                       <th className="text-left px-2 py-1.5">Fila</th>
                       <th className="text-left px-2 py-1.5">Nombre</th>
                       <th className="text-left px-2 py-1.5">Dorsal</th>
                       <th className="text-left px-2 py-1.5">Posición</th>
-                      <th className="text-left px-2 py-1.5">Categoría · Tira</th>
-                      <th className="text-left px-2 py-1.5">Disponibilidad</th>
+                      <th className="text-left px-2 py-1.5">Categoría</th>
                       <th className="text-left px-2 py-1.5">Estado</th>
                     </tr>
                   </thead>
@@ -330,8 +244,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
                         <td className="px-2 py-1.5">{f.data.nombre_apellido || <span className="text-zinc-600">—</span>}</td>
                         <td className="px-2 py-1.5">{f.data.dorsal ?? "—"}</td>
                         <td className="px-2 py-1.5">{f.data.posicion ?? "—"}</td>
-                        <td className="px-2 py-1.5">{f.data.categoria_origen} · {f.data.tira}</td>
-                        <td className="px-2 py-1.5">{f.data.disponibilidad}</td>
+                        <td className="px-2 py-1.5">{f.data.categoria || "—"}</td>
                         <td className="px-2 py-1.5">
                           {f.valida ? (
                             <span className="text-emerald-400">OK{f.warnings.length > 0 ? " *" : ""}</span>
@@ -376,7 +289,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
           {fase === "listo" && resultado && (
             <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
               <CheckCircle2 size={32} className="text-emerald-400" />
-              <p className="text-sm">Se importaron <strong>{resultado.insertados}</strong> jugadores.</p>
+              <p className="text-sm">Se importaron <strong>{resultado.insertados}</strong> jugadores rivales.</p>
               {resultado.omitidas > 0 && (
                 <p className="text-xs text-zinc-500">{resultado.omitidas} filas con errores fueron omitidas.</p>
               )}
