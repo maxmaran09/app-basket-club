@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useId } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
+import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
+import ImportadorCSVPropio from "./ImportadorCSVPropio";
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -21,14 +23,10 @@ const SISTEMAS = {
   cortinas: ["0", "1", "2", "0+Show", "Trap", "Switch", "Ice / Rojo"],
 };
 
-const CATEGORIAS = ["Mayores", "Liga Próximo", "Juveniles", "Cadetes", "Infantiles", "Mini", "Pre-Mini", "Mosquitos"];
-const TIRAS = ["Blanca", "Azul", "Celeste", "Femenino"];
-
 const CARGAS_FISICAS = ["Baja", "Media", "Alta"];
 const LUGARES_FISICOS = ["Cancha", "Gimnasio de pesas", "Mixto"];
 const ENFOQUES_FISICOS = ["Velocidad", "Potencia", "Fuerza", "Resistencia", "Movilidad"];
 
-const POSICIONES = ["Base", "Escolta", "Alero", "Ala-Pivot", "Pivot"];
 const ESTADOS_ASISTENCIA = ["Presente", "Ausente", "Tarde", "Lesionado"];
 const ESTADO_ESTILO = {
   Presente: "bg-emerald-500/20 border-emerald-500/50 text-emerald-300",
@@ -1730,10 +1728,11 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   );
 }
 
-function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador }) {
+function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores }) {
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [tira, setTira] = useState(TIRAS[0]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [medidasTarget, setMedidasTarget] = useState(null);
@@ -1769,9 +1768,14 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
       </div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Jugadores</h1>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
-          <Plus size={15} /> Agregar jugador
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
+            <Upload size={15} /> Importar CSV
+          </button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+            <Plus size={15} /> Agregar jugador
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -1875,6 +1879,15 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           jugador={medidasTarget}
           onCancel={() => setMedidasTarget(null)}
           onSave={async (patch) => { await onUpdateJugador(medidasTarget.id, patch); setMedidasTarget(null); }}
+        />
+      )}
+
+      {showImport && (
+        <ImportadorCSVPropio
+          categoriaDefault={categoria}
+          tiraDefault={tira}
+          onCancel={() => setShowImport(false)}
+          onImported={(nuevos) => { onImportJugadores(nuevos); setShowImport(false); }}
         />
       )}
     </div>
@@ -3237,6 +3250,10 @@ export default function App() {
     setJugadores((prev) => prev.map((j) => (j.id === id ? data : j)));
   };
 
+  const importJugadores = (nuevos) => {
+    setJugadores((prev) => [...prev, ...nuevos]);
+  };
+
   const addEquipoRival = async (eq) => {
     const { data, error } = await supabase.from("equipos_rivales").insert(eq).select().single();
     if (error) { setErrorMsg(error.message); return; }
@@ -3325,7 +3342,7 @@ export default function App() {
               onRenameEvent={(id, title) => updateEvent(id, { title })}
             />
           ) : seccionActiva === "plantel" ? (
-            <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} />
+            <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} />
           ) : seccionActiva === "entrenamientos" ? (
             <EntrenamientosView events={events} onSelectEvent={setActive} />
           ) : seccionActiva === "scouting" ? (
