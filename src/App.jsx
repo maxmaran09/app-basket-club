@@ -15,9 +15,9 @@ const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto"
 const DIAS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 
 const TIPO_ESTILO = {
-  entrenamiento: { bg: "bg-blue-500/15", text: "text-blue-300", dot: "bg-blue-400", label: "Entrenamiento" },
+  entrenamiento: { bg: "bg-cyan-500/15", text: "text-cyan-300", dot: "bg-cyan-400", label: "Entrenamiento" },
   individual: { bg: "bg-teal-500/15", text: "text-teal-300", dot: "bg-teal-400", label: "Individual" },
-  partido: { bg: "bg-orange-500/15", text: "text-orange-300", dot: "bg-orange-400", label: "Partido" },
+  partido: { bg: "bg-brand-500/15", text: "text-brand-300", dot: "bg-brand-400", label: "Partido" },
   libre: { bg: "bg-zinc-700/40", text: "text-zinc-400", dot: "bg-zinc-500", label: "Libre" },
   optativo: { bg: "bg-amber-500/15", text: "text-amber-300", dot: "bg-amber-400", label: "Optativo" },
   especial: { bg: "bg-purple-500/15", text: "text-purple-300", dot: "bg-purple-400", label: "Evento" },
@@ -74,7 +74,7 @@ function jugadorEnEquipo(j, categoria, tira) {
 function Chip({ children, tone = "zinc" }) {
   const map = {
     zinc: "bg-zinc-800 text-zinc-300 border-zinc-700",
-    orange: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+    brand: "bg-brand-500/15 text-brand-300 border-brand-500/30",
     blue: "bg-blue-500/15 text-blue-300 border-blue-500/30",
   };
   return <span className={`inline-block px-2 py-0.5 rounded text-xs border ${map[tone]} mr-1.5 mb-1.5`}>{children}</span>;
@@ -92,8 +92,8 @@ function Section({ icon: Icon, title, children, accent = "text-zinc-400" }) {
   );
 }
 
-function TagPicker({ label, options, selected, onToggle, tone = "orange", soloLectura = false }) {
-  const activeCls = tone === "blue" ? "bg-sky-500/20 border-sky-500/50 text-sky-300" : "bg-orange-500/20 border-orange-500/50 text-orange-300";
+function TagPicker({ label, options, selected, onToggle, tone = "brand", soloLectura = false }) {
+  const activeCls = tone === "blue" ? "bg-sky-500/20 border-sky-500/50 text-sky-300" : "bg-brand-500/20 border-brand-500/50 text-brand-300";
   return (
     <div className="mb-3">
       <p className="text-xs text-zinc-500 mb-1">{label}</p>
@@ -112,7 +112,7 @@ function TagPicker({ label, options, selected, onToggle, tone = "orange", soloLe
   );
 }
 
-function EditableField({ label, icon, value, onSave, accent = "text-blue-400", multiline = false, soloLectura = false }) {
+function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", multiline = false, soloLectura = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -461,7 +461,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
       <div className="flex flex-wrap gap-1 mb-2">
         {TOOLS.map((t) => (
           <button key={t.id} onClick={() => selectTool(t.id)}
-            className={`px-2 py-1 rounded text-xs border ${tool === t.id ? "bg-orange-500/20 border-orange-500/50 text-orange-300" : "bg-zinc-900 border-zinc-700 text-zinc-400"}`}>
+            className={`px-2 py-1 rounded text-xs border ${tool === t.id ? "bg-brand-500/20 border-brand-500/50 text-brand-300" : "bg-zinc-900 border-zinc-700 text-zinc-400"}`}>
             {t.label}
           </button>
         ))}
@@ -640,7 +640,7 @@ function AsistenciaSection({ event, jugadores }) {
   };
 
   return (
-    <Section icon={Users} title="Asistencia y carga física (RPE)" accent="text-blue-400">
+    <Section icon={Users} title="Asistencia y carga física (RPE)" accent="text-cyan-400">
       {loadingAsist ? (
         <p className="text-sm text-zinc-500">Cargando plantel…</p>
       ) : roster.length === 0 ? (
@@ -666,7 +666,7 @@ function AsistenciaSection({ event, jugadores }) {
             {roster.map((j) => (
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-orange-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                  <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
                   <span className="text-sm text-zinc-200 flex-1">
                     {j.nombre_apellido}
                     {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
@@ -711,7 +711,7 @@ function AsistenciaSection({ event, jugadores }) {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={guardar} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Guardar Asistencia y Carga</button>
+            <button onClick={guardar} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar Asistencia y Carga</button>
             {saved && <span className="text-emerald-400 text-xs">Guardado ✓</span>}
           </div>
         </>
@@ -843,14 +843,14 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
   };
 
   return (
-    <Section icon={Clock} title="Bloque de cancha" accent="text-blue-400">
+    <Section icon={Clock} title="Bloque de cancha" accent="text-cyan-400">
       <div className="space-y-2">
         {bloques.map((b) => {
           const diagrams = b.diagrams || [];
           return (
             <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
               <div className="flex gap-3">
-                <div className="text-blue-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
+                <div className="text-cyan-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
                 <div className="flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -858,7 +858,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                       <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
                     </div>
                     {!soloLectura && (
-                      <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400 shrink-0">
+                      <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400 shrink-0">
                         <Copy size={13} /> Duplicar
                       </button>
                     )}
@@ -875,7 +875,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                             <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
                             {!soloLectura && (
                               <>
-                                <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-blue-400 hover:text-blue-300 text-left">Editar</button>
+                                <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
                                 <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
                               </>
                             )}
@@ -887,7 +887,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                     {soloLectura ? null : editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
                       <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
                     ) : (
-                      <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+                      <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
                         <PenLine size={12} /> Agregar cancha
                       </button>
                     )}
@@ -908,12 +908,12 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
           </div>
           <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
           <div className="flex gap-2">
-            <button onClick={addBloque} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
+            <button onClick={addBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
             <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
           </div>
         </div>
       ) : (
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-blue-400 text-sm mt-2 hover:text-blue-300">
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm mt-2 hover:text-cyan-300">
           <Plus size={15} /> Agregar bloque de cancha
         </button>
       )}
@@ -943,7 +943,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores, rol }
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-blue-400 mb-1">
+      <div className="flex items-center gap-2 text-cyan-400 mb-1">
         <Dumbbell size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Entrenamiento</span>
       </div>
@@ -1163,7 +1163,7 @@ function VideoPlayerModal({ url, onClose }) {
         ) : (
           <p className="text-sm text-zinc-400 p-4">
             No pude interpretar este link como video de YouTube.{" "}
-            <a href={url} target="_blank" rel="noreferrer" className="text-orange-400 underline">Abrirlo en una pestaña nueva</a>.
+            <a href={url} target="_blank" rel="noreferrer" className="text-brand-400 underline">Abrirlo en una pestaña nueva</a>.
           </p>
         )}
       </div>
@@ -1278,7 +1278,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-orange-400 mb-1">
+      <div className="flex items-center gap-2 text-brand-400 mb-1">
         <Trophy size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">{jornada || "Partido"}</span>
       </div>
@@ -1298,13 +1298,13 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
             <input value={citacion} onChange={(e) => setCitacion(e.target.value)} placeholder="Horario de citación (ej: 19:15 hs)" className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           </div>
           <div className="flex gap-2">
-            <button onClick={guardarHeader} className="bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={guardarHeader} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
             <button onClick={() => setEditHeader(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <Chip tone="orange">{condicion}</Chip>
+          <Chip tone="brand">{condicion}</Chip>
           <Chip><Clock size={11} className="inline mr-1 -mt-0.5" />{horario || "sin horario"}</Chip>
           <Chip>Citación {citacion || "—"}</Chip>
           <Chip>{event.date}</Chip>
@@ -1329,7 +1329,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
         )}
       </div>
 
-      <Section icon={Shield} title="Scouting colectivo" accent="text-orange-400">
+      <Section icon={Shield} title="Scouting colectivo" accent="text-brand-400">
         {!equipoRival ? (
           <p className="text-sm text-zinc-500">Asigná un rival arriba para ver su scouting (se carga desde Scouting Hub).</p>
         ) : (
@@ -1340,7 +1340,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
         )}
       </Section>
 
-      <Section icon={Users} title="Plantel rival" accent="text-orange-400">
+      <Section icon={Users} title="Plantel rival" accent="text-brand-400">
         {!equipoRival ? (
           <p className="text-sm text-zinc-500">—</p>
         ) : loadingRival ? (
@@ -1352,7 +1352,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
             {jugadoresRivales.map((j) => (
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+                  <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
                   <span className="font-medium text-sm">{j.nombre_apellido}</span>
                   <VideoLinkButton url={j.video_individual_url} size={13} />
                   <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
@@ -1366,23 +1366,23 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
         )}
       </Section>
 
-      <Section icon={Swords} title="Plan de juego — ataque" accent="text-orange-400">
+      <Section icon={Swords} title="Plan de juego — ataque" accent="text-brand-400">
         <textarea value={planAtaque} onChange={(e) => setPlanAtaque(e.target.value)} onBlur={() => onUpdate({ planAtaque })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
         <TagPicker label="Transición" options={SISTEMAS.transicion} selected={ataqueTags} onToggle={onToggleTransicion} soloLectura={soloLectura} />
         <TagPicker label="Set ofensivo" options={SISTEMAS.set} selected={setTags} onToggle={onToggleSet} soloLectura={soloLectura} />
         {event.ataque?.claves?.length > 0 && (
           <ul className="space-y-1 mt-2">
-            {event.ataque.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-orange-500" />{c}</li>)}
+            {event.ataque.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-brand-400" />{c}</li>)}
           </ul>
         )}
       </Section>
 
-      <Section icon={Shield} title="Plan de juego — defensa" accent="text-orange-400">
+      <Section icon={Shield} title="Plan de juego — defensa" accent="text-brand-400">
         <textarea value={planDefensa} onChange={(e) => setPlanDefensa(e.target.value)} onBlur={() => onUpdate({ planDefensa })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
         <TagPicker label="Defensa de cortinas" options={SISTEMAS.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
         {event.defensa?.claves?.length > 0 && (
           <ul className="space-y-1 mb-2 mt-2">
-            {event.defensa.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-orange-500" />{c}</li>)}
+            {event.defensa.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-brand-400" />{c}</li>)}
           </ul>
         )}
         {event.defensa?.directos?.length > 0 && (
@@ -1508,8 +1508,8 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
           const isToday = toKey(year, month, d) === todayKey;
           return (
             <button key={i} onClick={() => setSelectedDay(d)}
-              className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col ${selectedDay === d ? "border-orange-500/60 bg-orange-500/5" : "border-zinc-800 hover:border-zinc-700"} ${isToday ? "ring-1 ring-zinc-500" : ""}`}>
-              <span className={`text-xs ${isToday ? "text-orange-300 font-bold" : "text-zinc-400"}`}>{d}</span>
+              className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col ${selectedDay === d ? "border-brand-500/60 bg-brand-500/5" : "border-zinc-800 hover:border-zinc-700"} ${isToday ? "ring-1 ring-zinc-500" : ""}`}>
+              <span className={`text-xs ${isToday ? "text-brand-300 font-bold" : "text-zinc-400"}`}>{d}</span>
               <div className="flex flex-wrap gap-0.5 mt-auto">
                 {evs.slice(0, 3).map((e) => <span key={e.id} className={`w-1.5 h-1.5 rounded-full ${TIPO_ESTILO[e.type].dot}`} />)}
               </div>
@@ -1599,7 +1599,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                     setNewEv({ title: "", type: "entrenamiento", rivalId: "" });
                     setShowAdd(false);
                   }}
-                  className="bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded"
+                  className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded"
                 >
                   Guardar
                 </button>
@@ -1760,7 +1760,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
           )}
         </div>
         <div className="flex gap-2 mt-3">
-          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugador ? "Guardar cambios" : "Guardar jugador"}</button>
+          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugador ? "Guardar cambios" : "Guardar jugador"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
@@ -1858,7 +1858,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
             <Upload size={15} /> Importar CSV
           </button>
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
             <Plus size={15} /> Agregar jugador
           </button>
         </div>
@@ -1880,7 +1880,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         {filtered.map((j) => (
           <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+              <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
               <span className="font-medium text-sm">{j.nombre_apellido}</span>
               {(j.categoria_origen !== categoria || j.tira !== tira) && (
                 <span className="text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
@@ -2084,7 +2084,7 @@ function EquipoRivalFormModal({ equipo, onCancel, onSave }) {
           </div>
         </div>
         <div className="flex gap-2 mt-3">
-          <button disabled={!form.nombre_club || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{equipo ? "Guardar cambios" : "Guardar equipo"}</button>
+          <button disabled={!form.nombre_club || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{equipo ? "Guardar cambios" : "Guardar equipo"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
@@ -2138,7 +2138,7 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
           </div>
         </div>
         <div className="flex gap-2 mt-3">
-          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugadorRival ? "Guardar cambios" : "Guardar jugador"}</button>
+          <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugadorRival ? "Guardar cambios" : "Guardar jugador"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
@@ -2241,15 +2241,15 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-orange-400 mb-1">
+      <div className="flex items-center gap-2 text-brand-400 mb-1">
         <Shield size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Ficha de rival</span>
       </div>
       <h1 className="text-2xl font-bold mb-6">{equipo.nombre_club}</h1>
 
-      <EditableField label="Notas colectivas" icon={Shield} accent="text-orange-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline soloLectura={soloLectura} />
+      <EditableField label="Notas colectivas" icon={Shield} accent="text-brand-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline soloLectura={soloLectura} />
 
-      <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-orange-400">
+      <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-brand-400">
         {promedioEquipo ? (
           <PromedioMiniStats p={promedioEquipo} />
         ) : (
@@ -2257,7 +2257,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         )}
       </Section>
 
-      <Section icon={Youtube} title="Video colectivo" accent="text-orange-400">
+      <Section icon={Youtube} title="Video colectivo" accent="text-brand-400">
         <div className="flex items-center gap-2 mb-2">
           <Youtube size={14} className="text-zinc-500 shrink-0" />
           <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onBlur={() => onUpdateEquipo({ video_colectivo_url: videoUrl })} disabled={soloLectura} placeholder="Link de YouTube — video colectivo" className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 disabled:opacity-80" />
@@ -2265,7 +2265,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         <VideoLinkButton url={videoUrl} label="Ver Video de Partido" />
       </Section>
 
-      <Section icon={Users} title="Plantel rival" accent="text-orange-400">
+      <Section icon={Users} title="Plantel rival" accent="text-brand-400">
         {loading ? (
           <p className="text-sm text-zinc-500">Cargando plantel…</p>
         ) : (
@@ -2273,7 +2273,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
             {jugadoresRivales.map((j) => (
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-orange-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+                  <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
                   <span className="font-medium text-sm">{j.nombre_apellido}</span>
                   <VideoLinkButton url={j.video_individual_url} size={13} />
                   <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
@@ -2294,7 +2294,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         )}
         {!soloLectura && (
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowAddJugador(true)} className="flex items-center gap-1.5 text-orange-400 text-sm hover:text-orange-300">
+            <button onClick={() => setShowAddJugador(true)} className="flex items-center gap-1.5 text-brand-400 text-sm hover:text-brand-300">
               <Plus size={15} /> Agregar jugador rival
             </button>
             <button onClick={() => setShowImportJugadores(true)} className="flex items-center gap-1.5 text-zinc-500 text-sm hover:text-zinc-300">
@@ -2358,7 +2358,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Equipos rivales</h1>
         {!soloLectura && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-1.5 rounded">
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
             <Plus size={15} /> Agregar equipo rival
           </button>
         )}
@@ -2776,7 +2776,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       {!soloLectura && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
-          <label className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
+          <label className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
             <Upload size={15} /> Elegir PDF de estadísticas
             <input type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
           </label>
@@ -2850,7 +2850,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
           </div>
 
           <div className="border-t border-zinc-800 pt-3 mb-5">
-            <h3 className="text-sm font-bold text-orange-300 mb-2">Equipo Visitante{preview.equipoPropio === "VISITANTE" ? " (nosotros)" : ""}</h3>
+            <h3 className="text-sm font-bold text-zinc-300 mb-2">Equipo Visitante{preview.equipoPropio === "VISITANTE" ? " (nosotros)" : ""}</h3>
             <div className="flex gap-2 mb-3">
               <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -3093,11 +3093,11 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       </div>
 
       {/* 1. Banner de cuenta regresiva */}
-      <div className="bg-gradient-to-r from-orange-600/20 to-zinc-900 border border-orange-500/30 rounded-xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap">
+      <div className="bg-gradient-to-r from-brand-600/20 to-zinc-900 border border-brand-500/30 rounded-xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap">
         {proximoPartido ? (
           <>
             <div className="min-w-0">
-              <p className="text-xs text-orange-300 font-bold uppercase tracking-wide mb-1">
+              <p className="text-xs text-brand-300 font-bold uppercase tracking-wide mb-1">
                 {diasParaPartido === 0 ? "Partido hoy" : diasParaPartido === 1 ? "Partido mañana" : `Faltan ${diasParaPartido} días`}
               </p>
               <p className="text-lg font-bold truncate">vs {rivalProximo?.nombre_club || proximoPartido.rival || "Rival a definir"}</p>
@@ -3107,7 +3107,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
                 {proximoPartido.condicion ? ` · ${proximoPartido.condicion}` : ""}
               </p>
             </div>
-            <button onClick={() => onSelectEvent(proximoPartido)} className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm px-3 py-2 rounded shrink-0">
+            <button onClick={() => onSelectEvent(proximoPartido)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-2 rounded shrink-0">
               <Swords size={14} /> Ver informe táctico
             </button>
           </>
@@ -3193,7 +3193,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3 text-blue-400">
+          <div className="flex items-center gap-2 mb-3 text-cyan-400">
             <Clock size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Entrenamiento de hoy</h3>
           </div>
@@ -3201,7 +3201,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
             <p className="text-sm text-zinc-500">No hay entrenamiento cargado hoy para {categoria} · {tira}.</p>
           ) : (
             <>
-              <button onClick={() => onSelectEvent(entrenoHoy)} className="text-sm font-medium text-blue-300 hover:text-blue-200 mb-2 block truncate text-left">
+              <button onClick={() => onSelectEvent(entrenoHoy)} className="text-sm font-medium text-cyan-300 hover:text-cyan-200 mb-2 block truncate text-left">
                 {entrenoHoy.title}
               </button>
               {(entrenoHoy.bloques || []).length === 0 ? (
@@ -3210,7 +3210,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
                 <div className="space-y-1.5">
                   {entrenoHoy.bloques.map((b) => (
                     <div key={b.id} className="flex gap-2 text-sm">
-                      <span className="text-blue-300 font-mono text-xs whitespace-nowrap w-16 shrink-0 pt-0.5">{b.inicio}–{b.fin}</span>
+                      <span className="text-cyan-300 font-mono text-xs whitespace-nowrap w-16 shrink-0 pt-0.5">{b.inicio}–{b.fin}</span>
                       <span className="text-zinc-300 truncate">{b.titulo}</span>
                     </div>
                   ))}
@@ -3224,7 +3224,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       {/* 4. Bloque inferior analitico: lideres del ultimo partido + tendencia */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3 text-orange-400">
+          <div className="flex items-center gap-2 mb-3 text-brand-400">
             <Trophy size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Líderes — último partido</h3>
           </div>
@@ -3244,7 +3244,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3 text-orange-400">
+          <div className="flex items-center gap-2 mb-3 text-brand-400">
             <BarChart3 size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Tendencia — últimos 3 partidos</h3>
           </div>
@@ -3446,7 +3446,7 @@ export default function App() {
                 onClick={() => irASeccion(item.id)}
                 title={sidebarCollapsed ? item.label : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${sidebarCollapsed ? "justify-center px-0" : ""} ${
-                  isActive ? "bg-orange-500/15 text-orange-300" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  isActive ? "bg-brand-500/15 text-brand-300" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
                 }`}
               >
                 <Icon size={18} />
@@ -3556,7 +3556,7 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => irASeccion(item.id)}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 ${isActive ? "text-orange-400" : "text-zinc-500"}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 ${isActive ? "text-brand-300" : "text-zinc-500"}`}
             >
               <Icon size={24} />
               <span className="text-[10px] font-medium">{item.label}</span>

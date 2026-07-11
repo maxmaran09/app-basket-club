@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+/* Azul de marca de Náutico Hacoaj (muestreado de public/escudo-hacoaj.png, #01215A es el
+   navy real del escudo). Reemplaza al naranja como color principal/CTA de la app; el naranja
+   queda libre para usarlo solo como acento del módulo Partido. Escala propia porque el navy
+   real es demasiado oscuro para usarlo tal cual como fondo de botón sobre zinc-950. */
+@theme {
+  --color-brand-300: #a7c4f2;
+  --color-brand-400: #6e93e8;
+  --color-brand-500: #2c5fd6;
+  --color-brand-600: #1c46b3;
+  --color-brand-700: #123a8f;
+  --color-brand-950: #01215a;
+}

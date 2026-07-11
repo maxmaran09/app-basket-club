@@ -191,7 +191,7 @@ export default function ImportadorCSVRival({ equipoRivalId, onCancel, onImported
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${dragOver ? "border-orange-500 bg-orange-500/5" : "border-zinc-700 hover:border-zinc-600"}`}
+                className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${dragOver ? "border-brand-500 bg-brand-500/5" : "border-zinc-700 hover:border-zinc-600"}`}
               >
                 <FileText size={28} className="text-zinc-500" />
                 <span className="text-sm text-zinc-300 text-center">Tocá para elegir un archivo .csv o arrastralo acá</span>
@@ -304,7 +304,7 @@ export default function ImportadorCSVRival({ equipoRivalId, onCancel, onImported
               <button
                 onClick={importar}
                 disabled={validas.length === 0}
-                className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm px-3 py-1.5 rounded"
+                className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm px-3 py-1.5 rounded"
               >
                 Importar {validas.length} jugador{validas.length === 1 ? "" : "es"}
               </button>
