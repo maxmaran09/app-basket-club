@@ -15,7 +15,7 @@ El sistema ya está en producción, en uso real por el staff:
 - **Deploy**: GitHub ([maxmaran09/app-basket-club](https://github.com/maxmaran09/app-basket-club)) → Vercel (front, redeploy automático en cada push) + Supabase (DB + Auth). `vercel.json` con rewrite de SPA para que las rutas de React Router no tiren 404 al refrescar.
 - **Módulos implementados y deployados**: Login/Auth con roles, Inicio (dashboard), Calendario, Entrenamientos (con bloques de cancha, RPE de carga física), Individual (planes 1 a 1 por jugador), Plantel (con importador CSV), Scouting Hub (con partidos, plan de juego, e importador CSV de plantel rival), Estadísticas (carga de PDF de la CABB). Detalle de cada uno más abajo.
 - **Navegación**: sidebar colapsable en desktop / bottom bar en mobile, con hasta 6 secciones (Inicio, Calendario, Plantel, Entrenamientos, Scouting, Estadísticas) filtradas según el rol logueado — ver "Autenticación y Roles". Inicio es la pantalla que abre por defecto para los roles que la tienen.
-- **Branding**: escudo de Náutico Hacoaj ya cargado; paleta de colores del club todavía no definida (ver Notas de diseño).
+- **Branding**: escudo de Náutico Hacoaj ya cargado, y paleta de colores oficial ya aplicada en toda la app (ver Notas de diseño).
 - Workflow de trabajo: cambios se prueban localmente (`npm run dev`), el dueño del proyecto corre el SQL en Supabase cuando aplica, y el commit/push a git se hace solo cuando lo pide explícitamente — nunca de forma proactiva.
 
 ## Autenticación y Roles (RBAC)
@@ -91,4 +91,6 @@ Módulo implementado (adelantado respecto a la prioridad original de Fase 3). Re
 
 ## Notas de diseño
 
-El escudo de Náutico Hacoaj ya está cargado en la app. Todavía no se definió la paleta de colores final del club — la app sigue usando un estilo oscuro (zinc/naranja) funcional, no definitivo, hasta que se sumen los colores oficiales.
+El escudo de Náutico Hacoaj ya está cargado en la app. La paleta ya no es un placeholder: el color principal (`brand-300` a `brand-950` en `src/index.css`, vía `@theme` de Tailwind v4) es el azul del club, muestreado directo del escudo (`#01215A`) — se usa en navegación, botones principales, Login, y en Partido/Scouting Hub (que antes tenían su propio naranja). El fondo se mantiene oscuro (zinc-950/900).
+
+Colores por tipo de evento/módulo (siguen existiendo aparte del azul de marca, para poder distinguir de un vistazo qué es cada cosa en el Calendario): Entrenamiento = cyan, Individual = teal, Partido = azul de marca, Libre = gris, Optativo = ámbar, Especial/Evento = púrpura. Los colores semánticos de estado (semáforo RPE 1-10, Disponible = verde, Lesionado = rojo, Duda = ámbar) no se tocaron — no son de marca, son códigos de significado.
