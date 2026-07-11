@@ -2945,6 +2945,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
   const [notas, setNotas] = useState([]);
   const [loadingNotas, setLoadingNotas] = useState(true);
   const [notaNueva, setNotaNueva] = useState("");
+  const [notaAbierta, setNotaAbierta] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3153,7 +3154,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
               notas.map((n) => (
                 <div key={n.id} className="flex items-center gap-1.5 text-xs text-zinc-300">
                   <button onClick={() => resolverNota(n.id)} title="Marcar resuelta" className="text-zinc-600 hover:text-emerald-400 shrink-0"><X size={11} /></button>
-                  <span className="truncate">{n.texto}</span>
+                  <button onClick={() => setNotaAbierta(n)} className="flex-1 min-w-0 truncate text-left hover:text-zinc-100">{n.texto}</button>
                 </div>
               ))
             )}
@@ -3275,6 +3276,27 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
           )}
         </div>
       </div>
+
+      {notaAbierta && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setNotaAbierta(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[80vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-sm flex items-center gap-1.5"><MessageSquare size={14} /> Nota del staff</h3>
+              <button onClick={() => setNotaAbierta(null)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+            </div>
+            <p className="text-sm text-zinc-200 whitespace-pre-wrap">{notaAbierta.texto}</p>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => { resolverNota(notaAbierta.id); setNotaAbierta(null); }}
+                className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs px-3 py-1.5 rounded"
+              >
+                <X size={12} /> Marcar resuelta
+              </button>
+              <button onClick={() => setNotaAbierta(null)} className="text-zinc-400 text-xs px-3 py-1.5">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
