@@ -1907,20 +1907,24 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
     onUpdateJugador(jugador.id, { evaluaciones_pfs: next });
   };
 
+  // Promedios de ESTA temporada puntual (no de la carrera completa del jugador) -- ver
+  // supabase/schema_estadisticas_temporadas.sql, vista_promedios_jugador ahora agrupa tambien
+  // por temporada_id.
   useEffect(() => {
-    if (jugadores.length === 0) return;
+    if (jugadores.length === 0 || !temporadaId) { setPromedios({}); return; }
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from("vista_promedios_jugador")
         .select("*")
-        .in("jugador_id", jugadores.map((j) => j.id));
+        .in("jugador_id", jugadores.map((j) => j.id))
+        .eq("temporada_id", temporadaId);
       if (!cancelled && !error && data) {
         setPromedios(Object.fromEntries(data.map((p) => [p.jugador_id, p])));
       }
     })();
     return () => { cancelled = true; };
-  }, [jugadores]);
+  }, [jugadores, temporadaId]);
 
   const puedeEditar = esTemporadaActiva;
   const listaMostrada = verBaja ? jugadoresBaja : esTemporadaActiva ? filtered : historico;
@@ -2419,11 +2423,12 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
       if (!error) setJugadoresRivales(data);
       setLoading(false);
 
-      if (!error && data.length > 0) {
+      if (!error && data.length > 0 && equipo.temporada_id) {
         const { data: proms, error: errProms } = await supabase
           .from("vista_promedios_jugador")
           .select("*")
-          .in("jugador_rival_id", data.map((j) => j.id));
+          .in("jugador_rival_id", data.map((j) => j.id))
+          .eq("temporada_id", equipo.temporada_id);
         if (!cancelled && !errProms && proms) {
           setPromediosJugadores(Object.fromEntries(proms.map((p) => [p.jugador_rival_id, p])));
         }
@@ -2432,10 +2437,13 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
     return () => { cancelled = true; };
   }, [equipo.id]);
 
+  // Promedios de ESTA temporada del rival, no de todos los partidos historicos que se le hayan
+  // cargado alguna vez.
   useEffect(() => {
+    if (!equipo.temporada_id) { setPromedioEquipo(null); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("vista_promedios_equipo").select("*").eq("equipo_rival_id", equipo.id).maybeSingle();
+      const { data, error } = await supabase.from("vista_promedios_equipo").select("*").eq("equipo_rival_id", equipo.id).eq("temporada_id", equipo.temporada_id).maybeSingle();
       if (!cancelled && !error) setPromedioEquipo(data);
     })();
     return () => { cancelled = true; };
@@ -2882,18 +2890,17 @@ function EquipoTotalsRow({ label, totales, onChange }) {
 
 // Selects compactos para asignar a mano la Categoria/Tira de un partido viejo (cargado antes de
 // que existiera la matriz), directamente en la fila del historial.
-function AsignarMatrizPartido({ partido, defaultCategoria, defaultTira, onAsignar }) {
-  const [cat, setCat] = useState(partido.categoria_equipo || defaultCategoria);
-  const [tir, setTir] = useState(partido.tira_equipo || defaultTira);
+function AsignarMatrizPartido({ partido, temporadas, defaultTemporadaId, onAsignar }) {
+  const [temporadaId, setTemporadaIdLocal] = useState(partido.temporada_id || defaultTemporadaId || "");
   return (
     <div className="flex items-center gap-1">
-      <select value={cat} onChange={(e) => setCat(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100">
-        {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+      <select value={temporadaId} onChange={(e) => setTemporadaIdLocal(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100">
+        <option value="">— Elegir temporada —</option>
+        {temporadas.map((t) => (
+          <option key={t.id} value={t.id}>{t.categoria} · {t.tira} — {t.nombre_competencia} {t.anio}</option>
+        ))}
       </select>
-      <select value={tir} onChange={(e) => setTir(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100">
-        {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
-      <button onClick={() => onAsignar(partido.id, cat, tir)} className="text-xs text-brand-400 hover:text-brand-300 px-1">Asignar</button>
+      <button disabled={!temporadaId} onClick={() => onAsignar(partido.id, temporadaId)} className="text-xs text-brand-400 hover:text-brand-300 px-1 disabled:opacity-40">Asignar</button>
     </div>
   );
 }
@@ -2906,8 +2913,14 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [historial, setHistorial] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
-  const { categoria, tira, setCategoria, setTira } = useTeam();
+  const {
+    categoria, tira, setCategoria, setTira,
+    temporadas, temporadasDelEquipo, temporadaId, temporadaSeleccionada, esTemporadaActiva,
+    setTemporadaId, refrescarTemporadas,
+  } = useTeam();
+  const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
   const [verSinAsignar, setVerSinAsignar] = useState(false);
+  const [sinAsignar, setSinAsignar] = useState([]);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
   const [aliasEquipo, setAliasEquipo] = useState({});
@@ -2951,14 +2964,29 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     await supabase.from("alias_jugador_rival").upsert({ nombre_pdf: norm, equipo_rival_id: equipoRivalId, jugador_rival_id: jugadorRivalId }, { onConflict: "nombre_pdf,equipo_rival_id" });
   };
 
-  const fetchHistorial = async () => {
+  // Trae solo los partidos de la temporada actualmente seleccionada (no todo el club) -- a
+  // diferencia de jugadores/equiposRivales, nada mas en la app necesita ver el historial de
+  // otro equipo al mismo tiempo, asi que alcanza con un fetch acotado que se repite cuando
+  // cambia la temporada.
+  const fetchHistorial = async (idTemporada) => {
+    if (!idTemporada) { setHistorial([]); setLoadingHistorial(false); return; }
     setLoadingHistorial(true);
-    const { data, error } = await supabase.from("partidos_stats").select("*").order("fecha", { ascending: false });
+    const { data, error } = await supabase.from("partidos_stats").select("*").eq("temporada_id", idTemporada).order("fecha", { ascending: false });
     if (!error) setHistorial(data);
     setLoadingHistorial(false);
   };
 
-  useEffect(() => { fetchHistorial(); }, []);
+  useEffect(() => { fetchHistorial(temporadaId); }, [temporadaId]);
+
+  useEffect(() => {
+    if (!verSinAsignar) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("partidos_stats").select("*").is("temporada_id", null).order("fecha", { ascending: false });
+      if (!cancelled && !error) setSinAsignar(data || []);
+    })();
+    return () => { cancelled = true; };
+  }, [verSinAsignar]);
 
   useEffect(() => {
     const id = preview?.equipoLocalRivalId;
@@ -3098,6 +3126,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
   const guardar = async () => {
     if (!preview) return;
+    if (!temporadaId) { setSaveMsg("Error: no hay una temporada activa para asignarle este partido."); return; }
     setSaving(true);
     setSaveMsg("");
     const { data: partido, error: errPartido } = await supabase
@@ -3106,8 +3135,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         fecha: preview.fecha,
         torneo: preview.torneo || null,
         categoria: preview.categoria || null,
-        categoria_equipo: categoria,
-        tira_equipo: tira,
+        temporada_id: temporadaId,
         equipo_local: preview.equipoLocal,
         equipo_visitante: preview.equipoVisitante,
         resultado_local: preview.resultadoLocal === "" ? null : Number(preview.resultadoLocal),
@@ -3158,7 +3186,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
     setSaveMsg("Guardado ✓");
     setPreview(null);
-    fetchHistorial();
+    fetchHistorial(temporadaId);
     setSaving(false);
   };
 
@@ -3167,14 +3195,14 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     if (!error) setHistorial((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const asignarMatrizPartido = async (id, cat, tir) => {
-    const { data, error } = await supabase.from("partidos_stats").update({ categoria_equipo: cat, tira_equipo: tir }).eq("id", id).select().single();
-    if (!error) setHistorial((prev) => prev.map((p) => (p.id === id ? data : p)));
+  const asignarTemporadaPartido = async (id, idTemporada) => {
+    const { error } = await supabase.from("partidos_stats").update({ temporada_id: idTemporada }).eq("id", id);
+    if (!error) setSinAsignar((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira);
-  const sinAsignar = historial.filter((p) => !p.categoria_equipo || !p.tira_equipo);
-  const historialMostrado = verSinAsignar ? sinAsignar : historial.filter((p) => p.categoria_equipo === categoria && p.tira_equipo === tira);
+  const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.temporada_id === temporadaId);
+  const historialMostrado = verSinAsignar ? sinAsignar : historial;
+  const puedeEditar = !soloLectura && (verSinAsignar || esTemporadaActiva);
 
   return (
     <div className="max-w-5xl mx-auto text-zinc-100">
@@ -3186,11 +3214,11 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       {verSinAsignar ? (
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-zinc-400">Partidos sin categoría/tira asignada</p>
+          <p className="text-sm text-zinc-400">Partidos sin temporada asignada</p>
           <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           <select value={categoria} onChange={(e) => setCategoria(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
             {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -3199,15 +3227,36 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
             className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
             {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          {sinAsignar.length > 0 && (
-            <button onClick={() => setVerSinAsignar(true)} className="text-xs text-amber-400 hover:text-amber-300">
-              Ver sin asignar ({sinAsignar.length})
-            </button>
+          {temporadasDelEquipo.length > 1 && (
+            <select value={temporadaId ?? ""} onChange={(e) => setTemporadaId(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {temporadasDelEquipo.map((t) => (
+                <option key={t.id} value={t.id}>{t.nombre_competencia} {t.anio}{t.activa ? " (activa)" : ""}</option>
+              ))}
+            </select>
           )}
+          {!soloLectura && esTemporadaActiva && (
+            <button onClick={() => setShowNuevaTemporada(true)} className="text-xs text-brand-400 hover:text-brand-300">+ Nueva temporada</button>
+          )}
+          <button onClick={() => setVerSinAsignar(true)} className="text-xs text-zinc-500 hover:text-zinc-300 ml-auto">Ver sin asignar</button>
         </div>
       )}
 
-      {!soloLectura && (
+      {!verSinAsignar && !esTemporadaActiva && temporadaSeleccionada && (
+        <p className="text-xs text-amber-400 mb-3">
+          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa) — solo lectura.
+        </p>
+      )}
+
+      {!verSinAsignar && !temporadaId && (
+        <p className="text-sm text-amber-400 mb-3">
+          Todavía no hay ninguna temporada creada para {categoria} · {tira}.
+          {!soloLectura && (
+            <button onClick={() => setShowNuevaTemporada(true)} className="ml-1 text-brand-400 hover:text-brand-300 underline">Creá la primera</button>
+          )}
+        </p>
+      )}
+
+      {puedeEditar && !verSinAsignar && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <label className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
             <Upload size={15} /> Elegir PDF de estadísticas
@@ -3218,7 +3267,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         </div>
       )}
 
-      {!soloLectura && preview && (
+      {puedeEditar && !verSinAsignar && preview && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-bold text-zinc-100 mb-3">Vista previa — revisá y corregí antes de guardar</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
@@ -3321,7 +3370,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
           <p className="text-sm text-zinc-500">Cargando…</p>
         ) : historialMostrado.length === 0 ? (
           <p className="text-sm text-zinc-500">
-            {verSinAsignar ? "No hay partidos sin categoría/tira asignada." : "Todavía no cargaste ningún partido para esta categoría/tira."}
+            {verSinAsignar ? "No hay partidos sin temporada asignada." : "Todavía no cargaste ningún partido para esta temporada."}
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -3332,14 +3381,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
                   {p.equipo_local} {p.resultado_local ?? "-"} vs {p.resultado_visitante ?? "-"} {p.equipo_visitante}
                 </span>
                 {p.categoria && <Chip>{p.categoria}</Chip>}
-                {p.categoria_equipo && p.tira_equipo ? (
-                  <Chip tone="brand">{p.categoria_equipo} · {p.tira_equipo}</Chip>
-                ) : !soloLectura ? (
-                  <AsignarMatrizPartido partido={p} defaultCategoria={categoria} defaultTira={tira} onAsignar={asignarMatrizPartido} />
-                ) : (
-                  <Chip tone="amber">Sin categoría/tira</Chip>
+                {verSinAsignar && !soloLectura && (
+                  <AsignarMatrizPartido partido={p} temporadas={temporadas} defaultTemporadaId={temporadaId} onAsignar={asignarTemporadaPartido} />
                 )}
-                {!soloLectura && (
+                {puedeEditar && (
                   <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
                 )}
               </div>
@@ -3347,6 +3392,20 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
           </div>
         )}
       </Section>
+
+      {showNuevaTemporada && (
+        <NuevaTemporadaModal
+          categoria={categoria}
+          tira={tira}
+          temporadaActivaActual={temporadasDelEquipo.find((t) => t.activa) || null}
+          onCancel={() => setShowNuevaTemporada(false)}
+          onCreada={async (nuevaId) => {
+            await refrescarTemporadas();
+            setTemporadaId(nuevaId);
+            setShowNuevaTemporada(false);
+          }}
+        />
+      )}
     </div>
   );
 }
