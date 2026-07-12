@@ -17,6 +17,7 @@ create table if not exists public.jugadores (
   dorsal integer,
   nombre_apellido text not null,
   posicion text check (posicion in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
+  posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
   altura numeric(3,2),
   peso integer,
   fecha_nacimiento date,
@@ -41,6 +42,7 @@ create table if not exists public.jugadores (
 alter table public.jugadores add column if not exists fecha_nacimiento date;
 alter table public.jugadores drop column if exists edad;
 alter table public.jugadores add column if not exists equipos_adicionales jsonb not null default '[]'::jsonb;
+alter table public.jugadores add column if not exists posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot'));
 
 create index if not exists jugadores_categoria_tira_idx on public.jugadores (categoria_origen, tira);
 

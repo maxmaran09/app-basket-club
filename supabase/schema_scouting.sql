@@ -46,6 +46,7 @@ create table if not exists public.jugadores_rivales (
   dorsal integer,
   nombre_apellido text not null,
   posicion text check (posicion in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
+  posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
   categoria text,
   cualidades_ataque text,
   cualidades_defensa text,
@@ -54,6 +55,9 @@ create table if not exists public.jugadores_rivales (
 
   id_estadistico_externo uuid
 );
+
+-- Por si esta tabla ya existia de una corrida anterior: seguro de correr siempre.
+alter table public.jugadores_rivales add column if not exists posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot'));
 
 create index if not exists jugadores_rivales_equipo_idx on public.jugadores_rivales (equipo_rival_id);
 

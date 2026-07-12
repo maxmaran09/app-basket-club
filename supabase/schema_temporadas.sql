@@ -134,7 +134,8 @@ select
   t.tira,
   jt.dorsal,
   jt.estado,
-  jt.equipos_adicionales
+  jt.equipos_adicionales,
+  j.posicion_secundaria
 from public.jugador_temporada jt
 join public.jugadores j on j.id = jt.jugador_id
 join public.temporadas t on t.id = jt.temporada_id;
@@ -147,13 +148,19 @@ grant select on public.vista_plantel_temporada to authenticated;
 -- perder nada. Por cada combinacion distinta de categoria_origen/tira que ya exista entre los
 -- jugadores actuales, crea una temporada activa generica ("Temporada", 2026) -- el dueño puede
 -- renombrarla despues con el torneo real de cada equipo desde la app. Es seguro re-correr esta
--- seccion: "on conflict do nothing" evita duplicar si el script ya se corrio antes.
+-- seccion: "on conflict do nothing" evita duplicar si el script ya se corrio antes, y el "not
+-- exists" de mas abajo evita chocar contra el indice de "una activa por equipo" una vez que ese
+-- equipo ya tiene una temporada activa real (aunque haya sido renombrada desde la app).
 -- ============================================================================
 
 insert into public.temporadas (nombre_competencia, anio, categoria, tira, activa)
 select distinct 'Temporada', 2026, j.categoria_origen, j.tira, true
 from public.jugadores j
 where j.categoria_origen is not null and j.tira is not null
+  and not exists (
+    select 1 from public.temporadas t2
+    where t2.categoria = j.categoria_origen and t2.tira = j.tira and t2.activa
+  )
 on conflict (nombre_competencia, anio, categoria, tira) do nothing;
 
 insert into public.jugador_temporada (jugador_id, temporada_id, dorsal, estado, equipos_adicionales)

@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
-import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
+import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
 import ImportadorCSVPropio from "./ImportadorCSVPropio";
 import ImportadorCSVRival from "./ImportadorCSVRival";
 import { useAuth } from "./AuthContext";
@@ -1377,7 +1377,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
                   <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
                   <span className="font-medium text-sm">{j.nombre_apellido}</span>
                   <VideoLinkButton url={j.video_individual_url} size={13} />
-                  <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
+                  <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}{j.categoria ? ` · ${j.categoria}` : ""}</span>
                 </div>
                 {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
                 {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
@@ -1660,6 +1660,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
     dorsal: jugador?.dorsal ?? "",
     nombre_apellido: jugador?.nombre_apellido ?? "",
     posicion: jugador?.posicion ?? POSICIONES[0],
+    posicion_secundaria: jugador?.posicion_secundaria ?? "",
     altura: jugador?.altura ?? "",
     peso: jugador?.peso ?? "",
     fecha_nacimiento: jugador?.fecha_nacimiento ?? "",
@@ -1712,6 +1713,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
       dorsal: form.dorsal ? Number(form.dorsal) : null,
       nombre_apellido: form.nombre_apellido,
       posicion: form.posicion,
+      posicion_secundaria: form.posicion_secundaria || null,
       altura: form.altura ? Number(form.altura) : null,
       peso: form.peso ? Number(form.peso) : null,
       fecha_nacimiento: form.fecha_nacimiento || null,
@@ -1753,9 +1755,19 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
                 <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                 <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
-              <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
-                {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <div className="flex gap-2">
+                <select value={form.posicion} onChange={(e) => {
+                  const nueva = e.target.value;
+                  set("posicion", nueva);
+                  if (nueva === form.posicion_secundaria) set("posicion_secundaria", "");
+                }} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select value={form.posicion_secundaria} onChange={(e) => set("posicion_secundaria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  <option value="">— Sin 2da posición —</option>
+                  {POSICIONES.filter((p) => p !== form.posicion).map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
               <div className="flex gap-2">
                 <input placeholder="Altura (m)" type="number" step="0.01" value={form.altura} onChange={(e) => set("altura", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                 <input placeholder="Peso (kg)" type="number" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -2053,7 +2065,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
                   {j.disponibilidad}
                 </span>
               )}
-              <span className="text-zinc-500 text-xs ml-auto">{j.posicion}</span>
+              <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}</span>
               {verBaja ? (
                 <button onClick={() => reactivar(j)} className="text-xs text-emerald-400 hover:text-emerald-300">Reactivar</button>
               ) : (
@@ -2276,7 +2288,7 @@ function FichaBaseJugador({ jugador }) {
         <FotoJugadorMini url={jugador.foto_url} size={58} />
         <div className="min-w-0">
           <p className="font-bold text-base leading-tight truncate">{jugador.nombre_apellido}</p>
-          <p className="text-xs text-zinc-500">#{jugador.dorsal ?? "-"} · {jugador.posicion || "Sin posición"}</p>
+          <p className="text-xs text-zinc-500">#{jugador.dorsal ?? "-"} · {formatPosicion(jugador) || "Sin posición"}</p>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 mb-3">
@@ -2451,7 +2463,9 @@ function AnaliticaComparada360({ equipo, seleccionado, temporadaId }) {
   }
 
   const filasEquipo = Object.values(porJugador);
-  const filasPosicion = equipo.filter((j) => j.posicion === seleccionado.posicion).map((j) => porJugador[j.id]).filter(Boolean);
+  const posicionesDe = (j) => [j.posicion, j.posicion_secundaria].filter(Boolean);
+  const misPosiciones = posicionesDe(seleccionado);
+  const filasPosicion = equipo.filter((j) => posicionesDe(j).some((p) => misPosiciones.includes(p))).map((j) => porJugador[j.id]).filter(Boolean);
   const avg = (filas, campo) => {
     const vals = filas.map((f) => Number(f[campo]) || 0);
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
@@ -2957,6 +2971,7 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
     dorsal: jugadorRival?.dorsal ?? "",
     nombre_apellido: jugadorRival?.nombre_apellido ?? "",
     posicion: jugadorRival?.posicion ?? POSICIONES[0],
+    posicion_secundaria: jugadorRival?.posicion_secundaria ?? "",
     categoria: jugadorRival?.categoria ?? "",
     cualidades_ataque: jugadorRival?.cualidades_ataque ?? "",
     cualidades_defensa: jugadorRival?.cualidades_defensa ?? "",
@@ -2969,7 +2984,7 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
   const submit = async () => {
     if (!form.nombre_apellido) return;
     setSaving(true);
-    await onSave({ ...form, dorsal: form.dorsal ? Number(form.dorsal) : null });
+    await onSave({ ...form, dorsal: form.dorsal ? Number(form.dorsal) : null, posicion_secundaria: form.posicion_secundaria || null });
     setSaving(false);
   };
 
@@ -2983,11 +2998,19 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
             <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           </div>
           <div className="flex gap-2">
-            <select value={form.posicion} onChange={(e) => set("posicion", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            <select value={form.posicion} onChange={(e) => {
+              const nueva = e.target.value;
+              set("posicion", nueva);
+              if (nueva === form.posicion_secundaria) set("posicion_secundaria", "");
+            }} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
               {POSICIONES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-            <input placeholder="Categoría (Mayor, U21...)" value={form.categoria} onChange={(e) => set("categoria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <select value={form.posicion_secundaria} onChange={(e) => set("posicion_secundaria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              <option value="">— Sin 2da posición —</option>
+              {POSICIONES.filter((p) => p !== form.posicion).map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
           </div>
+          <input placeholder="Categoría (Mayor, U21...)" value={form.categoria} onChange={(e) => set("categoria", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           <textarea placeholder="Cualidades de ataque" value={form.cualidades_ataque} onChange={(e) => set("cualidades_ataque", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           <textarea placeholder="Cualidades de defensa" value={form.cualidades_defensa} onChange={(e) => set("cualidades_defensa", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           <textarea placeholder="Debilidades" value={form.debilidades} onChange={(e) => set("debilidades", e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -3146,7 +3169,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
                   <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
                   <span className="font-medium text-sm">{j.nombre_apellido}</span>
                   <VideoLinkButton url={j.video_individual_url} size={13} />
-                  <span className="text-zinc-500 text-xs ml-auto">{j.posicion}{j.categoria ? ` · ${j.categoria}` : ""}</span>
+                  <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}{j.categoria ? ` · ${j.categoria}` : ""}</span>
                   {!soloLectura && (
                     <>
                       <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-1"><PenLine size={12} /></button>
@@ -4550,6 +4573,7 @@ export default function App() {
     jugador_temporada_id: jtRow.id,
     nombre_apellido: jugadorRow.nombre_apellido,
     posicion: jugadorRow.posicion,
+    posicion_secundaria: jugadorRow.posicion_secundaria,
     altura: jugadorRow.altura,
     peso: jugadorRow.peso,
     fecha_nacimiento: jugadorRow.fecha_nacimiento,
