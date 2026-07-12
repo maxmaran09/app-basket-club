@@ -7,6 +7,7 @@ import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
 import ImportadorCSVPropio from "./ImportadorCSVPropio";
 import ImportadorCSVRival from "./ImportadorCSVRival";
 import { useAuth } from "./AuthContext";
+import { useTeam } from "./TeamContext";
 import LoginView from "./LoginView";
 import ProtectedRoute from "./ProtectedRoute";
 import { ROLES, ROL_LABELS, SECCIONES_POR_ROL, puedeVerSeccion, seccionInicialDe, rutaDeSeccion, esStaffCompleto, nivelBloque, TIPOS_EVENTO_ABRIBLES_JUGADOR } from "./permisos";
@@ -1417,8 +1418,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
   const [selectedDay, setSelectedDay] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento", rivalId: "" });
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveDate, setMoveDate] = useState("");
@@ -1817,8 +1817,7 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
 function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, rol }) {
   const puedeAltaBaja = esStaffCompleto(rol);
   const soloCamposMedicos = !esStaffCompleto(rol);
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -1993,8 +1992,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
 const ENTRENAMIENTOS_TIPOS = ["entrenamiento", "individual", "optativo"];
 
 function EntrenamientosView({ events, onSelectEvent }) {
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const todayKey = todayKeyBA();
 
   const filtered = events
@@ -2353,13 +2351,29 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
   );
 }
 
-function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura }) {
+function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura, rol }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const [verSinAsignar, setVerSinAsignar] = useState(false);
+  const esJugador = rol === ROLES.JUGADOR;
+
+  // Igual que en Calendario: un Jugador no elige categoria/tira, queda fijo a la suya.
+  useEffect(() => {
+    if (!esJugador) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: cat }, { data: tir }] = await Promise.all([
+        supabase.rpc("mi_categoria"),
+        supabase.rpc("mi_tira"),
+      ]);
+      if (cancelled) return;
+      if (cat) setCategoria(cat);
+      if (tir) setTira(tir);
+    })();
+    return () => { cancelled = true; };
+  }, [esJugador]);
 
   const selected = equiposRivales.find((e) => e.id === selectedId) || null;
 
@@ -2374,7 +2388,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
     );
   }
 
-  const sinAsignar = equiposRivales.filter((eq) => !eq.categoria || !eq.tira);
+  const sinAsignar = esJugador ? [] : equiposRivales.filter((eq) => !eq.categoria || !eq.tira);
   const equiposMostrados = verSinAsignar ? sinAsignar : equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira);
 
   return (
@@ -2392,7 +2406,9 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         )}
       </div>
 
-      {verSinAsignar ? (
+      {esJugador ? (
+        <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
+      ) : verSinAsignar ? (
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-zinc-400">Equipos sin categoría/tira asignada</p>
           <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
@@ -2587,8 +2603,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [historial, setHistorial] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const [verSinAsignar, setVerSinAsignar] = useState(false);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
@@ -3060,8 +3075,7 @@ function PodioMini({ titulo, filas, campo, formato }) {
 // proximo partido, lideres y tendencia son a nivel club porque jugador_partido_stats no guarda
 // categoria de forma confiable para filtrar por ahi.
 function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [tira, setTira] = useState(TIRAS[0]);
+  const { categoria, tira, setCategoria, setTira } = useTeam();
   const hoy = todayKeyBA();
 
   const [notas, setNotas] = useState([]);
@@ -3667,7 +3681,7 @@ export default function App() {
               } />
               <Route path="/scouting" element={
                 <ProtectedRoute seccionId="scouting">
-                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} />
+                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} rol={rol} />
                 </ProtectedRoute>
               } />
               <Route path="/estadisticas" element={
