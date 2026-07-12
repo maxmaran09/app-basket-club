@@ -4425,7 +4425,7 @@ const NAV_ITEMS = [
   { id: "inicio", label: "Inicio", icon: Home },
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "plantel", label: "Plantel", icon: Users },
-  { id: "jugador360", label: "Jugador 360°", icon: Target },
+  { id: "jugador360", label: "Jugador 360°", labelMobile: "360°", icon: Target },
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
@@ -4451,10 +4451,18 @@ export default function App() {
   // "inicio" vive en "/", el resto de las secciones son "/<id>" (ver rutaDeSeccion en permisos.js).
   const seccionActiva = location.pathname === "/" ? "inicio" : location.pathname.slice(1);
   const irASeccion = (id) => { setActive(null); navigate(rutaDeSeccion(id)); };
+  const bottomNavRef = useRef(null);
 
   useEffect(() => {
     try { localStorage.setItem("sidebarCollapsed", sidebarCollapsed ? "1" : "0"); } catch {}
   }, [sidebarCollapsed]);
+
+  // La bottom-nav de celular scrollea horizontal (ver mas abajo) -- si el tab activo queda
+  // fuera de la parte visible, lo traemos a la vista solo, para que nunca "desaparezca".
+  useEffect(() => {
+    const el = bottomNavRef.current?.querySelector('[data-active="true"]');
+    el?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [seccionActiva]);
 
   useEffect(() => {
     if (!session) { setEvents([]); setLoading(false); return; }
@@ -4891,9 +4899,13 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom nav fija — solo celular, iconos grandes para tocar con el pulgar */}
+      {/* Bottom nav fija — solo celular. Con muchas secciones no entran todas repartiendo el
+          ancho a partes iguales (los labels se pisan) -- cada item tiene un ancho fijo y la
+          barra scrollea horizontal en vez de comprimirse; el tab activo se autoscrollea a la
+          vista al navegar, para que nunca quede fuera de pantalla sin avisar. */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900 border-t border-zinc-800 flex items-stretch"
+        ref={bottomNavRef}
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900 border-t border-zinc-800 flex items-stretch overflow-x-auto"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {navItemsVisibles.map((item) => {
@@ -4902,11 +4914,12 @@ export default function App() {
           return (
             <button
               key={item.id}
+              data-active={isActive}
               onClick={() => irASeccion(item.id)}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 ${isActive ? "text-brand-300" : "text-zinc-500"}`}
+              className={`w-[72px] shrink-0 flex flex-col items-center justify-center gap-1 py-2.5 ${isActive ? "text-brand-300" : "text-zinc-500"}`}
             >
-              <Icon size={24} />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <Icon size={22} />
+              <span className="text-[10px] font-medium leading-tight text-center">{item.labelMobile || item.label}</span>
             </button>
           );
         })}
