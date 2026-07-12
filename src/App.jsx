@@ -181,6 +181,24 @@ function ConfirmDeleteModal({ itemLabel, subject = "elemento", onCancel, onConfi
   );
 }
 
+// Confirmación liviana para acciones reversibles (ej. "dar de baja" a un jugador de la
+// temporada, que se puede reactivar después) -- a diferencia de ConfirmDeleteModal, no exige
+// escribir BORRAR ni habla de "permanente".
+function ConfirmSimpleModal({ title, message, confirmLabel = "Confirmar", onCancel, onConfirm }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-2">{title}</h3>
+        <p className="text-zinc-400 text-sm mb-3">{message}</p>
+        <div className="flex gap-2">
+          <button onClick={onConfirm} className="bg-red-600 hover:bg-red-500 text-white text-sm px-3 py-1.5 rounded">{confirmLabel}</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Onda sinusoidal de longitud de onda fija (no importa el largo del segmento), que termina en un
 // tramo recto final para que la flecha apunte en la dirección de la línea, no de la última onda.
 function zigzagPoints(x1, y1, x2, y2) {
@@ -1814,18 +1832,75 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   );
 }
 
-function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, rol }) {
-  const puedeAltaBaja = esStaffCompleto(rol);
+function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, onReactivarJugador, rol }) {
+  const {
+    categoria, tira, setCategoria, setTira,
+    temporadas, temporadasDelEquipo, temporadaId, temporadaSeleccionada, esTemporadaActiva,
+    setTemporadaId, refrescarTemporadas,
+  } = useTeam();
+  // Solo se puede dar de alta/editar/dar de baja mirando la temporada activa de este equipo --
+  // una temporada pasada queda de solo lectura, para no editar por error un archivo historico.
+  const puedeAltaBaja = esStaffCompleto(rol) && esTemporadaActiva;
   const soloCamposMedicos = !esStaffCompleto(rol);
-  const { categoria, tira, setCategoria, setTira } = useTeam();
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [medidasTarget, setMedidasTarget] = useState(null);
   const [promedios, setPromedios] = useState({});
+  const [verBaja, setVerBaja] = useState(false);
+  const [jugadoresBaja, setJugadoresBaja] = useState([]);
+  const [loadingBaja, setLoadingBaja] = useState(false);
+  const [historico, setHistorico] = useState([]);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
 
+  // "jugadores" (prop, viene de App()) solo trae la temporada ACTIVA de cada equipo del club --
+  // alcanza para el caso normal (jugadorEnEquipo ya resuelve tambien a quienes juegan en este
+  // equipo via equipos_adicionales). Mirar una temporada PASADA de este equipo puntual es un
+  // fetch aparte, acotado a esa temporada_id, que no reemplaza el estado global.
   const filtered = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+
+  useEffect(() => {
+    if (esTemporadaActiva || !temporadaId) { setHistorico([]); return; }
+    let cancelled = false;
+    setLoadingHistorico(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_plantel_temporada")
+        .select("*")
+        .eq("temporada_id", temporadaId)
+        .eq("estado", "activo")
+        .order("nombre_apellido", { ascending: true });
+      if (cancelled) return;
+      if (!error) setHistorico(data || []);
+      setLoadingHistorico(false);
+    })();
+    return () => { cancelled = true; };
+  }, [esTemporadaActiva, temporadaId]);
+
+  useEffect(() => {
+    if (!verBaja || !temporadaId) return;
+    let cancelled = false;
+    setLoadingBaja(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_plantel_temporada")
+        .select("*")
+        .eq("temporada_id", temporadaId)
+        .eq("estado", "baja")
+        .order("nombre_apellido", { ascending: true });
+      if (cancelled) return;
+      if (!error) setJugadoresBaja(data || []);
+      setLoadingBaja(false);
+    })();
+    return () => { cancelled = true; };
+  }, [verBaja, temporadaId]);
+
+  const reactivar = async (j) => {
+    await onReactivarJugador(j.jugador_temporada_id);
+    setJugadoresBaja((prev) => prev.filter((x) => x.id !== j.id));
+  };
 
   const eliminarEvaluacion = (jugador, idx) => {
     const next = (jugador.evaluaciones_pfs || []).filter((_, i) => i !== idx);
@@ -1847,6 +1922,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
     return () => { cancelled = true; };
   }, [jugadores]);
 
+  const puedeEditar = esTemporadaActiva;
+  const listaMostrada = verBaja ? jugadoresBaja : esTemporadaActiva ? filtered : historico;
+
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
       <div className="flex items-center gap-2 mb-1 text-zinc-400">
@@ -1867,19 +1945,61 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
           {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={tira} onChange={(e) => setTira(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
           {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        {temporadasDelEquipo.length > 1 && (
+          <select value={temporadaId ?? ""} onChange={(e) => setTemporadaId(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {temporadasDelEquipo.map((t) => (
+              <option key={t.id} value={t.id}>{t.nombre_competencia} {t.anio}{t.activa ? " (activa)" : ""}</option>
+            ))}
+          </select>
+        )}
+        {esStaffCompleto(rol) && esTemporadaActiva && (
+          <button onClick={() => setShowNuevaTemporada(true)} className="text-xs text-brand-400 hover:text-brand-300">
+            + Nueva temporada
+          </button>
+        )}
       </div>
 
-      {filtered.length === 0 && <p className="text-sm text-zinc-500">No hay jugadores cargados en {categoria} · {tira} todavía.</p>}
+      {!esTemporadaActiva && temporadaSeleccionada && (
+        <p className="text-xs text-amber-400 mb-3">
+          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa) — solo lectura.
+        </p>
+      )}
+
+      {!temporadaId && (
+        <p className="text-sm text-amber-400 mb-3">
+          Todavía no hay ninguna temporada creada para {categoria} · {tira}.
+          {esStaffCompleto(rol) && (
+            <button onClick={() => setShowNuevaTemporada(true)} className="ml-1 text-brand-400 hover:text-brand-300 underline">Creá la primera</button>
+          )}
+        </p>
+      )}
+
+      {temporadaId && esTemporadaActiva && (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-zinc-500">{verBaja ? "Jugadores dados de baja" : ""}</p>
+          <button onClick={() => setVerBaja((v) => !v)} className="text-xs text-zinc-400 hover:text-zinc-200">
+            {verBaja ? "Volver al plantel" : "Ver dados de baja"}
+          </button>
+        </div>
+      )}
+
+      {(loadingHistorico || loadingBaja) && <p className="text-sm text-zinc-500 mb-2">Cargando…</p>}
+
+      {!loadingHistorico && !loadingBaja && listaMostrada.length === 0 && (
+        <p className="text-sm text-zinc-500">
+          {verBaja ? "No hay jugadores dados de baja en esta temporada." : temporadaId ? `No hay jugadores cargados en ${categoria} · ${tira} todavía.` : ""}
+        </p>
+      )}
 
       <div className="space-y-2">
-        {filtered.map((j) => (
+        {listaMostrada.map((j) => (
           <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
@@ -1893,13 +2013,21 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
                 </span>
               )}
               <span className="text-zinc-500 text-xs ml-auto">{j.posicion}</span>
-              <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
-                <PenLine size={13} />
-              </button>
-              {puedeAltaBaja && (
-                <button onClick={() => setDeleteTarget(j)} title="Eliminar jugador" className="text-zinc-600 hover:text-red-400 p-1">
-                  <Trash2 size={13} />
-                </button>
+              {verBaja ? (
+                <button onClick={() => reactivar(j)} className="text-xs text-emerald-400 hover:text-emerald-300">Reactivar</button>
+              ) : (
+                <>
+                  {puedeEditar && (
+                    <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
+                      <PenLine size={13} />
+                    </button>
+                  )}
+                  {puedeAltaBaja && (
+                    <button onClick={() => setDeleteTarget(j)} title="Dar de baja" className="text-zinc-600 hover:text-red-400 p-1">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </>
               )}
             </div>
             <div className="flex flex-wrap gap-1.5 mb-1">
@@ -1917,7 +2045,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               </p>
             )}
             <PromedioMiniStats p={promedios[j.id]} />
-            <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
+            {puedeEditar && !verBaja && (
+              <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
+            )}
             {j.evaluaciones_pfs?.length > 0 && (
               <details className="mt-1">
                 <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Ver evolución ({j.evaluaciones_pfs.length})</summary>
@@ -1929,9 +2059,11 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
                         {ev.altura != null ? ` · ${ev.altura} m` : ""}
                         {ev.peso != null ? ` · ${ev.peso} kg` : ""}
                       </span>
-                      <button onClick={() => eliminarEvaluacion(j, i)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-0.5">
-                        <Trash2 size={11} />
-                      </button>
+                      {puedeEditar && !verBaja && (
+                        <button onClick={() => eliminarEvaluacion(j, i)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-0.5">
+                          <Trash2 size={11} />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -1958,9 +2090,10 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
       )}
 
       {deleteTarget && (
-        <ConfirmDeleteModal
-          itemLabel={deleteTarget.nombre_apellido}
-          subject="jugador"
+        <ConfirmSimpleModal
+          title="Dar de baja"
+          message={`${deleteTarget.nombre_apellido} deja de aparecer en el plantel activo de esta temporada. No se borra su ficha ni su historial — se puede reactivar después desde "Ver dados de baja".`}
+          confirmLabel="Dar de baja"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { onDeleteJugador(deleteTarget.id); setDeleteTarget(null); }}
         />
@@ -1978,10 +2111,98 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         <ImportadorCSVPropio
           categoriaDefault={categoria}
           tiraDefault={tira}
+          temporadas={temporadas}
           onCancel={() => setShowImport(false)}
           onImported={(nuevos) => { onImportJugadores(nuevos); setShowImport(false); }}
         />
       )}
+
+      {showNuevaTemporada && (
+        <NuevaTemporadaModal
+          categoria={categoria}
+          tira={tira}
+          temporadaActivaActual={temporadasDelEquipo.find((t) => t.activa) || null}
+          onCancel={() => setShowNuevaTemporada(false)}
+          onCreada={async (nuevaId) => {
+            await refrescarTemporadas();
+            setTemporadaId(nuevaId);
+            setShowNuevaTemporada(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Crea una nueva temporada (competencia) para el equipo activo (categoria/tira ya vienen
+// fijos, se muestran de referencia). Si habia una temporada activa previa para este mismo
+// equipo, la desactiva y le copia el plantel activo a la nueva (mismo dorsal/equipos
+// adicionales), para no tener que recargar a mano a quienes siguen.
+function NuevaTemporadaModal({ categoria, tira, temporadaActivaActual, onCancel, onCreada }) {
+  const [nombreCompetencia, setNombreCompetencia] = useState("");
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const crear = async () => {
+    if (!nombreCompetencia.trim()) return;
+    setSaving(true);
+    setError("");
+
+    if (temporadaActivaActual) {
+      const { error: errDesactivar } = await supabase.from("temporadas").update({ activa: false }).eq("id", temporadaActivaActual.id);
+      if (errDesactivar) { setError(errDesactivar.message); setSaving(false); return; }
+    }
+
+    const { data: nueva, error: errCrear } = await supabase
+      .from("temporadas")
+      .insert({ nombre_competencia: nombreCompetencia.trim(), anio: Number(anio), categoria, tira, activa: true })
+      .select()
+      .single();
+    if (errCrear) { setError(errCrear.message); setSaving(false); return; }
+
+    if (temporadaActivaActual) {
+      const { data: plantelSaliente, error: errPlantel } = await supabase
+        .from("jugador_temporada")
+        .select("jugador_id, dorsal, equipos_adicionales")
+        .eq("temporada_id", temporadaActivaActual.id)
+        .eq("estado", "activo");
+      if (errPlantel) { setError(errPlantel.message); setSaving(false); return; }
+      if (plantelSaliente.length > 0) {
+        const filas = plantelSaliente.map((p) => ({
+          jugador_id: p.jugador_id, temporada_id: nueva.id, dorsal: p.dorsal, equipos_adicionales: p.equipos_adicionales, estado: "activo",
+        }));
+        const { error: errCopia } = await supabase.from("jugador_temporada").insert(filas);
+        if (errCopia) { setError(errCopia.message); setSaving(false); return; }
+      }
+    }
+
+    setSaving(false);
+    onCreada(nueva.id);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-1">Nueva temporada</h3>
+        <p className="text-xs text-zinc-500 mb-3">Para {categoria} · {tira}</p>
+        <div className="space-y-2">
+          <input placeholder="Nombre de la competencia (ej: Liga Metropolitana)" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <input type="number" placeholder="Año" value={anio} onChange={(e) => setAnio(e.target.value)} className="w-32 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+        </div>
+        {temporadaActivaActual && (
+          <p className="text-xs text-zinc-500 mt-2">
+            Va a reemplazar a "{temporadaActivaActual.nombre_competencia} {temporadaActivaActual.anio}" como temporada activa, copiando el plantel activo actual.
+          </p>
+        )}
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-3">
+          <button disabled={!nombreCompetencia.trim() || saving} onClick={crear} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">
+            {saving ? "Creando…" : "Crear temporada"}
+          </button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3447,6 +3668,7 @@ const NAV_ITEMS = [
 
 export default function App() {
   const { session, rol, loading: authLoading, signOut } = useAuth();
+  const { temporadaId, temporadas } = useTeam();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -3481,11 +3703,22 @@ export default function App() {
     return () => { cancelled = true; };
   }, [session]);
 
+  // Trae el plantel ACTUAL de todo el club (la temporada activa de cada equipo, no una sola),
+  // igual de amplio que el viejo "select * from jugadores" -- necesario para que jugadorEnEquipo()
+  // seguir viendo, al mirar el equipo A, a jugadores cuyo equipo de origen es otro (B) pero que
+  // tienen A en su equipos_adicionales (jugador que juega en dos categorias a la vez). Mirar una
+  // temporada PASADA de un equipo puntual es un fetch aparte, propio de PlantelView (no reemplaza
+  // este estado global, que alimenta Asistencia/RPE/Individual/Inicio con el presente).
   useEffect(() => {
     if (!session) { setJugadores([]); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("jugadores").select("*").order("nombre_apellido", { ascending: true });
+      const { data, error } = await supabase
+        .from("vista_plantel_temporada")
+        .select("*")
+        .eq("estado", "activo")
+        .eq("temporada_activa", true)
+        .order("nombre_apellido", { ascending: true });
       if (cancelled) return;
       if (!error) setJugadores(data);
     })();
@@ -3523,22 +3756,142 @@ export default function App() {
     setActive((prev) => (prev && prev.id === id ? null : prev));
   };
 
+  // "jugadores" en el estado de React tiene la forma de vista_plantel_temporada (bio de
+  // "jugadores" + membresia de "jugador_temporada" aplanadas en un solo objeto). Estos 3
+  // helpers arman/actualizan esa forma a mano despues de cada insert/update, para no tener que
+  // re-pedir la vista completa cada vez.
+  const CAMPOS_TEMPORADA = ["dorsal", "equipos_adicionales", "estado"];
+
+  const aplanarJugador = (jugadorRow, jtRow, temporadaRow) => ({
+    id: jugadorRow.id,
+    jugador_temporada_id: jtRow.id,
+    nombre_apellido: jugadorRow.nombre_apellido,
+    posicion: jugadorRow.posicion,
+    altura: jugadorRow.altura,
+    peso: jugadorRow.peso,
+    fecha_nacimiento: jugadorRow.fecha_nacimiento,
+    notas_comentarios: jugadorRow.notas_comentarios,
+    disponibilidad: jugadorRow.disponibilidad,
+    lesion_detalle: jugadorRow.lesion_detalle,
+    lesion_desde: jugadorRow.lesion_desde,
+    evaluaciones_pfs: jugadorRow.evaluaciones_pfs,
+    temporada_id: jtRow.temporada_id,
+    nombre_competencia: temporadaRow?.nombre_competencia,
+    anio: temporadaRow?.anio,
+    temporada_activa: temporadaRow?.activa,
+    categoria_origen: temporadaRow?.categoria,
+    tira: temporadaRow?.tira,
+    dorsal: jtRow.dorsal,
+    estado: jtRow.estado,
+    equipos_adicionales: jtRow.equipos_adicionales,
+  });
+
   const addJugador = async (j) => {
-    const { data, error } = await supabase.from("jugadores").insert(j).select().single();
-    if (error) { setErrorMsg(error.message); return; }
-    setJugadores((prev) => [...prev, data]);
+    const temporadaDestino = temporadas.find((t) => t.categoria === j.categoria_origen && t.tira === j.tira && t.activa);
+    if (!temporadaDestino) {
+      setErrorMsg(`No hay una temporada activa para ${j.categoria_origen} · ${j.tira}. Creala primero desde Plantel.`);
+      return;
+    }
+    const { dorsal, categoria_origen, tira, equipos_adicionales, ...bio } = j;
+    const { data: jugadorRow, error: errJugador } = await supabase.from("jugadores").insert(bio).select().single();
+    if (errJugador) { setErrorMsg(errJugador.message); return; }
+    const { data: jtRow, error: errJt } = await supabase
+      .from("jugador_temporada")
+      .insert({ jugador_id: jugadorRow.id, temporada_id: temporadaDestino.id, dorsal: dorsal || null, equipos_adicionales: equipos_adicionales || [] })
+      .select()
+      .single();
+    if (errJt) { setErrorMsg(errJt.message); return; }
+    setJugadores((prev) => [...prev, aplanarJugador(jugadorRow, jtRow, temporadaDestino)]);
   };
 
+  // "Eliminar" pasa a ser dar de baja de la temporada activa (no se borra a la persona ni su
+  // historial): marca estado='baja' en jugador_temporada, y como el fetch de "jugadores" solo
+  // trae estado='activo', alcanza con sacarlo del estado local.
   const deleteJugador = async (id) => {
-    const { error } = await supabase.from("jugadores").delete().eq("id", id);
+    const actual = jugadores.find((j) => j.id === id);
+    if (!actual) return;
+    const { error } = await supabase.from("jugador_temporada").update({ estado: "baja" }).eq("id", actual.jugador_temporada_id);
     if (error) { setErrorMsg(error.message); return; }
     setJugadores((prev) => prev.filter((j) => j.id !== id));
   };
 
   const updateJugador = async (id, patch) => {
-    const { data, error } = await supabase.from("jugadores").update(patch).eq("id", id).select().single();
+    const actual = jugadores.find((j) => j.id === id);
+    if (!actual) return;
+
+    const patchTemporada = {};
+    const patchBio = {};
+    Object.entries(patch).forEach(([key, value]) => {
+      if (CAMPOS_TEMPORADA.includes(key)) patchTemporada[key] = value;
+      else if (key !== "categoria_origen" && key !== "tira") patchBio[key] = value;
+    });
+
+    // Cambio de equipo (categoria_origen/tira, ej. una promocion): resolver la temporada activa
+    // del equipo destino y mover ahi la fila de jugador_temporada -- no hace falta borrar/recrear.
+    if (patch.categoria_origen !== undefined || patch.tira !== undefined) {
+      const nuevaCategoria = patch.categoria_origen ?? actual.categoria_origen;
+      const nuevaTira = patch.tira ?? actual.tira;
+      const temporadaDestino = temporadas.find((t) => t.categoria === nuevaCategoria && t.tira === nuevaTira && t.activa);
+      if (!temporadaDestino) {
+        setErrorMsg(`No hay una temporada activa para ${nuevaCategoria} · ${nuevaTira}. Creala primero desde Plantel.`);
+        return;
+      }
+      patchTemporada.temporada_id = temporadaDestino.id;
+    }
+
+    let jugadorRow = null;
+    if (Object.keys(patchBio).length > 0) {
+      const { data, error } = await supabase.from("jugadores").update(patchBio).eq("id", id).select().single();
+      if (error) { setErrorMsg(error.message); return; }
+      jugadorRow = data;
+    }
+
+    let jtRow = null;
+    if (Object.keys(patchTemporada).length > 0) {
+      const { data, error } = await supabase.from("jugador_temporada").update(patchTemporada).eq("id", actual.jugador_temporada_id).select().single();
+      if (error) { setErrorMsg(error.message); return; }
+      jtRow = data;
+    }
+
+    const temporadaRow = jtRow ? temporadas.find((t) => t.id === jtRow.temporada_id) : null;
+
+    // El estado global de "jugadores" solo trae la temporada ACTIVA de cada equipo (ver el
+    // fetch de arriba) -- si por algun motivo la fila termino apuntando a una temporada que no
+    // es la activa de su equipo, no corresponde que siga en esta lista.
+    if (jtRow && temporadaRow && !temporadaRow.activa) {
+      setJugadores((prev) => prev.filter((j) => j.id !== id));
+      return;
+    }
+
+    setJugadores((prev) => prev.map((j) => {
+      if (j.id !== id) return j;
+      let next = jugadorRow ? { ...j, ...jugadorRow } : { ...j };
+      if (jtRow) {
+        next = { ...next, dorsal: jtRow.dorsal, estado: jtRow.estado, equipos_adicionales: jtRow.equipos_adicionales, temporada_id: jtRow.temporada_id };
+        if (temporadaRow) {
+          next.categoria_origen = temporadaRow.categoria;
+          next.tira = temporadaRow.tira;
+          next.nombre_competencia = temporadaRow.nombre_competencia;
+          next.anio = temporadaRow.anio;
+          next.temporada_activa = temporadaRow.activa;
+        }
+      }
+      return next;
+    }));
+  };
+
+  // Vuelve a poner activo a un jugador dado de baja (usado desde el toggle "Ver dados de baja"
+  // de PlantelView). jugadorTemporadaId es el id de la fila de jugador_temporada, no el del
+  // jugador -- PlantelView lo trae directo de su propio fetch de dados de baja.
+  const reactivarJugador = async (jugadorTemporadaId) => {
+    const { error } = await supabase.from("jugador_temporada").update({ estado: "activo" }).eq("id", jugadorTemporadaId);
     if (error) { setErrorMsg(error.message); return; }
-    setJugadores((prev) => prev.map((j) => (j.id === id ? data : j)));
+    const { data, error: errFetch } = await supabase
+      .from("vista_plantel_temporada")
+      .select("*")
+      .eq("jugador_temporada_id", jugadorTemporadaId)
+      .single();
+    if (!errFetch && data) setJugadores((prev) => [...prev, data]);
   };
 
   const importJugadores = (nuevos) => {
@@ -3670,7 +4023,7 @@ export default function App() {
               } />
               <Route path="/plantel" element={
                 <ProtectedRoute seccionId="plantel">
-                  <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} rol={rol} />
+                  <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} onReactivarJugador={reactivarJugador} rol={rol} />
                 </ProtectedRoute>
               } />
               <Route path="/entrenamientos" element={

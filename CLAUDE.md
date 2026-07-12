@@ -88,6 +88,11 @@ Módulo implementado (adelantado respecto a la prioridad original de Fase 3). Re
 2. **Fase 2**: ✅ Fichas de jugadores propios (Plantel) y rivales (Scouting Hub) más completas. ⏳ Biblioteca de ejercicios/jugadas reutilizables (hoy solo se puede duplicar un bloque puntual, no hay biblioteca ni plantillas guardadas). ❌ Historial de cambios visible — descartado, no se va a implementar.
 3. **Fase 3**: ✅ Módulo de estadísticas (CABB) — adelantado, ya en producción, con promedios conectados a Scouting/Plantel. ⏳ Notificaciones, comentarios por ficha, importador de datos históricos desde Google Sheets.
 4. **Extra (no estaba en el roadmap original)**: ✅ Módulo Inicio (dashboard) — pantalla de arranque con lo más urgente de cada módulo en un solo lugar.
+5. **Planificado — Módulo: Vista 360° y Rendimiento Integral del Jugador**: ⏳ Sin empezar. Tablero interactivo que unifica ficha técnica, evaluaciones físicas del PF, estadísticas de juego y comparación cruzada, respetando el filtro global de Categoría/Tira (`TeamContext`, persistido en `localStorage`). Fases independientes:
+   - **Fase 1 — Contenedor y ficha base**: buscador/selector de jugadores (scopeado a la categoría/tira activa); tarjeta con dorsal, posición, altura, peso, edad calculada y semáforo de disponibilidad (Disponible/Duda/Lesionado + detalle).
+   - **Fase 2 — Evaluaciones físicas (PF)**: lee `jugadores.evaluaciones_pfs` (jsonb) y renderiza los últimos testeos (salto, velocidad, fuerza) con fecha de la última medición.
+   - **Fase 3 — Analítica técnica y comparativa de medias**: promedios/acumulados de temporada (PTS, T3, AST, RT, MIN) contrastados contra la media del plantel y contra la media por posición.
+   - **Fase 4 — Panel de comparación (modo espejo)**: pantalla dividida en dos columnas para contrastar un segundo jugador frente a frente (físico, PF, técnico).
 
 ## Notas de diseño
 

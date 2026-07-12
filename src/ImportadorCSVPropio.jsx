@@ -86,7 +86,7 @@ function parseEquiposAdicionales(raw, principal) {
   return { lista, errores };
 }
 
-function validarFila(raw, numeroFila, categoriaDefault, tiraDefault) {
+function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas) {
   const errores = [];
   const warnings = [];
   const data = {};
@@ -143,6 +143,14 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault) {
   if (!tira) errores.push(`tira_principal "${tiraRaw}" inválida`);
   data.tira = tira || tiraRaw;
 
+  if (categoria && tira) {
+    const temporadaActiva = (temporadas || []).find((t) => t.categoria === categoria && t.tira === tira && t.activa);
+    if (!temporadaActiva) errores.push(`No hay una temporada activa para ${categoria} · ${tira} — creala primero desde Plantel`);
+    data.temporada_id = temporadaActiva?.id ?? null;
+  } else {
+    data.temporada_id = null;
+  }
+
   data.notas_comentarios = (raw.notas_comentarios || "").trim();
 
   const dispRaw = (raw.disponibilidad || "").trim();
@@ -179,7 +187,7 @@ function descargarPlantilla() {
 
 // Carga masiva de Plantel propio desde un .csv: FileReader -> parseo -> previsualización
 // con validación fila por fila -> bulk insert a Supabase de solo las filas válidas.
-export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onCancel, onImported }) {
+export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, temporadas, onCancel, onImported }) {
   const [fase, setFase] = useState("carga"); // carga | preview | importando | listo
   const [filas, setFilas] = useState([]);
   const [errorArchivo, setErrorArchivo] = useState("");
@@ -215,7 +223,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
           .map((r, idx) => {
             const raw = {};
             campos.forEach((campo, i) => { if (campo) raw[campo] = r[i] ?? ""; });
-            return validarFila(raw, idx + 2, categoriaDefault, tiraDefault);
+            return validarFila(raw, idx + 2, categoriaDefault, tiraDefault, temporadas);
           });
         setFilas(validadas);
         setFase("preview");
@@ -236,18 +244,76 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, onC
   const validas = filas.filter((f) => f.valida);
   const invalidas = filas.filter((f) => !f.valida);
 
+  // Insert en 2 fases: primero la identidad de cada jugador (jugadores), despues su membresia
+  // de esta temporada (jugador_temporada, con el temporada_id ya resuelto en validarFila) --
+  // mismo modelo que usa PlantelView/JugadorFormModal (ver src/App.jsx, addJugador).
   const importar = async () => {
     setFase("importando");
     setErrorImport("");
-    const payload = validas.map((f) => f.data);
-    const { data, error } = await supabase.from("jugadores").insert(payload).select();
-    if (error) {
-      setErrorImport(error.message);
+
+    const bioPayload = validas.map((f) => ({
+      nombre_apellido: f.data.nombre_apellido,
+      posicion: f.data.posicion,
+      altura: f.data.altura,
+      peso: f.data.peso,
+      fecha_nacimiento: f.data.fecha_nacimiento,
+      notas_comentarios: f.data.notas_comentarios,
+      disponibilidad: f.data.disponibilidad,
+      lesion_detalle: f.data.lesion_detalle,
+      lesion_desde: f.data.lesion_desde,
+    }));
+    const { data: jugadoresInsertados, error: errJugadores } = await supabase.from("jugadores").insert(bioPayload).select();
+    if (errJugadores) {
+      setErrorImport(errJugadores.message);
       setFase("preview");
       return;
     }
-    setResultado({ insertados: data.length, omitidas: invalidas.length });
-    onImported(data);
+
+    const jtPayload = jugadoresInsertados.map((row, i) => ({
+      jugador_id: row.id,
+      temporada_id: validas[i].data.temporada_id,
+      dorsal: validas[i].data.dorsal,
+      equipos_adicionales: validas[i].data.equipos_adicionales,
+      estado: "activo",
+    }));
+    const { data: jtInsertados, error: errJt } = await supabase.from("jugador_temporada").insert(jtPayload).select();
+    if (errJt) {
+      setErrorImport(errJt.message);
+      setFase("preview");
+      return;
+    }
+
+    const temporadasPorId = Object.fromEntries((temporadas || []).map((t) => [t.id, t]));
+    const flattened = jugadoresInsertados.map((row, i) => {
+      const jt = jtInsertados[i];
+      const t = temporadasPorId[jt.temporada_id];
+      return {
+        id: row.id,
+        jugador_temporada_id: jt.id,
+        nombre_apellido: row.nombre_apellido,
+        posicion: row.posicion,
+        altura: row.altura,
+        peso: row.peso,
+        fecha_nacimiento: row.fecha_nacimiento,
+        notas_comentarios: row.notas_comentarios,
+        disponibilidad: row.disponibilidad,
+        lesion_detalle: row.lesion_detalle,
+        lesion_desde: row.lesion_desde,
+        evaluaciones_pfs: row.evaluaciones_pfs,
+        temporada_id: jt.temporada_id,
+        nombre_competencia: t?.nombre_competencia,
+        anio: t?.anio,
+        temporada_activa: t?.activa,
+        categoria_origen: t?.categoria,
+        tira: t?.tira,
+        dorsal: jt.dorsal,
+        estado: jt.estado,
+        equipos_adicionales: jt.equipos_adicionales,
+      };
+    });
+
+    setResultado({ insertados: flattened.length, omitidas: invalidas.length });
+    onImported(flattened);
     setFase("listo");
   };
 
