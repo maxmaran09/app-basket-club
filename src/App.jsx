@@ -2481,9 +2481,9 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
       <div className="flex items-center gap-2 mb-6 flex-wrap">
         <h1 className="text-2xl font-bold">{equipo.nombre_club}</h1>
         {equipo.categoria && equipo.tira ? (
-          <Chip tone="brand">{equipo.categoria} · {equipo.tira}</Chip>
+          <Chip tone="brand">{equipo.categoria} · {equipo.tira}{equipo.nombre_competencia ? ` — ${equipo.nombre_competencia} ${equipo.anio}` : ""}</Chip>
         ) : (
-          <Chip tone="amber">Sin categoría/tira asignada</Chip>
+          <Chip tone="amber">Sin temporada asignada</Chip>
         )}
       </div>
 
@@ -2574,9 +2574,17 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
 function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura, rol }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const { categoria, tira, setCategoria, setTira } = useTeam();
+  const {
+    categoria, tira, setCategoria, setTira,
+    temporadasDelEquipo, temporadaId, temporadaSeleccionada, esTemporadaActiva,
+    setTemporadaId, refrescarTemporadas,
+  } = useTeam();
   const [verSinAsignar, setVerSinAsignar] = useState(false);
+  const [sinAsignar, setSinAsignar] = useState([]);
+  const [historico, setHistorico] = useState([]);
+  const [loadingSecundario, setLoadingSecundario] = useState(false);
   const esJugador = rol === ROLES.JUGADOR;
 
   // Igual que en Calendario: un Jugador no elige categoria/tira, queda fijo a la suya.
@@ -2595,7 +2603,43 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
     return () => { cancelled = true; };
   }, [esJugador]);
 
-  const selected = equiposRivales.find((e) => e.id === selectedId) || null;
+  // "equiposRivales" (prop) solo trae la temporada ACTIVA de cada equipo -- mirar una temporada
+  // pasada de este equipo puntual, o los equipos sin temporada asignada, son fetchs aparte.
+  useEffect(() => {
+    if (esJugador || esTemporadaActiva || !temporadaId) { setHistorico([]); return; }
+    let cancelled = false;
+    setLoadingSecundario(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_equipos_rivales_temporada")
+        .select("*")
+        .eq("temporada_id", temporadaId)
+        .order("nombre_club", { ascending: true });
+      if (cancelled) return;
+      if (!error) setHistorico(data || []);
+      setLoadingSecundario(false);
+    })();
+    return () => { cancelled = true; };
+  }, [esJugador, esTemporadaActiva, temporadaId]);
+
+  useEffect(() => {
+    if (!verSinAsignar) return;
+    let cancelled = false;
+    setLoadingSecundario(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_equipos_rivales_temporada")
+        .select("*")
+        .is("temporada_id", null)
+        .order("nombre_club", { ascending: true });
+      if (cancelled) return;
+      if (!error) setSinAsignar(data || []);
+      setLoadingSecundario(false);
+    })();
+    return () => { cancelled = true; };
+  }, [verSinAsignar]);
+
+  const selected = (verSinAsignar ? sinAsignar : esTemporadaActiva ? equiposRivales : historico).find((e) => e.id === selectedId) || null;
 
   if (selected) {
     return (
@@ -2603,13 +2647,16 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         equipo={selected}
         onBack={() => setSelectedId(null)}
         onUpdateEquipo={(patch) => onUpdateEquipo(selected.id, patch)}
-        soloLectura={soloLectura}
+        soloLectura={soloLectura || !esTemporadaActiva}
       />
     );
   }
 
-  const sinAsignar = esJugador ? [] : equiposRivales.filter((eq) => !eq.categoria || !eq.tira);
-  const equiposMostrados = verSinAsignar ? sinAsignar : equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira);
+  const equiposMostrados = verSinAsignar
+    ? sinAsignar
+    : esTemporadaActiva
+      ? equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira)
+      : historico;
 
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
@@ -2619,7 +2666,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       </div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Equipos rivales</h1>
-        {!soloLectura && (
+        {!soloLectura && esTemporadaActiva && (
           <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
             <Plus size={15} /> Agregar equipo rival
           </button>
@@ -2630,11 +2677,11 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
       ) : verSinAsignar ? (
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-zinc-400">Equipos sin categoría/tira asignada</p>
+          <p className="text-sm text-zinc-400">Equipos sin temporada asignada</p>
           <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           <select value={categoria} onChange={(e) => setCategoria(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
             {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -2643,17 +2690,40 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
             className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
             {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          {sinAsignar.length > 0 && (
-            <button onClick={() => setVerSinAsignar(true)} className="text-xs text-amber-400 hover:text-amber-300">
-              Ver sin asignar ({sinAsignar.length})
-            </button>
+          {temporadasDelEquipo.length > 1 && (
+            <select value={temporadaId ?? ""} onChange={(e) => setTemporadaId(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {temporadasDelEquipo.map((t) => (
+                <option key={t.id} value={t.id}>{t.nombre_competencia} {t.anio}{t.activa ? " (activa)" : ""}</option>
+              ))}
+            </select>
           )}
+          {esStaffCompleto(rol) && esTemporadaActiva && (
+            <button onClick={() => setShowNuevaTemporada(true)} className="text-xs text-brand-400 hover:text-brand-300">+ Nueva temporada</button>
+          )}
+          <button onClick={() => setVerSinAsignar(true)} className="text-xs text-zinc-500 hover:text-zinc-300 ml-auto">Ver sin asignar</button>
         </div>
       )}
 
-      {equiposMostrados.length === 0 && (
+      {!esJugador && !verSinAsignar && !esTemporadaActiva && temporadaSeleccionada && (
+        <p className="text-xs text-amber-400 mb-3">
+          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa) — solo lectura.
+        </p>
+      )}
+
+      {!esJugador && !verSinAsignar && !temporadaId && (
+        <p className="text-sm text-amber-400 mb-3">
+          Todavía no hay ninguna temporada creada para {categoria} · {tira}.
+          {esStaffCompleto(rol) && (
+            <button onClick={() => setShowNuevaTemporada(true)} className="ml-1 text-brand-400 hover:text-brand-300 underline">Creá la primera</button>
+          )}
+        </p>
+      )}
+
+      {loadingSecundario && <p className="text-sm text-zinc-500 mb-2">Cargando…</p>}
+
+      {!loadingSecundario && equiposMostrados.length === 0 && (
         <p className="text-sm text-zinc-500">
-          {verSinAsignar ? "No hay equipos sin categoría/tira asignada." : "Todavía no cargaste ningún equipo rival para esta categoría/tira."}
+          {verSinAsignar ? "No hay equipos sin temporada asignada." : "Todavía no cargaste ningún equipo rival para esta temporada."}
         </p>
       )}
 
@@ -2665,7 +2735,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
               {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{eq.notas_colectivas}</p>}
             </button>
             <VideoLinkButton url={eq.video_colectivo_url} size={14} />
-            {!soloLectura && (
+            {!soloLectura && esTemporadaActiva && !verSinAsignar && (
               <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-1">
                 <Trash2 size={13} />
               </button>
@@ -2688,6 +2758,19 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
           subject="equipo rival"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { onDeleteEquipo(deleteTarget.id); setDeleteTarget(null); }}
+        />
+      )}
+      {showNuevaTemporada && (
+        <NuevaTemporadaModal
+          categoria={categoria}
+          tira={tira}
+          temporadaActivaActual={temporadasDelEquipo.find((t) => t.activa) || null}
+          onCancel={() => setShowNuevaTemporada(false)}
+          onCreada={async (nuevaId) => {
+            await refrescarTemporadas();
+            setTemporadaId(nuevaId);
+            setShowNuevaTemporada(false);
+          }}
         />
       )}
     </div>
@@ -3725,11 +3808,20 @@ export default function App() {
     return () => { cancelled = true; };
   }, [session]);
 
+  // Mismo criterio que "jugadores": trae los equipos rivales de la temporada ACTIVA de cada
+  // equipo propio (todo el club, no solo el filtro actual), para que Estadisticas siga pudiendo
+  // vincular un PDF con cualquier rival vigente sin importar que categoria/tira este seleccionada
+  // en Scouting. Mirar una temporada pasada de un equipo puntual es un fetch aparte, de
+  // ScoutingHubView, que no reemplaza este estado global.
   useEffect(() => {
     if (!session) { setEquiposRivales([]); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("equipos_rivales").select("*").order("nombre_club", { ascending: true });
+      const { data, error } = await supabase
+        .from("vista_equipos_rivales_temporada")
+        .select("*")
+        .eq("temporada_activa", true)
+        .order("nombre_club", { ascending: true });
       if (cancelled) return;
       if (!error) setEquiposRivales(data);
     })();
@@ -3898,16 +3990,66 @@ export default function App() {
     setJugadores((prev) => [...prev, ...nuevos]);
   };
 
+  // "equiposRivales" en el estado de React tiene la forma de vista_equipos_rivales_temporada
+  // (bio de equipos_rivales + categoria/tira/nombre_competencia/anio derivados de la temporada
+  // vinculada, aplanados en un solo objeto) -- mismo patron que aplanarJugador.
+  const aplanarEquipoRival = (equipoRow, temporadaRow) => ({
+    id: equipoRow.id,
+    nombre_club: equipoRow.nombre_club,
+    logo_url: equipoRow.logo_url,
+    notas_colectivas: equipoRow.notas_colectivas,
+    video_colectivo_url: equipoRow.video_colectivo_url,
+    id_estadistico_externo: equipoRow.id_estadistico_externo,
+    temporada_id: temporadaRow?.id ?? null,
+    nombre_competencia: temporadaRow?.nombre_competencia,
+    anio: temporadaRow?.anio,
+    temporada_activa: temporadaRow?.activa,
+    categoria: temporadaRow?.categoria,
+    tira: temporadaRow?.tira,
+  });
+
   const addEquipoRival = async (eq) => {
-    const { data, error } = await supabase.from("equipos_rivales").insert(eq).select().single();
+    const { categoria, tira, ...bio } = eq;
+    let temporadaDestino = null;
+    if (categoria && tira) {
+      temporadaDestino = temporadas.find((t) => t.categoria === categoria && t.tira === tira && t.activa);
+      if (!temporadaDestino) {
+        setErrorMsg(`No hay una temporada activa para ${categoria} · ${tira}. Creala primero desde Plantel o Scouting.`);
+        return;
+      }
+    }
+    const { data, error } = await supabase.from("equipos_rivales").insert({ ...bio, temporada_id: temporadaDestino?.id ?? null }).select().single();
     if (error) { setErrorMsg(error.message); return; }
-    setEquiposRivales((prev) => [...prev, data]);
+    setEquiposRivales((prev) => [...prev, aplanarEquipoRival(data, temporadaDestino)]);
   };
 
   const updateEquipoRival = async (id, patch) => {
-    const { data, error } = await supabase.from("equipos_rivales").update(patch).eq("id", id).select().single();
+    const actual = equiposRivales.find((e) => e.id === id);
+    if (!actual) return;
+
+    const { categoria, tira, ...bio } = patch;
+    let temporadaId;
+    if (categoria !== undefined || tira !== undefined) {
+      const nuevaCategoria = categoria ?? actual.categoria;
+      const nuevaTira = tira ?? actual.tira;
+      const temporadaDestino = temporadas.find((t) => t.categoria === nuevaCategoria && t.tira === nuevaTira && t.activa);
+      if (!temporadaDestino) {
+        setErrorMsg(`No hay una temporada activa para ${nuevaCategoria} · ${nuevaTira}. Creala primero desde Plantel o Scouting.`);
+        return;
+      }
+      temporadaId = temporadaDestino.id;
+    }
+
+    const payload = temporadaId !== undefined ? { ...bio, temporada_id: temporadaId } : bio;
+    const { data, error } = await supabase.from("equipos_rivales").update(payload).eq("id", id).select().single();
     if (error) { setErrorMsg(error.message); return; }
-    setEquiposRivales((prev) => prev.map((e) => (e.id === id ? data : e)));
+
+    const temporadaRow = temporadas.find((t) => t.id === data.temporada_id) || null;
+    if (temporadaRow && !temporadaRow.activa) {
+      setEquiposRivales((prev) => prev.filter((e) => e.id !== id));
+      return;
+    }
+    setEquiposRivales((prev) => prev.map((e) => (e.id === id ? aplanarEquipoRival(data, temporadaRow) : e)));
   };
 
   const deleteEquipoRival = async (id) => {
