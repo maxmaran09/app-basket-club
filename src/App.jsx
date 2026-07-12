@@ -2515,11 +2515,37 @@ function AnaliticaComparada360({ equipo, seleccionado, temporadaId }) {
 // (useTeam(), mismo criterio que Plantel) + ficha base, con los espacios de las Fases 2-4
 // reservados como placeholders explicitos.
 function Jugador360View({ jugadores }) {
-  const { categoria, tira, setCategoria, setTira, temporadaSeleccionada, esTemporadaActiva } = useTeam();
+  const {
+    categoria, tira, setCategoria, setTira,
+    temporadasDelEquipo, temporadaId, temporadaSeleccionada, esTemporadaActiva, setTemporadaId,
+  } = useTeam();
   const [busqueda, setBusqueda] = useState("");
   const [seleccionadoId, setSeleccionadoId] = useState(null);
+  const [historico, setHistorico] = useState([]);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
 
-  const delEquipo = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+  // "jugadores" (prop) solo trae la temporada ACTIVA de cada equipo (igual que en Plantel) --
+  // mirar una temporada pasada de este equipo puntual es un fetch aparte, acotado a esa
+  // temporada_id, que no reemplaza el estado global.
+  useEffect(() => {
+    if (esTemporadaActiva || !temporadaId) { setHistorico([]); return; }
+    let cancelled = false;
+    setLoadingHistorico(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_plantel_temporada")
+        .select("*")
+        .eq("temporada_id", temporadaId)
+        .eq("estado", "activo")
+        .order("nombre_apellido", { ascending: true });
+      if (cancelled) return;
+      if (!error) setHistorico(data || []);
+      setLoadingHistorico(false);
+    })();
+    return () => { cancelled = true; };
+  }, [esTemporadaActiva, temporadaId]);
+
+  const delEquipo = esTemporadaActiva ? jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira)) : historico;
   const filtrados = busqueda.trim()
     ? delEquipo.filter((j) => j.nombre_apellido.toLowerCase().includes(busqueda.trim().toLowerCase()))
     : delEquipo;
@@ -2533,17 +2559,27 @@ function Jugador360View({ jugadores }) {
       </div>
       <h1 className="text-2xl font-bold mb-3">Rendimiento integral del jugador</h1>
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <select value={categoria} onChange={(e) => { setCategoria(e.target.value); setSeleccionadoId(null); }} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
           {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={tira} onChange={(e) => { setTira(e.target.value); setSeleccionadoId(null); }} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
           {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        {temporadaSeleccionada && (
-          <span className="text-xs text-zinc-500">{temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio}{esTemporadaActiva ? " · activa" : ""}</span>
+        {temporadasDelEquipo.length > 1 && (
+          <select value={temporadaId ?? ""} onChange={(e) => { setTemporadaId(e.target.value); setSeleccionadoId(null); }} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {temporadasDelEquipo.map((t) => (
+              <option key={t.id} value={t.id}>{t.nombre_competencia} {t.anio}{t.activa ? " (activa)" : ""}</option>
+            ))}
+          </select>
         )}
       </div>
+
+      {!esTemporadaActiva && temporadaSeleccionada && (
+        <p className="text-xs text-amber-400 mb-3">
+          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa) — datos históricos.
+        </p>
+      )}
 
       <div className="relative mb-3 max-w-sm">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
@@ -2551,7 +2587,9 @@ function Jugador360View({ jugadores }) {
           className="w-full bg-zinc-900 border border-zinc-700 rounded pl-8 pr-2 py-1.5 text-sm text-zinc-100" />
       </div>
 
-      {filtrados.length === 0 ? (
+      {loadingHistorico ? (
+        <p className="text-sm text-zinc-500 mb-4">Cargando…</p>
+      ) : filtrados.length === 0 ? (
         <p className="text-sm text-zinc-500 mb-4">No hay jugadores para {categoria} · {tira}.</p>
       ) : (
         <div className="border border-zinc-800 rounded-lg overflow-hidden mb-6 max-w-sm">
