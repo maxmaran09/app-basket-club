@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
@@ -1674,8 +1674,28 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
   const [nuevoCat, setNuevoCat] = useState(CATEGORIAS[0]);
   const [nuevoTira, setNuevoTira] = useState(TIRAS[0]);
   const [saving, setSaving] = useState(false);
+  const [fotoUrl, setFotoUrl] = useState(jugador?.foto_url || "");
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [errorFoto, setErrorFoto] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // El path es "<jugador_id>.<ext>" con upsert: una foto nueva reemplaza a la vieja en el bucket
+  // en vez de acumular archivos huerfanos. Solo se puede subir editando un jugador ya guardado
+  // (necesita su id) -- de alta, primero se crea el jugador y despues se le carga la foto.
+  const handleFotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !jugador) return;
+    setErrorFoto("");
+    setSubiendoFoto(true);
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const { error: errUpload } = await supabase.storage.from("fotos-jugadores").upload(`${jugador.id}.${ext}`, file, { upsert: true, cacheControl: "3600" });
+    if (errUpload) { setErrorFoto(errUpload.message); setSubiendoFoto(false); return; }
+    const { data } = supabase.storage.from("fotos-jugadores").getPublicUrl(`${jugador.id}.${ext}`);
+    setFotoUrl(`${data.publicUrl}?v=${Date.now()}`);
+    setSubiendoFoto(false);
+  };
 
   const addEquipo = () => {
     const esPrincipal = nuevoCat === form.categoria_origen && nuevoTira === form.tira;
@@ -1698,6 +1718,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
       categoria_origen: form.categoria_origen,
       tira: form.tira,
       notas_comentarios: form.notas_comentarios,
+      foto_url: fotoUrl || null,
       equipos_adicionales: equipos,
       disponibilidad: form.disponibilidad,
       lesion_detalle: form.disponibilidad === "Disponible" ? "" : form.lesion_detalle,
@@ -1711,6 +1732,21 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-sm mb-3">{soloCamposMedicos ? `Ficha médica/física — ${jugador?.nombre_apellido}` : jugador ? "Editar jugador" : "Agregar jugador"}</h3>
         <div className="space-y-2">
+          {!soloCamposMedicos && jugador && (
+            <div className="flex items-center gap-3 pb-2 border-b border-zinc-800">
+              <FotoJugadorMini url={fotoUrl} size={52} />
+              <div>
+                <label className={`inline-flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300 ${subiendoFoto ? "opacity-50" : "cursor-pointer"}`}>
+                  <Camera size={13} /> {subiendoFoto ? "Subiendo…" : fotoUrl ? "Cambiar foto" : "Subir foto"}
+                  <input type="file" accept="image/*" className="hidden" disabled={subiendoFoto} onChange={handleFotoChange} />
+                </label>
+                {errorFoto && <p className="text-xs text-red-400 mt-1">{errorFoto}</p>}
+              </div>
+            </div>
+          )}
+          {!soloCamposMedicos && !jugador && (
+            <p className="text-xs text-zinc-500 pb-2 border-b border-zinc-800">Guardá el jugador para poder cargarle una foto.</p>
+          )}
           {!soloCamposMedicos && (
             <>
               <div className="flex gap-2">
@@ -2006,6 +2042,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         {listaMostrada.map((j) => (
           <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
+              <FotoJugadorMini url={j.foto_url} size={24} />
               <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
               <span className="font-medium text-sm">{j.nombre_apellido}</span>
               {(j.categoria_origen !== categoria || j.tira !== tira) && (
@@ -2207,6 +2244,154 @@ function NuevaTemporadaModal({ categoria, tira, temporadaActivaActual, onCancel,
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Foto de perfil circular chica (lista/selector); sin foto cargada muestra una silueta neutra
+// en vez de romper el layout.
+function FotoJugadorMini({ url, size = 40 }) {
+  return url ? (
+    <img src={url} alt="" style={{ width: size, height: size }} className="rounded-full object-cover border border-zinc-700 shrink-0" />
+  ) : (
+    <div style={{ width: size, height: size }} className="rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+      <UserCircle2 size={Math.round(size * 0.65)} className="text-zinc-600" />
+    </div>
+  );
+}
+
+// Tarjeta de ficha base (Fase 1 de Jugador 360°): dorsal, nombre, posicion, altura/peso/edad y
+// el semaforo de disponibilidad que ya existe en Plantel, reutilizado tal cual.
+function FichaBaseJugador({ jugador }) {
+  const edad = calcularEdad(jugador.fecha_nacimiento);
+  const semaforo = {
+    Disponible: { dot: "bg-emerald-400", text: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-500/25" },
+    Duda: { dot: "bg-amber-400", text: "text-amber-300", bg: "bg-amber-500/10 border-amber-500/25" },
+    Lesionado: { dot: "bg-red-400", text: "text-red-300", bg: "bg-red-500/10 border-red-500/25" },
+  }[jugador.disponibilidad || "Disponible"];
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-fit">
+      <div className="flex items-center gap-3 mb-3">
+        <FotoJugadorMini url={jugador.foto_url} size={58} />
+        <div className="min-w-0">
+          <p className="font-bold text-base leading-tight truncate">{jugador.nombre_apellido}</p>
+          <p className="text-xs text-zinc-500">#{jugador.dorsal ?? "-"} · {jugador.posicion || "Sin posición"}</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="bg-zinc-950 rounded-lg py-2 text-center">
+          <p className="text-sm font-bold">{jugador.altura != null ? `${jugador.altura} m` : "-"}</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Altura</p>
+        </div>
+        <div className="bg-zinc-950 rounded-lg py-2 text-center">
+          <p className="text-sm font-bold">{jugador.peso != null ? `${jugador.peso} kg` : "-"}</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Peso</p>
+        </div>
+        <div className="bg-zinc-950 rounded-lg py-2 text-center">
+          <p className="text-sm font-bold">{edad != null ? edad : "-"}</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Años</p>
+        </div>
+      </div>
+      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${semaforo.bg} ${semaforo.text}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${semaforo.dot}`} />
+        {(jugador.disponibilidad || "Disponible").toUpperCase()}
+      </span>
+      {jugador.disponibilidad && jugador.disponibilidad !== "Disponible" && (jugador.lesion_detalle || jugador.lesion_desde) && (
+        <p className="text-sm text-amber-300/80 mt-3">
+          {jugador.lesion_detalle}{jugador.lesion_desde ? ` (desde ${jugador.lesion_desde})` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Espacio reservado para las Fases 2/3 (evaluaciones fisicas del PF, promedios vs. plantel) --
+// todavia sin implementar, se marca "proximamente" a proposito para no simular datos que no
+// existen.
+function PlaceholderFase360({ titulo, fase, texto }) {
+  return (
+    <div className="bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">{titulo}</p>
+        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full shrink-0">{fase} · próximamente</span>
+      </div>
+      <p className="text-xs text-zinc-500 leading-relaxed">{texto}</p>
+    </div>
+  );
+}
+
+// Vista 360° del jugador (Fase 1): buscador/selector scopeado a Categoria/Tira/Temporada activa
+// (useTeam(), mismo criterio que Plantel) + ficha base, con los espacios de las Fases 2-4
+// reservados como placeholders explicitos.
+function Jugador360View({ jugadores }) {
+  const { categoria, tira, setCategoria, setTira, temporadaSeleccionada, esTemporadaActiva } = useTeam();
+  const [busqueda, setBusqueda] = useState("");
+  const [seleccionadoId, setSeleccionadoId] = useState(null);
+
+  const delEquipo = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+  const filtrados = busqueda.trim()
+    ? delEquipo.filter((j) => j.nombre_apellido.toLowerCase().includes(busqueda.trim().toLowerCase()))
+    : delEquipo;
+  const seleccionado = delEquipo.find((j) => j.id === seleccionadoId) || null;
+
+  return (
+    <div className="max-w-5xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Target size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Vista 360°</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-3">Rendimiento integral del jugador</h1>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <select value={categoria} onChange={(e) => { setCategoria(e.target.value); setSeleccionadoId(null); }} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={tira} onChange={(e) => { setTira(e.target.value); setSeleccionadoId(null); }} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {temporadaSeleccionada && (
+          <span className="text-xs text-zinc-500">{temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio}{esTemporadaActiva ? " · activa" : ""}</span>
+        )}
+      </div>
+
+      <div className="relative mb-3 max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar jugador por nombre…"
+          className="w-full bg-zinc-900 border border-zinc-700 rounded pl-8 pr-2 py-1.5 text-sm text-zinc-100" />
+      </div>
+
+      {filtrados.length === 0 ? (
+        <p className="text-sm text-zinc-500 mb-4">No hay jugadores para {categoria} · {tira}.</p>
+      ) : (
+        <div className="border border-zinc-800 rounded-lg overflow-hidden mb-6 max-w-sm">
+          {filtrados.map((j) => (
+            <button key={j.id} onClick={() => setSeleccionadoId(j.id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm border-t border-zinc-800 first:border-t-0 ${seleccionado?.id === j.id ? "bg-brand-500/15 text-brand-300" : "text-zinc-300 hover:bg-zinc-900"}`}>
+              <FotoJugadorMini url={j.foto_url} size={22} />
+              <span className="flex-1 text-left truncate">#{j.dorsal ?? "-"} {j.nombre_apellido}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {seleccionado && (
+        <>
+          <div className="grid lg:grid-cols-[280px_1fr] gap-4">
+            <FichaBaseJugador jugador={seleccionado} />
+            <div className="flex flex-col gap-4">
+              <PlaceholderFase360 titulo="Evaluaciones físicas (PF)" fase="Fase 2"
+                texto="Últimos testeos (salto, velocidad, fuerza) con fecha de la última medición." />
+              <PlaceholderFase360 titulo="Promedios vs. plantel / posición" fase="Fase 3"
+                texto="PTS · T3 · AST · RT · MIN de la temporada activa, comparados contra la media del equipo y de su posición." />
+            </div>
+          </div>
+          <div className="mt-4 border border-dashed border-zinc-700 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-sm text-zinc-400 font-medium"><GitCompare size={15} /> Comparar con otro jugador (modo espejo)</span>
+            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full shrink-0">Fase 4 · próximamente</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3803,6 +3988,7 @@ const NAV_ITEMS = [
   { id: "inicio", label: "Inicio", icon: Home },
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "plantel", label: "Plantel", icon: Users },
+  { id: "jugador360", label: "Jugador 360°", icon: Target },
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
@@ -4225,6 +4411,11 @@ export default function App() {
               <Route path="/plantel" element={
                 <ProtectedRoute seccionId="plantel">
                   <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} onReactivarJugador={reactivarJugador} rol={rol} />
+                </ProtectedRoute>
+              } />
+              <Route path="/jugador360" element={
+                <ProtectedRoute seccionId="jugador360">
+                  <Jugador360View jugadores={jugadores} />
                 </ProtectedRoute>
               } />
               <Route path="/entrenamientos" element={

@@ -19,9 +19,9 @@ export const ROL_LABELS = {
 // acceso. La primera de la lista es también la pantalla a la que se redirige ese rol al
 // entrar o si intenta abrir una ruta que no le corresponde.
 export const SECCIONES_POR_ROL = {
-  [ROLES.HEAD_COACH]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
-  [ROLES.ASISTENTE_TECNICO]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
-  [ROLES.PREPARADOR_FISICO]: ["inicio", "calendario", "plantel", "entrenamientos", "scouting", "estadisticas"],
+  [ROLES.HEAD_COACH]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "scouting", "estadisticas"],
+  [ROLES.ASISTENTE_TECNICO]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "scouting", "estadisticas"],
+  [ROLES.PREPARADOR_FISICO]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "scouting", "estadisticas"],
   [ROLES.JUGADOR]: ["calendario", "scouting"],
 };
 
