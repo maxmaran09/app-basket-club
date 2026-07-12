@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
@@ -2625,6 +2625,214 @@ function Jugador360View({ jugadores }) {
   );
 }
 
+// Cambio de contraseña de la cuenta logueada (supabase.auth.updateUser) -- no hace falta
+// reingresar la contraseña actual, Supabase alcanza con la sesion activa.
+function CambiarPasswordModal({ onCancel }) {
+  const [pass1, setPass1] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (pass1.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (pass1 !== pass2) { setError("Las contraseñas no coinciden."); return; }
+    setSaving(true);
+    const { error: errUpdate } = await supabase.auth.updateUser({ password: pass1 });
+    setSaving(false);
+    if (errUpdate) { setError(errUpdate.message); return; }
+    setOk(true);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">Cambiar contraseña</h3>
+        {ok ? (
+          <>
+            <p className="text-sm text-emerald-400 mb-3">Contraseña actualizada correctamente.</p>
+            <button onClick={onCancel} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm px-3 py-1.5 rounded">Cerrar</button>
+          </>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <input type="password" placeholder="Nueva contraseña" value={pass1} onChange={(e) => setPass1(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              <input type="password" placeholder="Repetir contraseña" value={pass2} onChange={(e) => setPass2(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button disabled={!pass1 || !pass2 || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{saving ? "Guardando…" : "Guardar"}</button>
+              <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Alta de una competencia nueva para CUALQUIER equipo (categoria/tira elegidos a mano, no
+// fijos al filtro activo como en NuevaTemporadaModal) -- arranca inactiva a proposito: crear y
+// activar son 2 acciones separadas en este panel, para poder precargar una competencia futura
+// sin tocar todavia la temporada que esta corriendo.
+function NuevaCompetenciaModal({ onCancel, onCreada }) {
+  const [nombreCompetencia, setNombreCompetencia] = useState("");
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const crear = async () => {
+    if (!nombreCompetencia.trim()) return;
+    setSaving(true);
+    setError("");
+    const { error: errCrear } = await supabase.from("temporadas").insert({
+      nombre_competencia: nombreCompetencia.trim(), anio: Number(anio), categoria, tira, activa: false,
+    });
+    setSaving(false);
+    if (errCrear) {
+      setError(errCrear.code === "23505" ? "Ya existe una competencia con ese nombre/año para esa categoría y tira." : errCrear.message);
+      return;
+    }
+    onCreada();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">Crear nueva competencia</h3>
+        <div className="space-y-2">
+          <input placeholder="Nombre (ej: Liga Metropolitana)" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div className="flex gap-2">
+            <input type="number" placeholder="Año" value={anio} onChange={(e) => setAnio(e.target.value)} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={tira} onChange={(e) => setTira(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-3">
+          <button disabled={!nombreCompetencia.trim() || saving} onClick={crear} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{saving ? "Creando…" : "Crear"}</button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Listado global de todas las competencias del club (todos los equipos, no solo el filtro
+// activo) + alta + "establecer como activa". Usa temporadas/refrescarTemporadas de useTeam()
+// directamente -- no hace falta ningun fetch propio, ya estan cargadas ahi.
+function GestionTemporadas() {
+  const { temporadas, refrescarTemporadas } = useTeam();
+  const [showNueva, setShowNueva] = useState(false);
+  const [actualizando, setActualizando] = useState(null);
+  const [errorActivar, setErrorActivar] = useState("");
+
+  const ordenadas = [...temporadas].sort((a, b) =>
+    a.categoria.localeCompare(b.categoria) || a.tira.localeCompare(b.tira) || b.anio - a.anio
+  );
+
+  // El indice unico de la base solo permite una fila activa por categoria+tira -- primero hay
+  // que desactivar la que este activa hoy para ese mismo equipo, si no es esta misma.
+  const establecerActiva = async (temporada) => {
+    setActualizando(temporada.id);
+    setErrorActivar("");
+    const actualActiva = temporadas.find((t) => t.categoria === temporada.categoria && t.tira === temporada.tira && t.activa && t.id !== temporada.id);
+    if (actualActiva) {
+      const { error } = await supabase.from("temporadas").update({ activa: false }).eq("id", actualActiva.id);
+      if (error) { setErrorActivar(error.message); setActualizando(null); return; }
+    }
+    const { error } = await supabase.from("temporadas").update({ activa: true }).eq("id", temporada.id);
+    if (error) { setErrorActivar(error.message); setActualizando(null); return; }
+    await refrescarTemporadas();
+    setActualizando(null);
+  };
+
+  return (
+    <Section icon={Trophy} title="Temporadas y competencias" accent="text-brand-400">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-xs text-zinc-500">Un torneo activo por equipo (Categoría + Tira) a la vez.</p>
+        <button onClick={() => setShowNueva(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded shrink-0">
+          <Plus size={15} /> Crear nueva competencia
+        </button>
+      </div>
+
+      {errorActivar && <p className="text-xs text-red-400 mb-2">{errorActivar}</p>}
+
+      {ordenadas.length === 0 ? (
+        <p className="text-sm text-zinc-500">Todavía no hay ninguna competencia creada.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {ordenadas.map((t) => (
+            <div key={t.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 flex-wrap">
+              <span className="text-sm font-medium flex-1 min-w-0 truncate">{t.nombre_competencia} {t.anio}</span>
+              <Chip>{t.categoria} · {t.tira}</Chip>
+              {t.activa ? (
+                <Chip tone="brand">Activa</Chip>
+              ) : (
+                <button disabled={actualizando === t.id} onClick={() => establecerActiva(t)} className="text-xs text-brand-400 hover:text-brand-300 disabled:opacity-50 shrink-0">
+                  {actualizando === t.id ? "Activando…" : "Establecer como activa"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showNueva && (
+        <NuevaCompetenciaModal onCancel={() => setShowNueva(false)} onCreada={async () => { await refrescarTemporadas(); setShowNueva(false); }} />
+      )}
+    </Section>
+  );
+}
+
+// Panel de Configuracion (Fase 1): datos de la cuenta + cambio de contraseña para cualquier rol
+// que entra aca, y gestion de Temporadas/Competencias oculta por completo salvo para staff
+// completo (Head Coach/Asistente Tecnico) -- mismo criterio que el resto de la app, un booleano
+// ya resuelto en vez de comparar el rol adentro de cada bloque.
+function ConfiguracionView() {
+  const { session, rol } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <div className="max-w-3xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Settings size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Configuración</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-4">Ajustes de la cuenta</h1>
+
+      <Section icon={UserCircle2} title="Mi cuenta" accent="text-brand-400">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-500">Email</span>
+            <span className="text-sm">{session?.user?.email}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-500">Rol</span>
+            <Chip tone="brand">{ROL_LABELS[rol] || rol}</Chip>
+          </div>
+          <div className="pt-2.5 border-t border-zinc-800">
+            <button onClick={() => setShowPassword(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
+              <KeyRound size={14} /> Cambiar contraseña
+            </button>
+          </div>
+        </div>
+      </Section>
+
+      {esStaffCompleto(rol) && <GestionTemporadas />}
+
+      {showPassword && <CambiarPasswordModal onCancel={() => setShowPassword(false)} />}
+    </div>
+  );
+}
+
 // Vista general de todos los bloques de entrenamiento programados (Entrenamiento, Individual y
 // Optativo) de una categoría/tira, para entrar directo a cualquiera sin ir mes a mes en el
 // calendario. Optativo no tiene ficha propia todavía, así que se lista pero no es clickeable.
@@ -4221,6 +4429,7 @@ const NAV_ITEMS = [
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
+  { id: "configuracion", label: "Configuración", icon: Settings },
 ];
 
 export default function App() {
@@ -4660,6 +4869,11 @@ export default function App() {
               <Route path="/estadisticas" element={
                 <ProtectedRoute seccionId="estadisticas">
                   <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} soloLectura={soloLecturaGeneral} />
+                </ProtectedRoute>
+              } />
+              <Route path="/configuracion" element={
+                <ProtectedRoute seccionId="configuracion">
+                  <ConfiguracionView />
                 </ProtectedRoute>
               } />
               <Route path="*" element={<Navigate to={rutaDeSeccion(seccionInicialDe(rol))} replace />} />
