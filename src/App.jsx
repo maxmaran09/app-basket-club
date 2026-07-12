@@ -834,12 +834,25 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
+  const [editingBloqueId, setEditingBloqueId] = useState(null);
+  const [editBloqueForm, setEditBloqueForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
 
   const addBloque = () => {
     if (!form.titulo) return;
     onChange([...bloques, { id: "b" + Date.now(), ...form }]);
     setForm({ inicio: "", fin: "", titulo: "", desc: "" });
     setShowForm(false);
+  };
+
+  const startEditBloque = (b) => {
+    setEditBloqueForm({ inicio: b.inicio || "", fin: b.fin || "", titulo: b.titulo || "", desc: b.desc || "" });
+    setEditingBloqueId(b.id);
+  };
+
+  const saveBloque = () => {
+    if (!editBloqueForm.titulo) return;
+    onChange(bloques.map((b) => (b.id === editingBloqueId ? { ...b, ...editBloqueForm } : b)));
+    setEditingBloqueId(null);
   };
 
   const saveDiagram = (bloqueId, diagramId, state) => {
@@ -871,6 +884,20 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
           const diagrams = b.diagrams || [];
           return (
             <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              {editingBloqueId === b.id ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input placeholder="Inicio (ej 0')" value={editBloqueForm.inicio} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                    <input placeholder="Fin (ej 20')" value={editBloqueForm.fin} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, fin: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                    <input placeholder="Título del bloque de cancha" value={editBloqueForm.titulo} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, titulo: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  </div>
+                  <textarea placeholder="Descripción del ejercicio" value={editBloqueForm.desc} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
+                  <div className="flex gap-2">
+                    <button onClick={saveBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+                    <button onClick={() => setEditingBloqueId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
               <div className="flex gap-3">
                 <div className="text-cyan-300 text-xs font-mono whitespace-nowrap pt-0.5 w-16 shrink-0">{b.inicio}–{b.fin}</div>
                 <div className="flex-1">
@@ -880,9 +907,14 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                       <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
                     </div>
                     {!soloLectura && (
-                      <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400 shrink-0">
-                        <Copy size={13} /> Duplicar
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => startEditBloque(b)} title="Editar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400">
+                          <PenLine size={13} /> Editar
+                        </button>
+                        <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400">
+                          <Copy size={13} /> Duplicar
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -916,6 +948,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           );
         })}
