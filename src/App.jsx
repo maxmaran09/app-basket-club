@@ -1996,7 +1996,7 @@ function EntrenamientosView({ events, onSelectEvent }) {
   const todayKey = todayKeyBA();
 
   const filtered = events
-    .filter((e) => ENTRENAMIENTOS_TIPOS.includes(e.type) && e.categoria === categoria && e.tira === tira)
+    .filter((e) => ENTRENAMIENTOS_TIPOS.includes(e.type) && e.categoria === categoria && e.tira === tira && e.date >= todayKey)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
@@ -2017,12 +2017,11 @@ function EntrenamientosView({ events, onSelectEvent }) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-zinc-500">No hay entrenamientos, individuales ni optativos cargados para {categoria} · {tira}.</p>
+        <p className="text-sm text-zinc-500">No hay entrenamientos, individuales ni optativos programados de hoy en adelante para {categoria} · {tira}.</p>
       ) : (
         <div className="space-y-2">
           {filtered.map((e) => {
             const st = TIPO_ESTILO[e.type];
-            const isPast = e.date < todayKey;
             const clickable = e.type === "entrenamiento" || e.type === "individual";
             const content = (
               <>
@@ -2037,12 +2036,12 @@ function EntrenamientosView({ events, onSelectEvent }) {
               <button
                 key={e.id}
                 onClick={() => onSelectEvent(e)}
-                className={`w-full text-left rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3 hover:border-zinc-600 transition ${isPast ? "opacity-50" : ""}`}
+                className="w-full text-left rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3 hover:border-zinc-600 transition"
               >
                 {content}
               </button>
             ) : (
-              <div key={e.id} className={`rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3 ${isPast ? "opacity-40" : ""}`}>
+              <div key={e.id} className="rounded-lg border border-zinc-800 px-3 py-2.5 flex items-center gap-3">
                 {content}
               </div>
             );
