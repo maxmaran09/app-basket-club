@@ -76,6 +76,7 @@ function Chip({ children, tone = "zinc" }) {
     zinc: "bg-zinc-800 text-zinc-300 border-zinc-700",
     brand: "bg-brand-500/15 text-brand-300 border-brand-500/30",
     blue: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+    amber: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   };
   return <span className={`inline-block px-2 py-0.5 rounded text-xs border ${map[tone]} mr-1.5 mb-1.5`}>{children}</span>;
 }
@@ -2055,12 +2056,14 @@ function EntrenamientosView({ events, onSelectEvent }) {
 }
 
 // Alta y edición de un equipo rival (nombre, escudo, notas colectivas, video de partido).
-function EquipoRivalFormModal({ equipo, onCancel, onSave }) {
+function EquipoRivalFormModal({ equipo, defaultCategoria, defaultTira, onCancel, onSave }) {
   const [form, setForm] = useState({
     nombre_club: equipo?.nombre_club ?? "",
     logo_url: equipo?.logo_url ?? "",
     notas_colectivas: equipo?.notas_colectivas ?? "",
     video_colectivo_url: equipo?.video_colectivo_url ?? "",
+    categoria: equipo?.categoria ?? defaultCategoria ?? "",
+    tira: equipo?.tira ?? defaultTira ?? "",
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -2078,6 +2081,16 @@ function EquipoRivalFormModal({ equipo, onCancel, onSave }) {
         <h3 className="font-bold text-sm mb-3">{equipo ? "Editar equipo rival" : "Agregar equipo rival"}</h3>
         <div className="space-y-2">
           <input placeholder="Nombre del club" value={form.nombre_club} onChange={(e) => set("nombre_club", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div className="flex gap-2">
+            <select value={form.categoria} onChange={(e) => set("categoria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              <option value="">— Sin asignar —</option>
+              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={form.tira} onChange={(e) => set("tira", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+              <option value="">— Sin asignar —</option>
+              {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
           <input placeholder="Link del escudo (logo_url, opcional)" value={form.logo_url} onChange={(e) => set("logo_url", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           <textarea placeholder="Notas colectivas (fortalezas / debilidades del equipo)" value={form.notas_colectivas} onChange={(e) => set("notas_colectivas", e.target.value)} rows={3} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           <div className="flex items-center gap-2">
@@ -2247,7 +2260,14 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         <Shield size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Ficha de rival</span>
       </div>
-      <h1 className="text-2xl font-bold mb-6">{equipo.nombre_club}</h1>
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <h1 className="text-2xl font-bold">{equipo.nombre_club}</h1>
+        {equipo.categoria && equipo.tira ? (
+          <Chip tone="brand">{equipo.categoria} · {equipo.tira}</Chip>
+        ) : (
+          <Chip tone="amber">Sin categoría/tira asignada</Chip>
+        )}
+      </div>
 
       <EditableField label="Notas colectivas" icon={Shield} accent="text-brand-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline soloLectura={soloLectura} />
 
@@ -2337,6 +2357,9 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
   const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const [verSinAsignar, setVerSinAsignar] = useState(false);
 
   const selected = equiposRivales.find((e) => e.id === selectedId) || null;
 
@@ -2350,6 +2373,9 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       />
     );
   }
+
+  const sinAsignar = equiposRivales.filter((eq) => !eq.categoria || !eq.tira);
+  const equiposMostrados = verSinAsignar ? sinAsignar : equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira);
 
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
@@ -2366,10 +2392,37 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         )}
       </div>
 
-      {equiposRivales.length === 0 && <p className="text-sm text-zinc-500">Todavía no cargaste ningún equipo rival.</p>}
+      {verSinAsignar ? (
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-zinc-400">Equipos sin categoría/tira asignada</p>
+          <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <select value={categoria} onChange={(e) => setCategoria(e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={tira} onChange={(e) => setTira(e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {sinAsignar.length > 0 && (
+            <button onClick={() => setVerSinAsignar(true)} className="text-xs text-amber-400 hover:text-amber-300">
+              Ver sin asignar ({sinAsignar.length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {equiposMostrados.length === 0 && (
+        <p className="text-sm text-zinc-500">
+          {verSinAsignar ? "No hay equipos sin categoría/tira asignada." : "Todavía no cargaste ningún equipo rival para esta categoría/tira."}
+        </p>
+      )}
 
       <div className="space-y-2">
-        {equiposRivales.map((eq) => (
+        {equiposMostrados.map((eq) => (
           <div key={eq.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-center gap-3">
             <button onClick={() => setSelectedId(eq.id)} className="flex-1 text-left">
               <p className="font-medium text-sm text-zinc-100">{eq.nombre_club}</p>
@@ -2386,7 +2439,12 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       </div>
 
       {showAdd && (
-        <EquipoRivalFormModal onCancel={() => setShowAdd(false)} onSave={async (data) => { await onAddEquipo(data); setShowAdd(false); }} />
+        <EquipoRivalFormModal
+          defaultCategoria={categoria}
+          defaultTira={tira}
+          onCancel={() => setShowAdd(false)}
+          onSave={async (data) => { await onAddEquipo(data); setShowAdd(false); }}
+        />
       )}
       {deleteTarget && (
         <ConfirmDeleteModal
@@ -2503,6 +2561,24 @@ function EquipoTotalsRow({ label, totales, onChange }) {
   );
 }
 
+// Selects compactos para asignar a mano la Categoria/Tira de un partido viejo (cargado antes de
+// que existiera la matriz), directamente en la fila del historial.
+function AsignarMatrizPartido({ partido, defaultCategoria, defaultTira, onAsignar }) {
+  const [cat, setCat] = useState(partido.categoria_equipo || defaultCategoria);
+  const [tir, setTir] = useState(partido.tira_equipo || defaultTira);
+  return (
+    <div className="flex items-center gap-1">
+      <select value={cat} onChange={(e) => setCat(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100">
+        {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <select value={tir} onChange={(e) => setTir(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100">
+        {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <button onClick={() => onAsignar(partido.id, cat, tir)} className="text-xs text-brand-400 hover:text-brand-300 px-1">Asignar</button>
+    </div>
+  );
+}
+
 function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
@@ -2511,6 +2587,9 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [historial, setHistorial] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [tira, setTira] = useState(TIRAS[0]);
+  const [verSinAsignar, setVerSinAsignar] = useState(false);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
   const [aliasEquipo, setAliasEquipo] = useState({});
@@ -2709,6 +2788,8 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         fecha: preview.fecha,
         torneo: preview.torneo || null,
         categoria: preview.categoria || null,
+        categoria_equipo: categoria,
+        tira_equipo: tira,
         equipo_local: preview.equipoLocal,
         equipo_visitante: preview.equipoVisitante,
         resultado_local: preview.resultadoLocal === "" ? null : Number(preview.resultadoLocal),
@@ -2768,13 +2849,45 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     if (!error) setHistorial((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const asignarMatrizPartido = async (id, cat, tir) => {
+    const { data, error } = await supabase.from("partidos_stats").update({ categoria_equipo: cat, tira_equipo: tir }).eq("id", id).select().single();
+    if (!error) setHistorial((prev) => prev.map((p) => (p.id === id ? data : p)));
+  };
+
+  const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.categoria === categoria && eq.tira === tira);
+  const sinAsignar = historial.filter((p) => !p.categoria_equipo || !p.tira_equipo);
+  const historialMostrado = verSinAsignar ? sinAsignar : historial.filter((p) => p.categoria_equipo === categoria && p.tira_equipo === tira);
+
   return (
     <div className="max-w-5xl mx-auto text-zinc-100">
       <div className="flex items-center gap-2 mb-1 text-zinc-400">
         <BarChart3 size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Estadísticas</span>
       </div>
-      <h1 className="text-2xl font-bold mb-4">Cargar partido (PDF de la CABB)</h1>
+      <h1 className="text-2xl font-bold mb-3">Cargar partido (PDF de la CABB)</h1>
+
+      {verSinAsignar ? (
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-zinc-400">Partidos sin categoría/tira asignada</p>
+          <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <select value={categoria} onChange={(e) => setCategoria(e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={tira} onChange={(e) => setTira(e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+            {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {sinAsignar.length > 0 && (
+            <button onClick={() => setVerSinAsignar(true)} className="text-xs text-amber-400 hover:text-amber-300">
+              Ver sin asignar ({sinAsignar.length})
+            </button>
+          )}
+        </div>
+      )}
 
       {!soloLectura && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
@@ -2842,7 +2955,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
               }}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
                 <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+                {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
               </select>
             </div>
             <StatsPreviewTable label="Jugadores" rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal}
@@ -2863,7 +2976,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
               }}
                 className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
                 <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivales.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+                {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
               </select>
             </div>
             <StatsPreviewTable label="Jugadores" rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante}
@@ -2888,17 +3001,26 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       <Section icon={Trophy} title="Partidos cargados" accent="text-blue-400">
         {loadingHistorial ? (
           <p className="text-sm text-zinc-500">Cargando…</p>
-        ) : historial.length === 0 ? (
-          <p className="text-sm text-zinc-500">Todavía no cargaste ningún partido.</p>
+        ) : historialMostrado.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            {verSinAsignar ? "No hay partidos sin categoría/tira asignada." : "Todavía no cargaste ningún partido para esta categoría/tira."}
+          </p>
         ) : (
           <div className="space-y-1.5">
-            {historial.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            {historialMostrado.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 flex-wrap">
                 <span className="text-xs text-zinc-500 w-24 shrink-0">{p.fecha}</span>
                 <span className="text-sm text-zinc-200 flex-1 truncate">
                   {p.equipo_local} {p.resultado_local ?? "-"} vs {p.resultado_visitante ?? "-"} {p.equipo_visitante}
                 </span>
                 {p.categoria && <Chip>{p.categoria}</Chip>}
+                {p.categoria_equipo && p.tira_equipo ? (
+                  <Chip tone="brand">{p.categoria_equipo} · {p.tira_equipo}</Chip>
+                ) : !soloLectura ? (
+                  <AsignarMatrizPartido partido={p} defaultCategoria={categoria} defaultTira={tira} onAsignar={asignarMatrizPartido} />
+                ) : (
+                  <Chip tone="amber">Sin categoría/tira</Chip>
+                )}
                 {!soloLectura && (
                   <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
                 )}
