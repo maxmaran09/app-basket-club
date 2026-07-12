@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
@@ -361,17 +361,24 @@ function CourtBg({ w, h, courtType }) {
   );
 }
 
+const PLAYER_COLORS = {
+  off: { fill: "#3b82f6", stroke: "#93c5fd", text: "#ffffff" },
+  def: { fill: "#18181b", stroke: "#ef4444", text: "#ef4444" },
+  coach: { fill: "#f59e0b", stroke: "#fde68a", text: "#78350f" },
+};
+
 const TOOLS = [
-  { id: "mover", label: "Mover" },
-  { id: "ataque", label: "+ Ofensivo" },
-  { id: "defensa", label: "+ Defensivo" },
-  { id: "balon", label: "Balón" },
-  { id: "pase", label: "Pase" },
-  { id: "dribbling", label: "Dribbling" },
-  { id: "corte", label: "Corte" },
-  { id: "cortina", label: "Cortina" },
-  { id: "lanzamiento", label: "Lanzamiento" },
-  { id: "borrar", label: "Borrar" },
+  { id: "mover", label: "Mover", icon: Move },
+  { id: "ataque", label: "Jugador ofensivo", icon: UserPlus },
+  { id: "defensa", label: "Jugador defensivo", icon: ShieldPlus },
+  { id: "coach", label: "Coach", icon: UserCog },
+  { id: "balon", label: "Balón", icon: CircleDot },
+  { id: "pase", label: "Pase", icon: MoveRight },
+  { id: "dribbling", label: "Dribbling", icon: Shuffle },
+  { id: "corte", label: "Corte", icon: CornerUpRight },
+  { id: "cortina", label: "Cortina", icon: Minus },
+  { id: "lanzamiento", label: "Lanzamiento", icon: Target },
+  { id: "borrar", label: "Borrar", icon: Eraser },
 ];
 
 function CourtDiagram({ initial, onSave, onCancel }) {
@@ -388,6 +395,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
   const dragRef = useRef(null);
   const offCount = useRef((initial?.players || []).filter((p) => p.team === "off").reduce((m, p) => Math.max(m, p.num), 0));
   const defCount = useRef((initial?.players || []).filter((p) => p.team === "def").reduce((m, p) => Math.max(m, p.num), 0));
+  const coachCount = useRef((initial?.players || []).filter((p) => p.team === "coach").reduce((m, p) => Math.max(m, p.num), 0));
   const markerId = useId();
 
   const vbW = 150, vbH = courtType === "half" ? 140 : 280;
@@ -412,6 +420,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
     const pt = getPoint(evt);
     if (tool === "ataque") { offCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }]); }
     else if (tool === "defensa") { defCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }]); }
+    else if (tool === "coach") { coachCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: coachCount.current, team: "coach", x: pt.x, y: pt.y }]); }
     else if (tool === "balon") { setBall({ x: pt.x, y: pt.y }); }
   };
 
@@ -472,28 +481,34 @@ function CourtDiagram({ initial, onSave, onCancel }) {
 
   const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); setShotDraft(null); };
 
-  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; };
+  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; coachCount.current = 0; };
 
   const previewPoints = drawingPath ? [...drawingPath.points, ...(previewPt ? [previewPt] : [])] : [];
 
   return (
     <div className="mt-2">
       <div className="flex flex-wrap gap-1 mb-2">
-        {TOOLS.map((t) => (
-          <button key={t.id} onClick={() => selectTool(t.id)}
-            className={`px-2 py-1 rounded text-xs border ${tool === t.id ? "bg-brand-500/20 border-brand-500/50 text-brand-300" : "bg-zinc-900 border-zinc-700 text-zinc-400"}`}>
-            {t.label}
-          </button>
-        ))}
-        <button onClick={() => setCourtType(courtType === "half" ? "full" : "half")} className="px-2 py-1 rounded text-xs border bg-zinc-900 border-zinc-700 text-zinc-400">
-          {courtType === "half" ? "Media cancha" : "Cancha completa"}
+        {TOOLS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} onClick={() => selectTool(t.id)} title={t.label}
+              className={`p-1.5 rounded border ${tool === t.id ? "bg-brand-500/20 border-brand-500/50 text-brand-300" : "bg-zinc-900 border-zinc-700 text-zinc-400"}`}>
+              <Icon size={15} />
+            </button>
+          );
+        })}
+        <button onClick={() => setCourtType(courtType === "half" ? "full" : "half")} title={courtType === "half" ? "Cambiar a cancha completa" : "Cambiar a media cancha"}
+          className="p-1.5 rounded border bg-zinc-900 border-zinc-700 text-zinc-400">
+          {courtType === "half" ? <Maximize2 size={15} /> : <Minimize2 size={15} />}
         </button>
         {drawingPath && (
-          <button onClick={() => finalizeDrawing()} className="px-2 py-1 rounded text-xs border bg-emerald-500/15 border-emerald-500/40 text-emerald-300">
-            Finalizar trazo
+          <button onClick={() => finalizeDrawing()} title="Finalizar trazo" className="p-1.5 rounded border bg-emerald-500/15 border-emerald-500/40 text-emerald-300">
+            <Check size={15} />
           </button>
         )}
-        <button onClick={clearAll} className="px-2 py-1 rounded text-xs border bg-red-500/10 border-red-500/30 text-red-300">Limpiar</button>
+        <button onClick={clearAll} title="Limpiar cancha" className="p-1.5 rounded border bg-red-500/10 border-red-500/30 text-red-300">
+          <Trash2 size={15} />
+        </button>
       </div>
       <svg ref={svgRef} viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ maxWidth: 320, touchAction: "none" }}
         className="bg-zinc-900 rounded-lg border border-zinc-800"
@@ -512,9 +527,9 @@ function CourtDiagram({ initial, onSave, onCancel }) {
         )}
         {players.map((p) => (
           <g key={p.id} onMouseDown={(e) => onPlayerDown(e, p)} onTouchStart={(e) => onPlayerDown(e, p)} style={{ cursor: tool === "mover" ? "grab" : "pointer" }}>
-            <circle cx={p.x} cy={p.y} r="6" fill={p.team === "off" ? "#3b82f6" : "#18181b"} stroke={p.team === "off" ? "#93c5fd" : "#ef4444"} strokeWidth="1.5" />
-            <text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill={p.team === "off" ? "#ffffff" : "#ef4444"}>
-              {p.team === "def" ? "X" + p.num : p.num}
+            <circle cx={p.x} cy={p.y} r="6" fill={PLAYER_COLORS[p.team].fill} stroke={PLAYER_COLORS[p.team].stroke} strokeWidth="1.5" />
+            <text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill={PLAYER_COLORS[p.team].text}>
+              {p.team === "def" ? "X" + p.num : p.team === "coach" ? "C" : p.num}
             </text>
           </g>
         ))}
@@ -530,7 +545,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
         )}
       </svg>
       <p className="hidden sm:block text-xs text-zinc-600 mt-1">
-        Mové, agregá jugadores o balón tocando la cancha. Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
+        Mové, agregá jugadores, coach o balón tocando la cancha (pasá el mouse sobre cada ícono para ver qué hace). Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
       </p>
       <div className="flex gap-2 mt-2">
         <button onClick={() => onSave({ courtType, players, lines, ball, shots })} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
@@ -557,9 +572,9 @@ function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] })
       {lines.map((l) => <CourtLine key={l.id} l={l} markerId={markerId} />)}
       {players.map((p) => (
         <g key={p.id}>
-          <circle cx={p.x} cy={p.y} r="6" fill={p.team === "off" ? "#3b82f6" : "#18181b"} stroke={p.team === "off" ? "#93c5fd" : "#ef4444"} strokeWidth="1.5" />
-          <text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill={p.team === "off" ? "#ffffff" : "#ef4444"}>
-            {p.team === "def" ? "X" + p.num : p.num}
+          <circle cx={p.x} cy={p.y} r="6" fill={PLAYER_COLORS[p.team].fill} stroke={PLAYER_COLORS[p.team].stroke} strokeWidth="1.5" />
+          <text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill={PLAYER_COLORS[p.team].text}>
+            {p.team === "def" ? "X" + p.num : p.team === "coach" ? "C" : p.num}
           </text>
         </g>
       ))}
