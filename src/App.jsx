@@ -2321,6 +2321,196 @@ function PlaceholderFase360({ titulo, fase, texto }) {
   );
 }
 
+function SeccionMini({ children }) {
+  return (
+    <div className="flex items-center gap-2 mb-1.5">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{children}</p>
+      <div className="flex-1 h-px bg-zinc-800" />
+    </div>
+  );
+}
+
+function VolTile({ valor, label, decimales = 0, rango }) {
+  const v = Number(valor) || 0;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 text-center">
+      <p className="text-lg font-extrabold">{decimales ? v.toFixed(decimales) : Math.round(v)}</p>
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{label}</p>
+      {rango && <p className="text-[10px] font-bold text-brand-300 mt-0.5">{rango}</p>}
+    </div>
+  );
+}
+
+// Barrita comparativa compartida por MetricaComparada/TiroComparado: relleno = el jugador
+// (verde si mejor que la media de equipo, rojo si peor), 2 marcas finas = media de equipo y de
+// posicion. Mismo lenguaje visual validado en el prototipo de Artifact.
+function BarraComparada({ valor, mediaEquipo, mediaPosicion, esMejor }) {
+  const max = Math.max(valor, mediaEquipo, mediaPosicion) * 1.2 || 1;
+  const w = (n) => `${Math.min(100, (n / max) * 100)}%`;
+  return (
+    <div className="relative h-1.5 bg-zinc-800 rounded mb-1.5">
+      <div className={`absolute left-0 top-0 h-full rounded ${esMejor ? "bg-emerald-400" : "bg-red-400"}`} style={{ width: w(valor) }} />
+      <div className="absolute -top-0.5 w-0.5 h-2.5 bg-zinc-500 rounded-sm" style={{ left: w(mediaEquipo) }} />
+      <div className="absolute -top-0.5 w-0.5 h-2.5 bg-brand-300 rounded-sm" style={{ left: w(mediaPosicion) }} />
+    </div>
+  );
+}
+
+function MetricaComparada({ label, valor, mediaEquipo, mediaPosicion, mejorMayor = true, decimales = 1 }) {
+  const v = Number(valor) || 0;
+  const eq = Number(mediaEquipo) || 0;
+  const pos = Number(mediaPosicion) || 0;
+  const delta = v - eq;
+  const neutro = Math.abs(delta) < Math.max(eq * 0.04, 0.05);
+  const esMejor = mejorMayor ? delta >= 0 : delta <= 0;
+  const colorTexto = neutro ? "text-amber-400 bg-amber-500/10" : esMejor ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10";
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[10px] font-bold text-zinc-400 tracking-wide">{label}</span>
+        <span className="text-lg font-extrabold">{v.toFixed(decimales)}</span>
+      </div>
+      <BarraComparada valor={v} mediaEquipo={eq} mediaPosicion={pos} esMejor={esMejor} />
+      <div className="flex items-center justify-between text-[9px] text-zinc-500">
+        <span>Equipo <b className="text-zinc-400">{eq.toFixed(decimales)}</b></span>
+        <span className={`font-bold px-1.5 rounded-full ${colorTexto}`}>{delta >= 0 ? "+" : ""}{delta.toFixed(decimales)}</span>
+        <span>Posición <b className="text-zinc-400">{pos.toFixed(decimales)}</b></span>
+      </div>
+    </div>
+  );
+}
+
+function TiroComparado({ label, hechos, intentos, pctEquipo, pctPosicion }) {
+  const h = Number(hechos) || 0;
+  const i = Number(intentos) || 0;
+  const p = i > 0 ? h / i : 0;
+  const eq = Number(pctEquipo) || 0;
+  const pos = Number(pctPosicion) || 0;
+  const delta = p - eq;
+  const esMejor = delta >= 0;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5">
+      <p className="text-[10px] font-bold text-zinc-400 tracking-wide mb-1">{label}</p>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-xs text-zinc-400">{h.toFixed(1)} / {i.toFixed(1)} por partido</span>
+        <span className="text-lg font-extrabold">{Math.round(p * 100)}%</span>
+      </div>
+      <BarraComparada valor={p} mediaEquipo={eq} mediaPosicion={pos} esMejor={esMejor} />
+      <div className="flex items-center justify-between text-[9px] text-zinc-500">
+        <span>Equipo <b className="text-zinc-400">{Math.round(eq * 100)}%</b></span>
+        <span className={`font-bold px-1.5 rounded-full ${esMejor ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>{delta >= 0 ? "+" : ""}{Math.round(delta * 100)}%</span>
+        <span>Posición <b className="text-zinc-400">{Math.round(pos * 100)}%</b></span>
+      </div>
+    </div>
+  );
+}
+
+const METRICAS_BASE_360 = [
+  { campo: "pts_prom", label: "PTS", mejorMayor: true },
+  { campo: "ast_prom", label: "AST", mejorMayor: true },
+  { campo: "rdef_prom", label: "RD", mejorMayor: true },
+  { campo: "rof_prom", label: "RO", mejorMayor: true },
+];
+const METRICAS_CONTROL_360 = [
+  { campo: "per_prom", label: "PER", mejorMayor: false },
+  { campo: "rec_prom", label: "ROB", mejorMayor: true },
+];
+const ORDINALES_360 = ["1°", "2°", "3°", "4°", "5°", "6°", "7°", "8°", "9°", "10°", "11°", "12°"];
+
+// Fase 3: promedios del jugador de ESTA temporada (vista_promedios_jugador, ya trae todo lo
+// necesario -- ver supabase/schema_estadisticas_temporadas.sql) comparados contra la media del
+// equipo y de su posicion, calculadas en el cliente sobre el plantel activo (mismo criterio que
+// el resto de la app: traer el dataset chico del equipo y promediar ahi, sin vistas SQL nuevas).
+function AnaliticaComparada360({ equipo, seleccionado, temporadaId }) {
+  const [porJugador, setPorJugador] = useState({});
+  const [loading, setLoading] = useState(true);
+  const idsEquipo = equipo.map((j) => j.id).join(",");
+
+  useEffect(() => {
+    if (!temporadaId || !idsEquipo) { setPorJugador({}); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_promedios_jugador")
+        .select("*")
+        .in("jugador_id", idsEquipo.split(","))
+        .eq("temporada_id", temporadaId);
+      if (cancelled) return;
+      if (!error) setPorJugador(Object.fromEntries((data || []).map((p) => [p.jugador_id, p])));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [idsEquipo, temporadaId]);
+
+  if (loading) return <p className="text-sm text-zinc-500">Cargando estadísticas…</p>;
+
+  const misProm = porJugador[seleccionado.id];
+  if (!misProm) {
+    return <p className="text-sm text-zinc-500">Todavía no hay partidos cargados para {seleccionado.nombre_apellido} en esta temporada.</p>;
+  }
+
+  const filasEquipo = Object.values(porJugador);
+  const filasPosicion = equipo.filter((j) => j.posicion === seleccionado.posicion).map((j) => porJugador[j.id]).filter(Boolean);
+  const avg = (filas, campo) => {
+    const vals = filas.map((f) => Number(f[campo]) || 0);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+  const pctProm = (filas, campoM, campoI) => {
+    const i = avg(filas, campoI);
+    return i > 0 ? avg(filas, campoM) / i : 0;
+  };
+  const ranking = [...filasEquipo].sort((a, b) => (Number(b.play_prom) || 0) - (Number(a.play_prom) || 0));
+  const puesto = ranking.findIndex((f) => f.jugador_id === misProm.jugador_id) + 1;
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <VolTile valor={misProm.pj} label="Partidos jugados" />
+        <VolTile valor={misProm.min_prom} label="Min. promedio" decimales={1} />
+        <VolTile valor={misProm.play_prom} label="Plays / partido" decimales={1} rango={puesto ? `${ORDINALES_360[puesto - 1] || puesto + "°"} del equipo` : null} />
+      </div>
+
+      <SeccionMini>Métricas base</SeccionMini>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {METRICAS_BASE_360.map((m) => (
+          <MetricaComparada key={m.campo} label={m.label} mejorMayor={m.mejorMayor}
+            valor={misProm[m.campo]} mediaEquipo={avg(filasEquipo, m.campo)} mediaPosicion={avg(filasPosicion, m.campo)} />
+        ))}
+      </div>
+
+      <SeccionMini>Control de balón</SeccionMini>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {METRICAS_CONTROL_360.map((m) => (
+          <MetricaComparada key={m.campo} label={m.label} mejorMayor={m.mejorMayor}
+            valor={misProm[m.campo]} mediaEquipo={avg(filasEquipo, m.campo)} mediaPosicion={avg(filasPosicion, m.campo)} />
+        ))}
+      </div>
+
+      <SeccionMini>Eficiencia</SeccionMini>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        <MetricaComparada label="PTS / PLAY" decimales={2}
+          valor={misProm.pplay_prom} mediaEquipo={avg(filasEquipo, "pplay_prom")} mediaPosicion={avg(filasPosicion, "pplay_prom")} />
+      </div>
+
+      <SeccionMini>Efectividad de tiro</SeccionMini>
+      <div className="grid sm:grid-cols-3 gap-2 mb-3">
+        <TiroComparado label="Tiros de 2 (T2)" hechos={misProm.t2a_prom} intentos={misProm.t2i_prom}
+          pctEquipo={pctProm(filasEquipo, "t2a_prom", "t2i_prom")} pctPosicion={pctProm(filasPosicion, "t2a_prom", "t2i_prom")} />
+        <TiroComparado label="Tiros de 3 (T3)" hechos={misProm.t3a_prom} intentos={misProm.t3i_prom}
+          pctEquipo={pctProm(filasEquipo, "t3a_prom", "t3i_prom")} pctPosicion={pctProm(filasPosicion, "t3a_prom", "t3i_prom")} />
+        <TiroComparado label="Tiros libres (TL)" hechos={misProm.t1a_prom} intentos={misProm.t1i_prom}
+          pctEquipo={pctProm(filasEquipo, "t1a_prom", "t1i_prom")} pctPosicion={pctProm(filasPosicion, "t1a_prom", "t1i_prom")} />
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-zinc-500">
+        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-sm bg-zinc-500 inline-block" /> Media del equipo</span>
+        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-sm bg-brand-300 inline-block" /> Media de su posición</span>
+      </div>
+    </div>
+  );
+}
+
 // Vista 360° del jugador (Fase 1): buscador/selector scopeado a Categoria/Tira/Temporada activa
 // (useTeam(), mismo criterio que Plantel) + ficha base, con los espacios de las Fases 2-4
 // reservados como placeholders explicitos.
@@ -2382,8 +2572,9 @@ function Jugador360View({ jugadores }) {
             <div className="flex flex-col gap-4">
               <PlaceholderFase360 titulo="Evaluaciones físicas (PF)" fase="Fase 2"
                 texto="Últimos testeos (salto, velocidad, fuerza) con fecha de la última medición." />
-              <PlaceholderFase360 titulo="Promedios vs. plantel / posición" fase="Fase 3"
-                texto="PTS · T3 · AST · RT · MIN de la temporada activa, comparados contra la media del equipo y de su posición." />
+              <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-3">
+                <AnaliticaComparada360 equipo={delEquipo} seleccionado={seleccionado} temporadaId={temporadaSeleccionada?.id} />
+              </div>
             </div>
           </div>
           <div className="mt-4 border border-dashed border-zinc-700 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
