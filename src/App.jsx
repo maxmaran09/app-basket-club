@@ -2224,8 +2224,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           categoriaDefault={categoria}
           tiraDefault={tira}
           temporadas={temporadas}
+          jugadoresExistentes={jugadores}
           onCancel={() => setShowImport(false)}
-          onImported={(nuevos) => { onImportJugadores(nuevos); setShowImport(false); }}
+          onImported={(nuevos, actualizados) => { onImportJugadores(nuevos, actualizados); setShowImport(false); }}
         />
       )}
 
@@ -4869,8 +4870,9 @@ export default function App() {
     if (!errFetch && data) setJugadores((prev) => [...prev, data]);
   };
 
-  const importJugadores = (nuevos) => {
-    setJugadores((prev) => [...prev, ...nuevos]);
+  const importJugadores = (nuevos, actualizados) => {
+    const porId = Object.fromEntries((actualizados || []).map((a) => [a.id, a]));
+    setJugadores((prev) => [...prev.map((j) => porId[j.id] || j), ...nuevos]);
   };
 
   // "equiposRivales" en el estado de React tiene la forma de vista_equipos_rivales_temporada

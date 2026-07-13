@@ -3,6 +3,25 @@ import { Upload, X, Download, CheckCircle2, AlertCircle, Loader2, FileText } fro
 import { supabase } from "./supabaseClient";
 import { CATEGORIAS, TIRAS, POSICIONES } from "./constants";
 import { normalizarHeader, parseCSV, buscarEnLista, fechaValida, descargarCSV } from "./csvUtils";
+import { normalizeName } from "./pdfStats";
+
+// Fecha de hoy en huso horario de Buenos Aires -- mismo criterio que todayKeyBA() en App.jsx
+// (duplicada acá porque ese helper no está exportado y no amerita tocar App.jsx por esto).
+function hoyBA() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+// Busca, dentro del plantel del club ya cargado, un jugador con el mismo nombre que juegue en
+// la categoria/tira de esta fila (equipo principal o adicional) -- para actualizarlo en vez de
+// crear un duplicado si el CSV vuelve a traer a alguien que ya está cargado.
+function buscarExistente(jugadoresExistentes, nombre, categoria, tira) {
+  const norm = normalizeName(nombre);
+  return (jugadoresExistentes || []).find((j) => {
+    if (normalizeName(j.nombre_apellido) !== norm) return false;
+    if (j.categoria_origen === categoria && j.tira === tira) return true;
+    return (j.equipos_adicionales || []).some((e) => e.categoria === categoria && e.tira === tira);
+  }) || null;
+}
 
 // Encabezados de columna aceptados en el CSV -> nombre de columna real en la tabla "jugadores".
 // Se normalizan (minúsculas, sin acentos, espacios -> "_") antes de buscarlos acá.
@@ -14,6 +33,8 @@ const HEADER_ALIASES = {
   posicion: "posicion",
   altura: "altura",
   peso: "peso",
+  fecha_medicion: "fecha_medicion",
+  fecha_medida: "fecha_medicion",
   fecha_nacimiento: "fecha_nacimiento",
   categoria_principal: "categoria_origen",
   categoria_origen: "categoria_origen",
@@ -30,7 +51,7 @@ const HEADER_ALIASES = {
 };
 
 const CSV_HEADERS_TEMPLATE = [
-  "dorsal", "nombre_apellido", "posicion", "altura", "peso", "fecha_nacimiento",
+  "dorsal", "nombre_apellido", "posicion", "altura", "peso", "fecha_medicion", "fecha_nacimiento",
   "categoria_principal", "tira_principal", "notas", "disponibilidad",
   "detalle_lesion", "fecha_lesion_desde", "equipos_adicionales",
 ];
@@ -45,6 +66,7 @@ const CSV_FILA_INSTRUCCIONES = [
   POSICIONES.join(" / "),
   "en metros, ej: 1.90",
   "en kg, entero",
+  "AAAA-MM-DD, opcional (vacío = hoy). Fecha real de la toma de altura/peso, si es distinta a cuando cargás el CSV",
   "AAAA-MM-DD",
   `${CATEGORIAS.join(" / ")} (vacío = usa la categoría del filtro activo)`,
   `${TIRAS.join(" / ")} (vacío = usa la tira del filtro activo)`,
@@ -57,8 +79,8 @@ const CSV_FILA_INSTRUCCIONES = [
 
 const CSV_FILAS_EJEMPLO = [
   CSV_FILA_INSTRUCCIONES,
-  ["7", "Juan Pérez", "Base", "1.85", "78", "2001-04-12", "Mayores", "Blanca", "Buen tiro exterior, capitán", "Disponible", "", "", "Liga Próximo:Blanca"],
-  ["23", "Marcos Díaz", "Pivot", "2.02", "102", "1999-11-02", "Mayores", "Blanca", "", "Lesionado", "Esguince de tobillo", "2026-06-30", ""],
+  ["7", "Juan Pérez", "Base", "1.85", "78", "", "2001-04-12", "Mayores", "Blanca", "Buen tiro exterior, capitán", "Disponible", "", "", "Liga Próximo:Blanca"],
+  ["23", "Marcos Díaz", "Pivot", "2.02", "102", "2026-07-01", "1999-11-02", "Mayores", "Blanca", "", "Lesionado", "Esguince de tobillo", "2026-06-30", ""],
 ];
 
 // Formato simple para equipos_adicionales en la celda: "Categoria:Tira|Categoria2:Tira2"
@@ -86,16 +108,20 @@ function parseEquiposAdicionales(raw, principal) {
   return { lista, errores };
 }
 
-function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas) {
+function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas, jugadoresExistentes) {
   const errores = [];
   const warnings = [];
   const data = {};
+  // Que campos vinieron con dato en esta fila -- al actualizar un jugador ya existente solo se
+  // tocan estos, para no borrar por accidente algo cargado a mano que la fila no repitió.
+  const provisto = {};
 
   const nombre = (raw.nombre_apellido || "").trim();
   if (!nombre) errores.push("falta nombre_apellido (obligatorio)");
   data.nombre_apellido = nombre;
 
   const dorsalRaw = (raw.dorsal || "").trim();
+  provisto.dorsal = !!dorsalRaw;
   if (dorsalRaw) {
     const n = Number(dorsalRaw);
     if (!Number.isInteger(n)) errores.push(`dorsal "${dorsalRaw}" no es un número entero`);
@@ -103,6 +129,7 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
   } else data.dorsal = null;
 
   const posicionRaw = (raw.posicion || "").trim();
+  provisto.posicion = !!posicionRaw;
   if (posicionRaw) {
     const pos = buscarEnLista(posicionRaw, POSICIONES);
     if (!pos) errores.push(`posicion "${posicionRaw}" inválida (usar: ${POSICIONES.join(", ")})`);
@@ -110,6 +137,7 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
   } else data.posicion = null;
 
   const alturaRaw = (raw.altura || "").trim();
+  provisto.altura = !!alturaRaw;
   if (alturaRaw) {
     const n = Number(alturaRaw.replace(",", "."));
     if (Number.isNaN(n) || n <= 0 || n >= 10) errores.push(`altura "${alturaRaw}" inválida`);
@@ -117,6 +145,7 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
   } else data.altura = null;
 
   const pesoRaw = (raw.peso || "").trim();
+  provisto.peso = !!pesoRaw;
   if (pesoRaw) {
     const n = Number(pesoRaw.replace(",", "."));
     if (Number.isNaN(n) || n <= 0) errores.push(`peso "${pesoRaw}" inválido`);
@@ -127,7 +156,12 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
     }
   } else data.peso = null;
 
+  const fechaMedicionRaw = (raw.fecha_medicion || "").trim();
+  if (fechaMedicionRaw && !fechaValida(fechaMedicionRaw)) errores.push(`fecha_medicion "${fechaMedicionRaw}" debe tener formato YYYY-MM-DD`);
+  data.fecha_medicion = fechaMedicionRaw && fechaValida(fechaMedicionRaw) ? fechaMedicionRaw : null;
+
   const nacRaw = (raw.fecha_nacimiento || "").trim();
+  provisto.fecha_nacimiento = !!nacRaw;
   if (nacRaw) {
     if (!fechaValida(nacRaw)) errores.push(`fecha_nacimiento "${nacRaw}" debe tener formato YYYY-MM-DD`);
     data.fecha_nacimiento = fechaValida(nacRaw) ? nacRaw : null;
@@ -152,8 +186,10 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
   }
 
   data.notas_comentarios = (raw.notas_comentarios || "").trim();
+  provisto.notas_comentarios = !!data.notas_comentarios;
 
   const dispRaw = (raw.disponibilidad || "").trim();
+  provisto.disponibilidad = !!dispRaw;
   const disponibilidad = dispRaw ? buscarEnLista(dispRaw, ["Disponible", "Duda", "Lesionado"]) : "Disponible";
   if (dispRaw && !disponibilidad) errores.push(`disponibilidad "${dispRaw}" inválida (usar: Disponible, Duda, Lesionado)`);
   data.disponibilidad = disponibilidad || dispRaw || "Disponible";
@@ -171,6 +207,8 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
     data.lesion_desde = null;
   }
 
+  const equiposAdicionalesRaw = (raw.equipos_adicionales || "").trim();
+  provisto.equipos_adicionales = !!equiposAdicionalesRaw;
   const { lista: equiposAdicionales, errores: erroresEquipos } = parseEquiposAdicionales(
     raw.equipos_adicionales,
     { categoria: data.categoria_origen, tira: data.tira }
@@ -178,7 +216,16 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas)
   errores.push(...erroresEquipos);
   data.equipos_adicionales = equiposAdicionales;
 
-  return { numeroFila, data, errores, warnings, valida: errores.length === 0 };
+  // Si ya hay un jugador con este nombre en este mismo equipo, se actualiza en vez de duplicarlo.
+  // Comparacion con Number(...) de los dos lados porque "numeric"/PostgREST a veces vuelve como
+  // string -- sin esto, una fila sin cambios reales podria registrarse como cambio igual.
+  const existente = buscarExistente(jugadoresExistentes, data.nombre_apellido, data.categoria_origen, data.tira);
+  data.alturaCambio = !!existente && provisto.altura && Number(data.altura) !== Number(existente.altura ?? NaN);
+  data.pesoCambio = !!existente && provisto.peso && Number(data.peso) !== Number(existente.peso ?? NaN);
+  if (data.alturaCambio) warnings.push(`altura cambia de ${existente.altura ?? "—"} a ${data.altura} — se agrega a la evolución con fecha ${data.fecha_medicion || "de hoy"}`);
+  if (data.pesoCambio) warnings.push(`peso cambia de ${existente.peso ?? "—"} a ${data.peso} kg — se agrega a la evolución con fecha ${data.fecha_medicion || "de hoy"}`);
+
+  return { numeroFila, data, provisto, existente, errores, warnings, valida: errores.length === 0 };
 }
 
 function descargarPlantilla() {
@@ -187,7 +234,7 @@ function descargarPlantilla() {
 
 // Carga masiva de Plantel propio desde un .csv: FileReader -> parseo -> previsualización
 // con validación fila por fila -> bulk insert a Supabase de solo las filas válidas.
-export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, temporadas, onCancel, onImported }) {
+export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, temporadas, jugadoresExistentes, onCancel, onImported }) {
   const [fase, setFase] = useState("carga"); // carga | preview | importando | listo
   const [filas, setFilas] = useState([]);
   const [errorArchivo, setErrorArchivo] = useState("");
@@ -223,7 +270,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
           .map((r, idx) => {
             const raw = {};
             campos.forEach((campo, i) => { if (campo) raw[campo] = r[i] ?? ""; });
-            return validarFila(raw, idx + 2, categoriaDefault, tiraDefault, temporadas);
+            return validarFila(raw, idx + 2, categoriaDefault, tiraDefault, temporadas, jugadoresExistentes);
           });
         setFilas(validadas);
         setFase("preview");
@@ -244,76 +291,124 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
   const validas = filas.filter((f) => f.valida);
   const invalidas = filas.filter((f) => !f.valida);
 
-  // Insert en 2 fases: primero la identidad de cada jugador (jugadores), despues su membresia
-  // de esta temporada (jugador_temporada, con el temporada_id ya resuelto en validarFila) --
-  // mismo modelo que usa PlantelView/JugadorFormModal (ver src/App.jsx, addJugador).
+  // Altas: insert en 2 fases (identidad en "jugadores", despues membresia de la temporada en
+  // "jugador_temporada") -- mismo modelo que usa PlantelView/JugadorFormModal (ver src/App.jsx,
+  // addJugador). Actualizaciones: solo se tocan los campos que la fila trajo con dato (ver
+  // "provisto" en validarFila), y si altura/peso cambiaron se suma una entrada a
+  // evaluaciones_pfs con la fecha real de la medicion (o la de hoy si la fila no la trae) en
+  // vez de pisar el historial -- mismo criterio que ActualizarMedidasModal en App.jsx.
   const importar = async () => {
     setFase("importando");
     setErrorImport("");
 
-    const bioPayload = validas.map((f) => ({
-      nombre_apellido: f.data.nombre_apellido,
-      posicion: f.data.posicion,
-      altura: f.data.altura,
-      peso: f.data.peso,
-      fecha_nacimiento: f.data.fecha_nacimiento,
-      notas_comentarios: f.data.notas_comentarios,
-      disponibilidad: f.data.disponibilidad,
-      lesion_detalle: f.data.lesion_detalle,
-      lesion_desde: f.data.lesion_desde,
-    }));
-    const { data: jugadoresInsertados, error: errJugadores } = await supabase.from("jugadores").insert(bioPayload).select();
-    if (errJugadores) {
-      setErrorImport(errJugadores.message);
-      setFase("preview");
-      return;
+    const altas = validas.filter((f) => !f.existente);
+    const actualizaciones = validas.filter((f) => f.existente);
+
+    let nuevosFlattened = [];
+    if (altas.length > 0) {
+      const bioPayload = altas.map((f) => ({
+        nombre_apellido: f.data.nombre_apellido,
+        posicion: f.data.posicion,
+        altura: f.data.altura,
+        peso: f.data.peso,
+        fecha_nacimiento: f.data.fecha_nacimiento,
+        notas_comentarios: f.data.notas_comentarios,
+        disponibilidad: f.data.disponibilidad,
+        lesion_detalle: f.data.lesion_detalle,
+        lesion_desde: f.data.lesion_desde,
+      }));
+      const { data: jugadoresInsertados, error: errJugadores } = await supabase.from("jugadores").insert(bioPayload).select();
+      if (errJugadores) {
+        setErrorImport(errJugadores.message);
+        setFase("preview");
+        return;
+      }
+
+      const jtPayload = jugadoresInsertados.map((row, i) => ({
+        jugador_id: row.id,
+        temporada_id: altas[i].data.temporada_id,
+        dorsal: altas[i].data.dorsal,
+        equipos_adicionales: altas[i].data.equipos_adicionales,
+        estado: "activo",
+      }));
+      const { data: jtInsertados, error: errJt } = await supabase.from("jugador_temporada").insert(jtPayload).select();
+      if (errJt) {
+        setErrorImport(errJt.message);
+        setFase("preview");
+        return;
+      }
+
+      const temporadasPorId = Object.fromEntries((temporadas || []).map((t) => [t.id, t]));
+      nuevosFlattened = jugadoresInsertados.map((row, i) => {
+        const jt = jtInsertados[i];
+        const t = temporadasPorId[jt.temporada_id];
+        return {
+          id: row.id,
+          jugador_temporada_id: jt.id,
+          nombre_apellido: row.nombre_apellido,
+          posicion: row.posicion,
+          altura: row.altura,
+          peso: row.peso,
+          fecha_nacimiento: row.fecha_nacimiento,
+          notas_comentarios: row.notas_comentarios,
+          disponibilidad: row.disponibilidad,
+          lesion_detalle: row.lesion_detalle,
+          lesion_desde: row.lesion_desde,
+          evaluaciones_pfs: row.evaluaciones_pfs,
+          temporada_id: jt.temporada_id,
+          nombre_competencia: t?.nombre_competencia,
+          anio: t?.anio,
+          temporada_activa: t?.activa,
+          categoria_origen: t?.categoria,
+          tira: t?.tira,
+          dorsal: jt.dorsal,
+          estado: jt.estado,
+          equipos_adicionales: jt.equipos_adicionales,
+        };
+      });
     }
 
-    const jtPayload = jugadoresInsertados.map((row, i) => ({
-      jugador_id: row.id,
-      temporada_id: validas[i].data.temporada_id,
-      dorsal: validas[i].data.dorsal,
-      equipos_adicionales: validas[i].data.equipos_adicionales,
-      estado: "activo",
-    }));
-    const { data: jtInsertados, error: errJt } = await supabase.from("jugador_temporada").insert(jtPayload).select();
-    if (errJt) {
-      setErrorImport(errJt.message);
-      setFase("preview");
-      return;
+    const hoy = hoyBA();
+    const actualizadosFlattened = [];
+    for (const f of actualizaciones) {
+      const { data: d, existente } = f;
+      const bioPatch = {};
+      if (d.provisto.posicion) bioPatch.posicion = d.posicion;
+      if (d.provisto.fecha_nacimiento) bioPatch.fecha_nacimiento = d.fecha_nacimiento;
+      if (d.provisto.notas_comentarios) bioPatch.notas_comentarios = d.notas_comentarios;
+      if (d.provisto.disponibilidad) {
+        bioPatch.disponibilidad = d.disponibilidad;
+        bioPatch.lesion_detalle = d.lesion_detalle;
+        bioPatch.lesion_desde = d.lesion_desde;
+      }
+
+      if (d.alturaCambio || d.pesoCambio) {
+        const entry = { fecha: d.fecha_medicion || hoy };
+        if (d.alturaCambio) entry.altura = d.altura;
+        if (d.pesoCambio) entry.peso = d.peso;
+        bioPatch.evaluaciones_pfs = [...(existente.evaluaciones_pfs || []), entry];
+        if (d.alturaCambio) bioPatch.altura = d.altura;
+        if (d.pesoCambio) bioPatch.peso = d.peso;
+      }
+
+      if (Object.keys(bioPatch).length > 0) {
+        const { error } = await supabase.from("jugadores").update(bioPatch).eq("id", existente.id);
+        if (error) { setErrorImport(error.message); setFase("preview"); return; }
+      }
+
+      const jtPatch = {};
+      if (d.provisto.dorsal) jtPatch.dorsal = d.dorsal;
+      if (d.provisto.equipos_adicionales) jtPatch.equipos_adicionales = d.equipos_adicionales;
+      if (Object.keys(jtPatch).length > 0) {
+        const { error } = await supabase.from("jugador_temporada").update(jtPatch).eq("id", existente.jugador_temporada_id);
+        if (error) { setErrorImport(error.message); setFase("preview"); return; }
+      }
+
+      actualizadosFlattened.push({ ...existente, ...bioPatch, ...jtPatch });
     }
 
-    const temporadasPorId = Object.fromEntries((temporadas || []).map((t) => [t.id, t]));
-    const flattened = jugadoresInsertados.map((row, i) => {
-      const jt = jtInsertados[i];
-      const t = temporadasPorId[jt.temporada_id];
-      return {
-        id: row.id,
-        jugador_temporada_id: jt.id,
-        nombre_apellido: row.nombre_apellido,
-        posicion: row.posicion,
-        altura: row.altura,
-        peso: row.peso,
-        fecha_nacimiento: row.fecha_nacimiento,
-        notas_comentarios: row.notas_comentarios,
-        disponibilidad: row.disponibilidad,
-        lesion_detalle: row.lesion_detalle,
-        lesion_desde: row.lesion_desde,
-        evaluaciones_pfs: row.evaluaciones_pfs,
-        temporada_id: jt.temporada_id,
-        nombre_competencia: t?.nombre_competencia,
-        anio: t?.anio,
-        temporada_activa: t?.activa,
-        categoria_origen: t?.categoria,
-        tira: t?.tira,
-        dorsal: jt.dorsal,
-        estado: jt.estado,
-        equipos_adicionales: jt.equipos_adicionales,
-      };
-    });
-
-    setResultado({ insertados: flattened.length, omitidas: invalidas.length });
-    onImported(flattened);
+    setResultado({ insertados: nuevosFlattened.length, actualizados: actualizadosFlattened.length, omitidas: invalidas.length });
+    onImported(nuevosFlattened, actualizadosFlattened);
     setFase("listo");
   };
 
@@ -333,7 +428,8 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
             <div className="space-y-3">
               <p className="text-xs text-zinc-400">
                 Las filas que no traigan categoria_principal/tira_principal se cargan con el filtro activo:{" "}
-                <strong>{categoriaDefault} · {tiraDefault}</strong>.
+                <strong>{categoriaDefault} · {tiraDefault}</strong>. Si el nombre ya existe en ese equipo, se actualiza
+                en vez de duplicarlo (solo se pisan los campos que la fila trae con dato).
               </p>
               <button onClick={descargarPlantilla} className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300">
                 <Download size={13} /> Descargar plantilla CSV de ejemplo
@@ -381,6 +477,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
                   <thead className="bg-zinc-950 text-zinc-500">
                     <tr>
                       <th className="text-left px-2 py-1.5">Fila</th>
+                      <th className="text-left px-2 py-1.5">Plantel</th>
                       <th className="text-left px-2 py-1.5">Nombre</th>
                       <th className="text-left px-2 py-1.5">Dorsal</th>
                       <th className="text-left px-2 py-1.5">Posición</th>
@@ -393,6 +490,13 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
                     {filas.map((f) => (
                       <tr key={f.numeroFila} className={`border-t border-zinc-800 ${f.valida ? "" : "bg-red-500/5"}`}>
                         <td className="px-2 py-1.5 text-zinc-500">{f.numeroFila}</td>
+                        <td className="px-2 py-1.5">
+                          {f.existente ? (
+                            <span className="text-sky-400">Actualiza</span>
+                          ) : (
+                            <span className="text-emerald-400">Nuevo</span>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">{f.data.nombre_apellido || <span className="text-zinc-600">—</span>}</td>
                         <td className="px-2 py-1.5">{f.data.dorsal ?? "—"}</td>
                         <td className="px-2 py-1.5">{f.data.posicion ?? "—"}</td>
@@ -442,7 +546,10 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
           {fase === "listo" && resultado && (
             <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
               <CheckCircle2 size={32} className="text-emerald-400" />
-              <p className="text-sm">Se importaron <strong>{resultado.insertados}</strong> jugadores.</p>
+              <p className="text-sm">
+                Se importaron <strong>{resultado.insertados}</strong> jugadores nuevos
+                {resultado.actualizados > 0 && <> y se actualizaron <strong>{resultado.actualizados}</strong> ya existentes</>}.
+              </p>
               {resultado.omitidas > 0 && (
                 <p className="text-xs text-zinc-500">{resultado.omitidas} filas con errores fueron omitidas.</p>
               )}
@@ -459,7 +566,9 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
                 disabled={validas.length === 0}
                 className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm px-3 py-1.5 rounded"
               >
-                Importar {validas.length} jugador{validas.length === 1 ? "" : "es"}
+                {validas.filter((f) => f.existente).length > 0
+                  ? `Importar (${validas.filter((f) => !f.existente).length} nuevos, ${validas.filter((f) => f.existente).length} actualizan)`
+                  : `Importar ${validas.length} jugador${validas.length === 1 ? "" : "es"}`}
               </button>
             </>
           )}
