@@ -385,7 +385,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
   const [courtType, setCourtType] = useState(initial?.courtType || "half");
   const [players, setPlayers] = useState(initial?.players || []);
   const [lines, setLines] = useState(initial?.lines || []);
-  const [ball, setBall] = useState(initial?.ball || null);
+  const [balls, setBalls] = useState(initial?.balls || (initial?.ball ? [{ id: "ball-legacy", ...initial.ball }] : []));
   const [shots, setShots] = useState(initial?.shots || []);
   const [shotDraft, setShotDraft] = useState(null);
   const [tool, setTool] = useState("ataque");
@@ -421,7 +421,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
     if (tool === "ataque") { offCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }]); }
     else if (tool === "defensa") { defCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }]); }
     else if (tool === "coach") { coachCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: coachCount.current, team: "coach", x: pt.x, y: pt.y }]); }
-    else if (tool === "balon") { setBall({ x: pt.x, y: pt.y }); }
+    else if (tool === "balon") { setBalls((bs) => [...bs, { id: "ball" + Date.now(), x: pt.x, y: pt.y }]); }
   };
 
   const onCourtClick = (evt) => {
@@ -453,7 +453,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
     evt.preventDefault();
     const pt = getPoint(evt);
     if (dragRef.current.type === "player") setPlayers((ps) => ps.map((p) => (p.id === dragRef.current.id ? { ...p, x: pt.x, y: pt.y } : p)));
-    else if (dragRef.current.type === "ball") setBall({ x: pt.x, y: pt.y });
+    else if (dragRef.current.type === "ball") setBalls((bs) => bs.map((b) => (b.id === dragRef.current.id ? { ...b, x: pt.x, y: pt.y } : b)));
     else if (dragRef.current.type === "shot") setShots((ss) => ss.map((s) => (s.id === dragRef.current.id ? { ...s, x: pt.x, y: pt.y } : s)));
   };
 
@@ -465,10 +465,10 @@ function CourtDiagram({ initial, onSave, onCancel }) {
     else if (tool === "borrar") setPlayers((ps) => ps.filter((x) => x.id !== p.id));
   };
 
-  const onBallDown = (evt) => {
+  const onBallDown = (evt, ballId) => {
     evt.stopPropagation();
-    if (tool === "mover") dragRef.current = { type: "ball" };
-    else if (tool === "borrar") setBall(null);
+    if (tool === "mover") dragRef.current = { type: "ball", id: ballId };
+    else if (tool === "borrar") setBalls((bs) => bs.filter((b) => b.id !== ballId));
   };
 
   const onShotDown = (evt, s) => {
@@ -481,7 +481,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
 
   const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); setShotDraft(null); };
 
-  const clearAll = () => { setPlayers([]); setLines([]); setBall(null); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; coachCount.current = 0; };
+  const clearAll = () => { setPlayers([]); setLines([]); setBalls([]); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; coachCount.current = 0; };
 
   const previewPoints = drawingPath ? [...drawingPath.points, ...(previewPt ? [previewPt] : [])] : [];
 
@@ -533,7 +533,9 @@ function CourtDiagram({ initial, onSave, onCancel }) {
             </text>
           </g>
         ))}
-        {ball && <BallIcon x={ball.x} y={ball.y} r={4} onMouseDown={onBallDown} onTouchStart={onBallDown} cursor={tool === "mover" ? "grab" : "pointer"} />}
+        {balls.map((b) => (
+          <BallIcon key={b.id} x={b.x} y={b.y} r={4} onMouseDown={(e) => onBallDown(e, b.id)} onTouchStart={(e) => onBallDown(e, b.id)} cursor={tool === "mover" ? "grab" : "pointer"} />
+        ))}
         {shots.map((s) => (
           <ShotIcon key={s.id} x={s.x} y={s.y} angle={s.angle || 0} onMouseDown={(e) => onShotDown(e, s)} onTouchStart={(e) => onShotDown(e, s)} cursor={tool === "mover" ? "grab" : "pointer"} />
         ))}
@@ -548,7 +550,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
         Mové, agregá jugadores, coach o balón tocando la cancha (pasá el mouse sobre cada ícono para ver qué hace). Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
       </p>
       <div className="flex gap-2 mt-2">
-        <button onClick={() => onSave({ courtType, players, lines, ball, shots })} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
+        <button onClick={() => onSave({ courtType, players, lines, balls, shots })} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
           Guardar cancha
         </button>
         <button onClick={onCancel} className="text-zinc-400 text-xs px-3 py-1.5">Cancelar</button>
@@ -558,9 +560,10 @@ function CourtDiagram({ initial, onSave, onCancel }) {
 }
 
 // Render de solo lectura de una cancha ya guardada (miniatura dentro de la lista de un bloque).
-function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] }) {
+function CourtPreview({ courtType, players = [], lines = [], ball, balls, shots = [] }) {
   const markerId = useId();
   const vbW = 150, vbH = courtType === "half" ? 140 : 280;
+  const ballList = balls || (ball ? [ball] : []);
   return (
     <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ maxWidth: 120, pointerEvents: "none" }} className="bg-zinc-900 rounded-lg border border-zinc-800 shrink-0">
       <defs>
@@ -578,7 +581,7 @@ function CourtPreview({ courtType, players = [], lines = [], ball, shots = [] })
           </text>
         </g>
       ))}
-      {ball && <BallIcon x={ball.x} y={ball.y} r={4} />}
+      {ballList.map((b, i) => <BallIcon key={b.id || i} x={b.x} y={b.y} r={4} />)}
       {shots.map((s) => <ShotIcon key={s.id} x={s.x} y={s.y} angle={s.angle || 0} />)}
     </svg>
   );
