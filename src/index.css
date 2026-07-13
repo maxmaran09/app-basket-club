@@ -12,3 +12,22 @@
   --color-brand-700: #123a8f;
   --color-brand-950: #01215a;
 }
+
+/* En mobile, iOS/Chrome hacen zoom automático al enfocar un input/select/textarea con
+   font-size menor a 16px (ej. el buscador de Jugador 360°, texts-sm/text-xs en todos lados) y
+   el zoom queda pegado hasta que el usuario lo saca a mano. Forzando 16px en foco el navegador
+   nunca dispara ese zoom, en vez de tratar de "resetearlo" después con JS. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Sin esto, el color de foco de un input/select/textarea queda en lo que traiga el navegador
+   por defecto (ej. Samsung Internet lo marca en naranja/ámbar) -- se reemplaza por el azul de
+   marca para que sea consistente con el resto de la paleta. */
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 1px;
+  border-color: var(--color-brand-500);
+}

@@ -3679,10 +3679,33 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [sinAsignar, setSinAsignar] = useState([]);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
+  const [historicoJugadores, setHistoricoJugadores] = useState([]);
+
+  // "jugadores" (prop) solo trae la temporada ACTIVA de cada equipo -- para poder cargar un
+  // partido de una temporada PASADA (y vincular sus jugadores) hace falta el plantel de ESA
+  // temporada puntual, mismo criterio que ya usan PlantelView/Jugador360View.
+  useEffect(() => {
+    if (esTemporadaActiva || !temporadaId) { setHistoricoJugadores([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_plantel_temporada")
+        .select("*")
+        .eq("temporada_id", temporadaId)
+        .eq("estado", "activo")
+        .order("nombre_apellido", { ascending: true });
+      if (cancelled) return;
+      if (!error) setHistoricoJugadores(data || []);
+    })();
+    return () => { cancelled = true; };
+  }, [esTemporadaActiva, temporadaId]);
+
   // Acotado a la categoria/tira del filtro activo -- sin esto, "Plantel propio" en el vinculador
   // mostraba el plantel entero del club (todas las categorias), una lista interminable para
   // encontrar un jugador puntual.
-  const jugadoresPropiosDelEquipo = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+  const jugadoresPropiosDelEquipo = esTemporadaActiva
+    ? jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira))
+    : historicoJugadores;
   const [aliasEquipo, setAliasEquipo] = useState({});
   const [aliasJugador, setAliasJugador] = useState({});
   const [aliasJugadorRival, setAliasJugadorRival] = useState({});
@@ -3802,7 +3825,9 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       setPreview({
         fecha: todayKeyBA(),
         torneo: result.torneo,
-        categoria: result.categoria,
+        // El nombre del torneo se toma de la Temporada activa (mas confiable que el texto tal
+        // cual del PDF, que puede no coincidir exacto con como se registro la competencia acá).
+        categoria: temporadaSeleccionada?.nombre_competencia || result.categoria,
         equipoLocal: result.equipoLocal,
         equipoVisitante: result.equipoVisitante,
         equipoLocalRivalId,
@@ -4002,7 +4027,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       id: p.id,
       fecha: p.fecha,
       torneo: p.torneo || "",
-      categoria: p.categoria || "",
+      categoria: p.categoria || temporadaSeleccionada?.nombre_competencia || "",
       equipoLocal: p.equipo_local,
       equipoVisitante: p.equipo_visitante,
       equipoLocalRivalId: totalesLocalRow?.equipo_rival_id || "",
@@ -4029,6 +4054,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
   const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.temporada_id === temporadaId);
   const historialMostrado = verSinAsignar ? sinAsignar : historial;
+  // Cargar un partido NUEVO se permite en cualquier temporada (activa o pasada), para poder ir
+  // completando el historial de años anteriores. Editar/eliminar uno YA guardado sigue
+  // restringido a la temporada activa, para no tocar por accidente un archivo histórico.
+  const puedeCargarPartido = !soloLectura;
   const puedeEditar = !soloLectura && (verSinAsignar || esTemporadaActiva);
 
   return (
@@ -4070,7 +4099,8 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       {!verSinAsignar && !esTemporadaActiva && temporadaSeleccionada && (
         <p className="text-xs text-amber-400 mb-3">
-          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa) — solo lectura.
+          Estás viendo {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio} (no es la temporada activa).
+          {soloLectura ? " Solo lectura." : " Podés cargar partidos nuevos para completar el historial, pero no editar ni eliminar los que ya están guardados."}
         </p>
       )}
 
@@ -4083,7 +4113,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         </p>
       )}
 
-      {puedeEditar && !verSinAsignar && (
+      {puedeCargarPartido && !verSinAsignar && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <label className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-2 rounded cursor-pointer w-fit">
             <Upload size={15} /> Elegir PDF de estadísticas
@@ -4094,7 +4124,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         </div>
       )}
 
-      {puedeEditar && !verSinAsignar && preview && (
+      {puedeCargarPartido && !verSinAsignar && preview && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
           <h2 className="text-sm font-bold text-zinc-100 mb-3">{preview.id ? "Editando partido cargado" : "Vista previa — revisá y corregí antes de guardar"}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
@@ -4104,13 +4134,13 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             </div>
             <div>
-              <p className="text-xs text-zinc-500 mb-1">Torneo / fase</p>
-              <input value={preview.torneo} onChange={(e) => setPreview({ ...preview, torneo: e.target.value })}
+              <p className="text-xs text-zinc-500 mb-1">Torneo</p>
+              <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             </div>
             <div>
-              <p className="text-xs text-zinc-500 mb-1">Categoría</p>
-              <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
+              <p className="text-xs text-zinc-500 mb-1">Jornada / Fase</p>
+              <input value={preview.torneo} onChange={(e) => setPreview({ ...preview, torneo: e.target.value })}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             </div>
             <div className="flex gap-2">
@@ -4129,7 +4159,17 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
           <div className="mb-4">
             <p className="text-xs text-zinc-500 mb-1">¿Cuál de los dos somos nosotros? (para el Dashboard)</p>
-            <select value={preview.equipoPropio || ""} onChange={(e) => setPreview({ ...preview, equipoPropio: e.target.value || null })}
+            <select value={preview.equipoPropio || ""} onChange={(e) => {
+              const value = e.target.value || null;
+              setPreview((prev) => ({
+                ...prev,
+                equipoPropio: value,
+                // Si este lado pasa a ser "nosotros", se limpia cualquier vinculo con Scouting Hub
+                // que hubiera quedado de antes -- el propio club no es un "rival" para vincular.
+                equipoLocalRivalId: value === "LOCAL" ? "" : prev.equipoLocalRivalId,
+                equipoVisitanteRivalId: value === "VISITANTE" ? "" : prev.equipoVisitanteRivalId,
+              }));
+            }}
               className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
               <option value="">No se detectó — elegir</option>
               <option value="LOCAL">Local ({preview.equipoLocal})</option>
@@ -4139,18 +4179,20 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
           <div className="border-t border-zinc-800 pt-3 mb-5">
             <h3 className="text-sm font-bold text-blue-300 mb-2">Equipo Local{preview.equipoPropio === "LOCAL" ? " (nosotros)" : ""}</h3>
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3">
               <input value={preview.equipoLocal} onChange={(e) => setPreview({ ...preview, equipoLocal: e.target.value })}
-                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <select value={preview.equipoLocalRivalId} onChange={(e) => {
-                const value = e.target.value;
-                setPreview((prev) => ({ ...prev, equipoLocalRivalId: value }));
-                if (value) persistAliasEquipo(preview.equipoLocal, value);
-              }}
-                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
-                <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
-              </select>
+                className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              {preview.equipoPropio !== "LOCAL" && (
+                <select value={preview.equipoLocalRivalId} onChange={(e) => {
+                  const value = e.target.value;
+                  setPreview((prev) => ({ ...prev, equipoLocalRivalId: value }));
+                  if (value) persistAliasEquipo(preview.equipoLocal, value);
+                }}
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                  <option value="">Vincular equipo (Scouting Hub)…</option>
+                  {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+                </select>
+              )}
             </div>
             <StatsPreviewTable label="Jugadores" rows={preview.jugadoresLocal} jugadoresPropios={preview.equipoPropio === "LOCAL" ? jugadoresPropiosDelEquipo : []} jugadoresRivales={jugadoresRivalesLocal} equipoRivalId={preview.equipoLocalRivalId}
               onChangeField={(idx, field, value) => updateField("local", idx, field, value)}
@@ -4160,18 +4202,20 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
           <div className="border-t border-zinc-800 pt-3 mb-5">
             <h3 className="text-sm font-bold text-zinc-300 mb-2">Equipo Visitante{preview.equipoPropio === "VISITANTE" ? " (nosotros)" : ""}</h3>
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3">
               <input value={preview.equipoVisitante} onChange={(e) => setPreview({ ...preview, equipoVisitante: e.target.value })}
-                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-              <select value={preview.equipoVisitanteRivalId} onChange={(e) => {
-                const value = e.target.value;
-                setPreview((prev) => ({ ...prev, equipoVisitanteRivalId: value }));
-                if (value) persistAliasEquipo(preview.equipoVisitante, value);
-              }}
-                className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
-                <option value="">Vincular equipo (Scouting Hub)…</option>
-                {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
-              </select>
+                className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              {preview.equipoPropio !== "VISITANTE" && (
+                <select value={preview.equipoVisitanteRivalId} onChange={(e) => {
+                  const value = e.target.value;
+                  setPreview((prev) => ({ ...prev, equipoVisitanteRivalId: value }));
+                  if (value) persistAliasEquipo(preview.equipoVisitante, value);
+                }}
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                  <option value="">Vincular equipo (Scouting Hub)…</option>
+                  {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
+                </select>
+              )}
             </div>
             <StatsPreviewTable label="Jugadores" rows={preview.jugadoresVisitante} jugadoresPropios={preview.equipoPropio === "VISITANTE" ? jugadoresPropiosDelEquipo : []} jugadoresRivales={jugadoresRivalesVisitante} equipoRivalId={preview.equipoVisitanteRivalId}
               onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)}
