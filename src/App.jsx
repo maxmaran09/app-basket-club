@@ -3502,7 +3502,7 @@ const STATS_COLS = [
 // Tabla editable de un equipo dentro de la vista previa: todas las columnas crudas del PDF
 // como inputs chicos (estilo planilla), más un select para vincular con un jugador propio ya
 // cargado en Plantel.
-function StatsPreviewTable({ label, rows, onChangeField, onLinkChange, jugadoresPropios, jugadoresRivales }) {
+function StatsPreviewTable({ label, rows, onChangeField, onLinkChange, jugadoresPropios, jugadoresRivales, equipoRivalId }) {
   return (
     <div className="mb-4">
       <p className="text-xs text-zinc-400 mb-1">{label} ({rows.length} jugadores)</p>
@@ -3548,6 +3548,7 @@ function StatsPreviewTable({ label, rows, onChangeField, onLinkChange, jugadores
                           {jugadoresRivales.map((j) => <option key={j.id} value={`rival:${j.id}`}>{j.nombre_apellido}</option>)}
                         </optgroup>
                       )}
+                      {equipoRivalId && <option value="new-rival">+ Crear jugador rival nuevo</option>}
                     </select>
                   </td>
                 </tr>
@@ -3778,6 +3779,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   };
 
   const updateLink = (lado, idx, value) => {
+    if (value === "new-rival") { crearYVincularJugadorRival(lado, idx); return; }
     setPreview((prev) => {
       const key = lado === "local" ? "jugadoresLocal" : "jugadoresVisitante";
       const next = [...prev[key]];
@@ -3794,6 +3796,28 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       return { ...prev, [key]: next };
     });
+  };
+
+  // Crea el jugador rival al vuelo (nombre tomado del PDF) en el equipo rival ya vinculado de
+  // ese lado, y lo deja vinculado en la fila -- para no tener que ir a cargarlo a mano en
+  // Scouting Hub antes de poder asociar sus estadisticas.
+  const crearYVincularJugadorRival = async (lado, idx) => {
+    const key = lado === "local" ? "jugadoresLocal" : "jugadoresVisitante";
+    const equipoRivalId = lado === "local" ? preview.equipoLocalRivalId : preview.equipoVisitanteRivalId;
+    if (!equipoRivalId) return;
+    const row = preview[key][idx];
+    const { data, error } = await supabase.from("jugadores_rivales")
+      .insert({ equipo_rival_id: equipoRivalId, nombre_apellido: row.nombre_jugador, dorsal: row.dorsal === "" ? null : row.dorsal })
+      .select().single();
+    if (error) { setSaveMsg("Error al crear el jugador rival: " + error.message); return; }
+    if (lado === "local") setJugadoresRivalesLocal((prev) => [...prev, data]);
+    else setJugadoresRivalesVisitante((prev) => [...prev, data]);
+    setPreview((prev) => {
+      const next = [...prev[key]];
+      next[idx] = { ...next[idx], jugador_id: null, jugador_rival_id: data.id };
+      return { ...prev, [key]: next };
+    });
+    persistAliasJugadorRival(row.nombre_jugador, equipoRivalId, data.id);
   };
 
   const updateTotales = (lado, field, value) => {
@@ -4029,7 +4053,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
                 {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
               </select>
             </div>
-            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal}
+            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresLocal} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesLocal} equipoRivalId={preview.equipoLocalRivalId}
               onChangeField={(idx, field, value) => updateField("local", idx, field, value)}
               onLinkChange={(idx, value) => updateLink("local", idx, value)} />
             <EquipoTotalsRow label={preview.equipoLocal} totales={preview.totalesLocal} onChange={(field, value) => updateTotales("local", field, value)} />
@@ -4050,7 +4074,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
                 {equiposRivalesFiltrados.map((eq) => <option key={eq.id} value={eq.id}>{eq.nombre_club}</option>)}
               </select>
             </div>
-            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante}
+            <StatsPreviewTable label="Jugadores" rows={preview.jugadoresVisitante} jugadoresPropios={jugadores} jugadoresRivales={jugadoresRivalesVisitante} equipoRivalId={preview.equipoVisitanteRivalId}
               onChangeField={(idx, field, value) => updateField("visitante", idx, field, value)}
               onLinkChange={(idx, value) => updateLink("visitante", idx, value)} />
             <EquipoTotalsRow label={preview.equipoVisitante} totales={preview.totalesVisitante} onChange={(field, value) => updateTotales("visitante", field, value)} />
