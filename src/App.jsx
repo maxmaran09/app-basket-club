@@ -994,7 +994,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores, rol }) {
+function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jugadores, rol }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
@@ -1010,9 +1010,14 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, jugadores, rol }
           <ArrowLeft size={15} /> Volver al calendario
         </button>
         {!headerSoloLectura && (
-          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
-            <Trash2 size={13} /> Eliminar evento
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={onDuplicate} title="Duplicar entrenamiento entero" className="flex items-center gap-1.5 text-zinc-500 hover:text-cyan-400 text-xs">
+              <Copy size={13} /> Duplicar entrenamiento
+            </button>
+            <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+              <Trash2 size={13} /> Eliminar evento
+            </button>
+          </div>
         )}
       </div>
 
@@ -1479,7 +1484,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
   );
 }
 
-function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent, rol }) {
+function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent, onDuplicateEvent, rol }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
@@ -1619,6 +1624,9 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                         </button>
                         <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
                           <CalendarClock size={14} />
+                        </button>
+                        <button onClick={() => onDuplicateEvent(e)} title="Duplicar evento" className="text-zinc-500 hover:text-cyan-400 p-1.5 shrink-0">
+                          <Copy size={14} />
                         </button>
                         <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-1.5 shrink-0">
                           <Trash2 size={14} />
@@ -4613,6 +4621,18 @@ export default function App() {
     setActive((prev) => (prev && prev.id === id ? null : prev));
   };
 
+  // Duplica un evento completo (entrenamiento, con bloques/diagramas y prep. física incluidos)
+  // para no tener que recrear una sesión parecida desde cero. Queda en el mismo día que el
+  // original; el staff lo renombra/mueve de fecha desde el Calendario, igual que cualquier evento.
+  const duplicateEvent = async (event) => {
+    const { id, createdAt, updatedAt, ...rest } = event;
+    const copy = { ...rest, title: rest.title + " (copia)", bloques: clonarBloques(rest.bloques || []) };
+    const { data, error } = await supabase.from("eventos").insert(copy).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setEvents((prev) => [...prev, data]);
+    setActive(null);
+  };
+
   // "jugadores" en el estado de React tiene la forma de vista_plantel_temporada (bio de
   // "jugadores" + membresia de "jugador_temporada" aplanadas en un solo objeto). Estos 3
   // helpers arman/actualizan esa forma a mano despues de cada insert/update, para no tener que
@@ -4925,6 +4945,7 @@ export default function App() {
                     onDeleteEvent={deleteEvent}
                     onMoveEvent={(id, date) => updateEvent(id, { date })}
                     onRenameEvent={(id, title) => updateEvent(id, { title })}
+                    onDuplicateEvent={duplicateEvent}
                     rol={rol}
                   />
                 </ProtectedRoute>
@@ -4964,7 +4985,7 @@ export default function App() {
           )
         )}
         {active?.type === "entrenamiento" && (
-          <EntrenamientoView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <EntrenamientoView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} onDuplicate={() => duplicateEvent(active)} />
         )}
         {active?.type === "individual" && (
           <IndividualView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
