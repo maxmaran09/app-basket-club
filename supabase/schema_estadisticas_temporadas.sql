@@ -51,10 +51,13 @@ select
   round(avg(jps.val)::numeric, 1) as val_prom,
   round(avg(jps.play)::numeric, 2) as play_prom,
   round(avg(jps.pos)::numeric, 2) as pos_prom,
-  round(avg(jps.pplay)::numeric, 3) as pplay_prom,
-  round(avg(jps.ppos)::numeric, 3) as ppos_prom,
-  round(avg(jps.tov_pct)::numeric, 3) as tov_pct_prom,
-  round(avg(jps.efg_pct)::numeric, 3) as efg_pct_prom
+  -- PPLAY/PPOS/TOV%/eFG% de temporada: sobre los totales acumulados (suma de puntos/perdidas
+  -- sobre suma de plays/posesiones/intentos), no el promedio del porcentaje de cada partido --
+  -- asi un partido con pocos intentos no pesa igual que uno con mucho volumen.
+  round((sum(jps.pts) / nullif(sum(jps.play), 0))::numeric, 3) as pplay_prom,
+  round((sum(jps.pts) / nullif(sum(jps.pos), 0))::numeric, 3) as ppos_prom,
+  round((sum(jps.per) / nullif(sum(jps.play), 0))::numeric, 3) as tov_pct_prom,
+  round((sum(jps.t2a + 1.5 * jps.t3a) / nullif(sum(jps.t2i + jps.t3i), 0))::numeric, 3) as efg_pct_prom
 from public.jugador_partido_stats jps
 join public.partidos_stats ps on ps.id = jps.partido_id
 group by coalesce(jps.jugador_id::text, 'r:' || jps.jugador_rival_id::text, 'n:' || lower(trim(jps.nombre_jugador))), jps.equipo, ps.temporada_id;
@@ -94,7 +97,7 @@ select
   round(avg(eps.rec)::numeric, 1) as rec_prom,
   round(avg(eps.per)::numeric, 1) as per_prom,
   round(avg(eps.val)::numeric, 1) as val_prom,
-  round(avg(eps.efg_pct)::numeric, 3) as efg_pct_prom
+  round((sum(eps.t2a + 1.5 * eps.t3a) / nullif(sum(eps.t2i + eps.t3i), 0))::numeric, 3) as efg_pct_prom
 from public.equipo_partido_stats eps
 join public.partidos_stats ps on ps.id = eps.partido_id
 group by coalesce(eps.equipo_rival_id::text, 'n:' || lower(trim(eps.equipo))), ps.temporada_id;
