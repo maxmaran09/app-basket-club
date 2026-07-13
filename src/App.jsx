@@ -4338,13 +4338,187 @@ function PodioMini({ titulo, filas, campo, formato }) {
   );
 }
 
+// Tile de una metrica del Panel de Rendimiento Colectivo (mismo lenguaje visual que VolTile,
+// con soporte de sufijo "%" y color por tono -- good/bad/brand son deltas de significado, no de
+// marca, mismo criterio que el semaforo de RPE/disponibilidad.
+function StatTile({ value, label, decimales = 0, suf = "", tone, className = "" }) {
+  const v = Number(value) || 0;
+  const toneCls = tone === "good" ? "text-emerald-400" : tone === "bad" ? "text-red-400" : tone === "brand" ? "text-brand-300" : "text-zinc-100";
+  return (
+    <div className={`bg-zinc-950/40 border border-zinc-800 rounded-lg py-2.5 px-2 text-center ${className}`}>
+      <p className={`text-lg font-extrabold ${toneCls}`}>{v.toFixed(decimales)}{suf}</p>
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wide mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+// Panel de Rendimiento Colectivo: salud tactica del equipo en la temporada activa, calculado en
+// el cliente sobre partidos_stats + equipo_partido_stats (sin vistas SQL nuevas, mismo criterio
+// que AnaliticaComparada360). Por cada partido con equipo_propio definido, la fila de
+// equipo_partido_stats cuya "condicion" coincide con equipo_propio es "nosotros"; la otra es el
+// rival de ese partido puntual (de ahi salen PTS Contra y RO Rival).
+function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
+  const [rc, setRc] = useState(null); // null = cargando, false = sin datos
+  const [splitOpen, setSplitOpen] = useState(false);
+
+  useEffect(() => {
+    if (!temporadaId) { setRc(false); return; }
+    let cancelled = false;
+    setRc(null);
+    (async () => {
+      const { data: partidos, error: errP } = await supabase
+        .from("partidos_stats").select("id, equipo_propio")
+        .eq("temporada_id", temporadaId).not("equipo_propio", "is", null);
+      if (cancelled) return;
+      if (errP || !partidos || partidos.length === 0) { setRc(false); return; }
+
+      const ids = partidos.map((p) => p.id);
+      const { data: filas, error: errF } = await supabase.from("equipo_partido_stats").select("*").in("partido_id", ids);
+      if (cancelled) return;
+      if (errF || !filas) { setRc(false); return; }
+
+      const propioPorPartido = Object.fromEntries(partidos.map((p) => [p.id, p.equipo_propio]));
+      const propias = filas.filter((f) => f.condicion === propioPorPartido[f.partido_id]);
+      const rivales = filas.filter((f) => f.condicion !== propioPorPartido[f.partido_id]);
+      if (propias.length === 0) { setRc(false); return; }
+
+      const sum = (arr, k) => arr.reduce((s, f) => s + (Number(f[k]) || 0), 0);
+      const pj = propias.length;
+      const t2i = sum(propias, "t2i"), t3i = sum(propias, "t3i"), t1i = sum(propias, "t1i");
+      const t2a = sum(propias, "t2a"), t3a = sum(propias, "t3a"), t1a = sum(propias, "t1a");
+      const per = sum(propias, "per");
+      const play = t2i + t3i + 0.44 * t1i + per;
+      const pts = sum(propias, "pts");
+      const ast = sum(propias, "ast");
+      const madeFg = t2a + t3a;
+
+      const promPtsDe = (idsCondicion) => {
+        const prop = propias.filter((f) => idsCondicion.has(f.partido_id));
+        const riv = rivales.filter((f) => idsCondicion.has(f.partido_id));
+        if (prop.length === 0) return null;
+        return { favor: sum(prop, "pts") / prop.length, contra: sum(riv, "pts") / prop.length };
+      };
+      const localIds = new Set(partidos.filter((p) => p.equipo_propio === "LOCAL").map((p) => p.id));
+      const visitIds = new Set(partidos.filter((p) => p.equipo_propio === "VISITANTE").map((p) => p.id));
+
+      setRc({
+        pj,
+        pts: {
+          general: { favor: pts / pj, contra: sum(rivales, "pts") / pj },
+          local: promPtsDe(localIds),
+          visitante: promPtsDe(visitIds),
+        },
+        eficiencia: {
+          efgPct: (t2i + t3i) ? ((t2a + 1.5 * t3a) / (t2i + t3i)) * 100 : 0,
+          playProm: play / pj,
+          ppp: play ? pts / play : 0,
+        },
+        tiros: [
+          { l: "T2", made: t2a / pj, att: t2i / pj, pct: t2i ? (t2a / t2i) * 100 : 0 },
+          { l: "T3", made: t3a / pj, att: t3i / pj, pct: t3i ? (t3a / t3i) * 100 : 0 },
+          { l: "TL", made: t1a / pj, att: t1i / pj, pct: t1i ? (t1a / t1i) * 100 : 0 },
+        ],
+        control: {
+          rd: sum(propias, "rdef") / pj,
+          ro: sum(propias, "rof") / pj,
+          roRival: sum(rivales, "rof") / pj,
+          ast: ast / pj,
+          per: per / pj,
+          pctAst: madeFg ? (ast / madeFg) * 100 : 0,
+        },
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [temporadaId]);
+
+  return (
+    <div className="mt-4 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2 text-brand-400">
+          <Target size={16} />
+          <h3 className="text-xs font-bold uppercase tracking-widest">Rendimiento Colectivo</h3>
+        </div>
+        {temporadaSeleccionada && (
+          <span className="text-[11px] text-zinc-500 text-right shrink-0">
+            {temporadaSeleccionada.nombre_competencia} {temporadaSeleccionada.anio}
+            {rc && <>{" · "}{rc.pj} PJ</>}
+          </span>
+        )}
+      </div>
+      <h2 className="text-lg font-bold text-zinc-100 mb-4">Salud táctica del equipo</h2>
+
+      {rc === null ? (
+        <p className="text-sm text-zinc-500">Cargando…</p>
+      ) : rc === false ? (
+        <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido en esta temporada.</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Puntos por partido</p>
+            <div className="flex-1 h-px bg-zinc-800" />
+            {rc.pts.local && rc.pts.visitante && (
+              <button onClick={() => setSplitOpen((v) => !v)} className="text-[11px] font-semibold text-brand-300 border border-zinc-700 rounded-full px-2.5 py-1 hover:border-zinc-600 shrink-0">
+                {splitOpen ? "Ocultar Local / Visitante" : "Local / Visitante"}
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <StatTile value={rc.pts.general.favor} label="PTS Favor" tone="good" decimales={1} />
+            <StatTile value={rc.pts.general.contra} label="PTS Contra" tone="bad" decimales={1} />
+          </div>
+          {splitOpen && rc.pts.local && rc.pts.visitante && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+              <StatTile value={rc.pts.local.favor} label="Favor · Local" tone="good" decimales={1} />
+              <StatTile value={rc.pts.local.contra} label="Contra · Local" tone="bad" decimales={1} />
+              <StatTile value={rc.pts.visitante.favor} label="Favor · Visit." tone="good" decimales={1} />
+              <StatTile value={rc.pts.visitante.contra} label="Contra · Visit." tone="bad" decimales={1} />
+            </div>
+          )}
+
+          <SeccionMini>Eficiencia de ejecución</SeccionMini>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <StatTile value={rc.eficiencia.efgPct} label="eFG%" suf="%" decimales={1} />
+            <StatTile value={rc.eficiencia.playProm} label="Plays / partido" decimales={1} />
+            <StatTile value={rc.eficiencia.ppp} label="PPP" decimales={2} />
+          </div>
+
+          <SeccionMini>Efectividad en tiros</SeccionMini>
+          <div className="grid sm:grid-cols-3 gap-2 mb-4">
+            {rc.tiros.map((t) => (
+              <div key={t.l} className="bg-zinc-950/40 border border-zinc-800 rounded-lg px-3 py-2 flex items-center gap-2 sm:flex-col sm:gap-1.5 sm:py-3 sm:text-center">
+                <span className="text-xs font-bold text-zinc-400 shrink-0 whitespace-nowrap sm:order-1 sm:text-[10px] sm:uppercase sm:tracking-wide">{t.l}</span>
+                <span className="text-base font-extrabold shrink-0 whitespace-nowrap sm:order-2 sm:text-xl">{t.pct.toFixed(1)}%</span>
+                <span className="flex-1 min-w-[16px] h-1.5 bg-zinc-800 rounded-full overflow-hidden sm:order-3 sm:w-full">
+                  <span className="block h-full bg-gradient-to-r from-brand-500 to-brand-300 rounded-full" style={{ width: `${Math.min(100, t.pct)}%` }} />
+                </span>
+                <span className="text-xs text-zinc-500 shrink-0 whitespace-nowrap sm:order-4">{t.made.toFixed(1)}/{t.att.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+
+          <SeccionMini>Batalla de posesiones y control</SeccionMini>
+          <div className="flex flex-wrap gap-2">
+            <StatTile value={rc.control.rd} label="RD" decimales={1} className="flex-1 min-w-[90px]" />
+            <StatTile value={rc.control.ro} label="RO" decimales={1} className="flex-1 min-w-[90px]" />
+            <StatTile value={rc.control.roRival} label="RO Rival" tone="bad" decimales={1} className="flex-1 min-w-[90px]" />
+            <StatTile value={rc.control.ast} label="AST" tone="good" decimales={1} className="flex-1 min-w-[90px]" />
+            <StatTile value={rc.control.per} label="PER" tone="bad" decimales={1} className="flex-1 min-w-[90px]" />
+            <StatTile value={rc.control.pctAst} label="%AST" suf="%" tone="brand" decimales={1} className="flex-1 min-w-[90px]" />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Modulo "Inicio": dashboard que unifica lo mas urgente de cada modulo (Calendario, Plantel,
 // Entrenamientos, Scouting, Estadisticas) en una sola pantalla. Todas las tarjetas -- agenda de
 // hoy, RPE/asistencia/lesionados, proximo partido, lideres y tendencia -- se filtran por la
 // misma matriz Categoria/Tira activa (proximo partido via "eventos", lideres/tendencia via
-// partidos_stats.temporada_id resuelto por esa Categoria/Tira).
+// partidos_stats.temporada_id resuelto por esa Categoria/Tira); el Panel de Rendimiento
+// Colectivo tambien, via el mismo temporada_id.
 function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
-  const { categoria, tira, setCategoria, setTira, temporadaId } = useTeam();
+  const { categoria, tira, setCategoria, setTira, temporadaId, temporadaSeleccionada } = useTeam();
   const hoy = todayKeyBA();
 
   const [notas, setNotas] = useState([]);
@@ -4693,6 +4867,8 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
           )}
         </div>
       </div>
+
+      <PanelRendimientoColectivo temporadaId={temporadaId} temporadaSeleccionada={temporadaSeleccionada} />
 
       {notaAbierta && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setNotaAbierta(null)}>
