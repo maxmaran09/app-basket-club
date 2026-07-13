@@ -50,7 +50,7 @@ const HEADER_ALIASES = {
   equipos_adicionales: "equipos_adicionales",
 };
 
-const CSV_HEADERS_TEMPLATE = [
+export const CSV_HEADERS_TEMPLATE = [
   "dorsal", "nombre_apellido", "posicion", "altura", "peso", "fecha_medicion", "fecha_nacimiento",
   "categoria_principal", "tira_principal", "notas", "disponibilidad",
   "detalle_lesion", "fecha_lesion_desde", "equipos_adicionales",

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2 } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
-import ImportadorCSVPropio from "./ImportadorCSVPropio";
+import { descargarCSV } from "./csvUtils";
+import ImportadorCSVPropio, { CSV_HEADERS_TEMPLATE } from "./ImportadorCSVPropio";
 import ImportadorCSVRival from "./ImportadorCSVRival";
 import { useAuth } from "./AuthContext";
 import { useTeam } from "./TeamContext";
@@ -2036,6 +2037,28 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   const puedeEditar = esTemporadaActiva;
   const listaMostrada = verBaja ? jugadoresBaja : esTemporadaActiva ? filtered : historico;
 
+  // Mismo orden de columnas que la plantilla del importador, para que el CSV exportado se
+  // pueda editar (ej. medidas nuevas) y volver a importar sin reacomodar nada.
+  const exportarCSV = () => {
+    const filas = listaMostrada.map((j) => [
+      j.dorsal ?? "",
+      j.nombre_apellido || "",
+      j.posicion || "",
+      j.altura ?? "",
+      j.peso ?? "",
+      "",
+      j.fecha_nacimiento || "",
+      j.categoria_origen || "",
+      j.tira || "",
+      j.notas_comentarios || "",
+      j.disponibilidad || "",
+      j.lesion_detalle || "",
+      j.lesion_desde || "",
+      (j.equipos_adicionales || []).map((e) => `${e.categoria}:${e.tira}`).join("|"),
+    ]);
+    descargarCSV(`plantel_${categoria}_${tira}.csv`.replace(/\s+/g, "_"), [CSV_HEADERS_TEMPLATE, ...filas]);
+  };
+
   return (
     <div className="max-w-3xl mx-auto text-zinc-100">
       <div className="flex items-center gap-2 mb-1 text-zinc-400">
@@ -2044,16 +2067,21 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
       </div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Jugadores</h1>
-        {puedeAltaBaja && (
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
-            <Upload size={15} /> Importar CSV
+          <button onClick={exportarCSV} disabled={listaMostrada.length === 0} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
+            <Download size={15} /> Exportar CSV
           </button>
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
-            <Plus size={15} /> Agregar jugador
-          </button>
+          {puedeAltaBaja && (
+            <>
+              <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
+                <Upload size={15} /> Importar CSV
+              </button>
+              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
+                <Plus size={15} /> Agregar jugador
+              </button>
+            </>
+          )}
         </div>
-        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-2">
