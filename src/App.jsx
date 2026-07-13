@@ -1006,12 +1006,12 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
         {!headerSoloLectura && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-3">
             <button onClick={onDuplicate} title="Duplicar entrenamiento entero" className="flex items-center gap-1.5 text-zinc-500 hover:text-cyan-400 text-xs">
               <Copy size={13} /> Duplicar entrenamiento
             </button>
@@ -1142,7 +1142,7 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol }) {
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
@@ -1346,7 +1346,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
@@ -1613,10 +1613,10 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                 <div key={e.id} className="rounded-lg border border-zinc-800">
                   <div className="flex items-center gap-1 px-1">
                     <button disabled={!clickable} onClick={() => clickable && onSelectEvent(e)}
-                      className={`flex-1 text-left px-2 py-2 flex items-center gap-2 ${clickable ? "hover:text-zinc-200 cursor-pointer" : "cursor-default"}`}>
+                      className={`flex-1 min-w-0 text-left px-2 py-2 flex items-center gap-2 ${clickable ? "hover:text-zinc-200 cursor-pointer" : "cursor-default"}`}>
                       <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
-                      <span className={`text-sm ${st.text}`}>{e.title}</span>
-                      {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto" />}
+                      <span className={`text-sm ${st.text} truncate`}>{e.title}</span>
+                      {e.type === "partido" && <MapPin size={12} className="text-zinc-500 ml-auto shrink-0" />}
                     </button>
                     {puedeEditarEventos && (
                       <>
@@ -1636,17 +1636,17 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                     )}
                   </div>
                   {isRenaming && (
-                    <div className="flex items-center gap-2 px-3 pb-2">
-                      <input value={renameValue} onChange={(ev) => setRenameValue(ev.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
-                      <button onClick={() => { if (renameValue.trim()) { onRenameEvent(e.id, renameValue.trim()); setRenameTarget(null); } }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded">Guardar</button>
-                      <button onClick={() => setRenameTarget(null)} className="text-zinc-400 text-xs px-2 py-1">Cancelar</button>
+                    <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
+                      <input value={renameValue} onChange={(ev) => setRenameValue(ev.target.value)} className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <button onClick={() => { if (renameValue.trim()) { onRenameEvent(e.id, renameValue.trim()); setRenameTarget(null); } }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => setRenameTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
                   )}
                   {isMoving && (
-                    <div className="flex items-center gap-2 px-3 pb-2">
-                      <input type="date" value={moveDate} onChange={(ev) => setMoveDate(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
-                      <button onClick={() => { onMoveEvent(e.id, moveDate); setMoveTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded">Guardar</button>
-                      <button onClick={() => setMoveTarget(null)} className="text-zinc-400 text-xs px-2 py-1">Cancelar</button>
+                    <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
+                      <input type="date" value={moveDate} onChange={(ev) => setMoveDate(ev.target.value)} className="min-w-0 flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <button onClick={() => { onMoveEvent(e.id, moveDate); setMoveTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => setMoveTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
                   )}
                 </div>
@@ -2065,9 +2065,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
         <Users size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Plantel</span>
       </div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <h1 className="text-2xl font-bold">Jugadores</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <button onClick={exportarCSV} disabled={listaMostrada.length === 0} className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 border border-zinc-700 text-zinc-100 text-sm px-3 py-1.5 rounded">
             <Download size={15} /> Exportar CSV
           </button>
@@ -3226,7 +3226,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver a Scouting Hub
         </button>
@@ -3427,7 +3427,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
         <Shield size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Scouting Hub</span>
       </div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <h1 className="text-2xl font-bold">Equipos rivales</h1>
         {!soloLectura && esTemporadaActiva && (
           <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
@@ -3439,7 +3439,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       {esJugador ? (
         <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
       ) : verSinAsignar ? (
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
           <p className="text-sm text-zinc-400">Equipos sin temporada asignada</p>
           <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
         </div>
@@ -3493,8 +3493,8 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       <div className="space-y-2">
         {equiposMostrados.map((eq) => (
           <div key={eq.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-center gap-3">
-            <button onClick={() => setSelectedId(eq.id)} className="flex-1 text-left">
-              <p className="font-medium text-sm text-zinc-100">{eq.nombre_club}</p>
+            <button onClick={() => setSelectedId(eq.id)} className="flex-1 min-w-0 text-left">
+              <p className="font-medium text-sm text-zinc-100 truncate">{eq.nombre_club}</p>
               {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{eq.notas_colectivas}</p>}
             </button>
             <VideoLinkButton url={eq.video_colectivo_url} size={14} />
@@ -4040,7 +4040,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       <h1 className="text-2xl font-bold mb-3">Cargar partido (PDF de la CABB)</h1>
 
       {verSinAsignar ? (
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
           <p className="text-sm text-zinc-400">Partidos sin temporada asignada</p>
           <button onClick={() => setVerSinAsignar(false)} className="text-xs text-brand-400 hover:text-brand-300">Volver al filtro</button>
         </div>
@@ -4262,12 +4262,12 @@ function PodioMini({ titulo, filas, campo, formato }) {
 }
 
 // Modulo "Inicio": dashboard que unifica lo mas urgente de cada modulo (Calendario, Plantel,
-// Entrenamientos, Scouting, Estadisticas) en una sola pantalla. El selector de Categoria/Tira
-// scopea agenda/cronograma de hoy/RPE/asistencia/lesionados (igual que Plantel/Entrenamientos);
-// proximo partido, lideres y tendencia son a nivel club porque jugador_partido_stats no guarda
-// categoria de forma confiable para filtrar por ahi.
+// Entrenamientos, Scouting, Estadisticas) en una sola pantalla. Todas las tarjetas -- agenda de
+// hoy, RPE/asistencia/lesionados, proximo partido, lideres y tendencia -- se filtran por la
+// misma matriz Categoria/Tira activa (proximo partido via "eventos", lideres/tendencia via
+// partidos_stats.temporada_id resuelto por esa Categoria/Tira).
 function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
-  const { categoria, tira, setCategoria, setTira } = useTeam();
+  const { categoria, tira, setCategoria, setTira, temporadaId } = useTeam();
   const hoy = todayKeyBA();
 
   const [notas, setNotas] = useState([]);
@@ -4350,10 +4350,17 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
   const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
+    if (!temporadaId) {
+      setUltimoPartido(null);
+      setLideres({ puntos: [], eficiencia: [], rebotes: [] });
+      setTendencia([]);
+      setLoadingStats(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoadingStats(true);
-      const { data: ultimo } = await supabase.from("partidos_stats").select("*").order("fecha", { ascending: false }).limit(1).maybeSingle();
+      const { data: ultimo } = await supabase.from("partidos_stats").select("*").eq("temporada_id", temporadaId).order("fecha", { ascending: false }).limit(1).maybeSingle();
       if (cancelled) return;
       setUltimoPartido(ultimo);
 
@@ -4367,12 +4374,14 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
             rebotes: [...filas].sort((a, b) => b.rtot - a.rtot).slice(0, 3),
           });
         }
+      } else {
+        setLideres({ puntos: [], eficiencia: [], rebotes: [] });
       }
 
-      const { data: ultimos3 } = await supabase.from("partidos_stats").select("*").not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(3);
-      if (!cancelled && ultimos3) {
+      const { data: ultimos3 } = await supabase.from("partidos_stats").select("*").eq("temporada_id", temporadaId).not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(3);
+      if (!cancelled) {
         setTendencia(
-          ultimos3
+          (ultimos3 || [])
             .map((p) => ({
               fecha: p.fecha,
               rival: p.equipo_propio === "LOCAL" ? p.equipo_visitante : p.equipo_local,
@@ -4385,11 +4394,11 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       setLoadingStats(false);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [temporadaId]);
 
   const lesionados = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira) && j.disponibilidad && j.disponibilidad !== "Disponible");
 
-  const proximoPartido = events.filter((e) => e.type === "partido" && e.date >= hoy).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  const proximoPartido = events.filter((e) => e.type === "partido" && e.date >= hoy && e.categoria === categoria && e.tira === tira).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
   const rivalProximo = proximoPartido ? equiposRivales.find((eq) => eq.id === proximoPartido.rival_id) : null;
   const diasParaPartido = proximoPartido ? Math.round((new Date(proximoPartido.date) - new Date(hoy)) / 86400000) : null;
 
@@ -5040,7 +5049,7 @@ export default function App() {
       </aside>
 
       {/* Contenido principal */}
-      <main className="flex-1 min-w-0 p-6 pb-24 md:pb-6">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 pb-24 md:pb-6">
         <div className="md:hidden flex items-center gap-2 mb-4">
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
           <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
