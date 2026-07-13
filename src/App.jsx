@@ -3681,29 +3681,35 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [jugadoresRivalesVisitante, setJugadoresRivalesVisitante] = useState([]);
   const [historicoJugadores, setHistoricoJugadores] = useState([]);
 
+  // Temporada "en juego" para el formulario: por defecto la seleccionada arriba, pero al cargar
+  // un partido NUEVO el propio campo "Torneo" puede apuntar a otra (ver mas abajo) -- asi se
+  // puede armar historial de una temporada pasada sin salir del formulario a cambiar el filtro.
+  const temporadaIdForm = preview?.temporadaId ?? temporadaId;
+  const temporadaFormActiva = temporadasDelEquipo.find((t) => t.id === temporadaIdForm)?.activa ?? false;
+
   // "jugadores" (prop) solo trae la temporada ACTIVA de cada equipo -- para poder cargar un
   // partido de una temporada PASADA (y vincular sus jugadores) hace falta el plantel de ESA
   // temporada puntual, mismo criterio que ya usan PlantelView/Jugador360View.
   useEffect(() => {
-    if (esTemporadaActiva || !temporadaId) { setHistoricoJugadores([]); return; }
+    if (temporadaFormActiva || !temporadaIdForm) { setHistoricoJugadores([]); return; }
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from("vista_plantel_temporada")
         .select("*")
-        .eq("temporada_id", temporadaId)
+        .eq("temporada_id", temporadaIdForm)
         .eq("estado", "activo")
         .order("nombre_apellido", { ascending: true });
       if (cancelled) return;
       if (!error) setHistoricoJugadores(data || []);
     })();
     return () => { cancelled = true; };
-  }, [esTemporadaActiva, temporadaId]);
+  }, [temporadaFormActiva, temporadaIdForm]);
 
   // Acotado a la categoria/tira del filtro activo -- sin esto, "Plantel propio" en el vinculador
   // mostraba el plantel entero del club (todas las categorias), una lista interminable para
   // encontrar un jugador puntual.
-  const jugadoresPropiosDelEquipo = esTemporadaActiva
+  const jugadoresPropiosDelEquipo = temporadaFormActiva
     ? jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira))
     : historicoJugadores;
   const [aliasEquipo, setAliasEquipo] = useState({});
@@ -3825,8 +3831,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       setPreview({
         fecha: todayKeyBA(),
         torneo: result.torneo,
-        // El nombre del torneo se toma de la Temporada activa (mas confiable que el texto tal
-        // cual del PDF, que puede no coincidir exacto con como se registro la competencia acá).
+        // Temporada destino elegible desde el propio campo "Torneo" (ver render mas abajo);
+        // arranca en la seleccionada arriba pero se puede cambiar antes de guardar. El nombre
+        // de esa temporada es mas confiable que el texto tal cual del PDF para "categoria".
+        temporadaId: temporadaId || "",
         categoria: temporadaSeleccionada?.nombre_competencia || result.categoria,
         equipoLocal: result.equipoLocal,
         equipoVisitante: result.equipoVisitante,
@@ -3935,7 +3943,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const guardar = async () => {
     if (!preview) return;
     const isEdit = !!preview.id;
-    if (!isEdit && !temporadaId) { setSaveMsg("Error: no hay una temporada activa para asignarle este partido."); return; }
+    if (!isEdit && !preview.temporadaId) { setSaveMsg("Error: elegí a qué temporada pertenece este partido (campo \"Torneo\")."); return; }
     setSaving(true);
     setSaveMsg("");
 
@@ -3959,7 +3967,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       await supabase.from("jugador_partido_stats").delete().eq("partido_id", partidoId);
       await supabase.from("equipo_partido_stats").delete().eq("partido_id", partidoId);
     } else {
-      const { data: partido, error: errPartido } = await supabase.from("partidos_stats").insert({ ...partidoPatch, temporada_id: temporadaId }).select().single();
+      const { data: partido, error: errPartido } = await supabase.from("partidos_stats").insert({ ...partidoPatch, temporada_id: preview.temporadaId }).select().single();
       if (errPartido) { setSaveMsg("Error al guardar el partido: " + errPartido.message); setSaving(false); return; }
       partidoId = partido.id;
     }
@@ -4006,7 +4014,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     setPreview(null);
     setHistorial((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
     setSinAsignar((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
-    if (!isEdit) fetchHistorial(temporadaId);
+    // Si el partido nuevo quedo en una temporada distinta a la que se esta viendo (se cambio el
+    // "Torneo" del formulario a otra), la lista visible no necesita tocarse -- se va a traer
+    // sola cuando el staff navegue a esa temporada (el efecto de "temporadaId" ya la refresca).
+    if (!isEdit && preview.temporadaId === temporadaId) fetchHistorial(temporadaId);
     setSaving(false);
   };
 
@@ -4052,7 +4063,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     if (!error) setSinAsignar((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.temporada_id === temporadaId);
+  const equiposRivalesFiltrados = equiposRivales.filter((eq) => eq.temporada_id === temporadaIdForm);
   const historialMostrado = verSinAsignar ? sinAsignar : historial;
   // Cargar un partido NUEVO se permite en cualquier temporada (activa o pasada), para poder ir
   // completando el historial de años anteriores. Editar/eliminar uno YA guardado sigue
@@ -4135,8 +4146,30 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
             </div>
             <div>
               <p className="text-xs text-zinc-500 mb-1">Torneo</p>
-              <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              {preview.id ? (
+                <input value={preview.categoria} onChange={(e) => setPreview({ ...preview, categoria: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              ) : (
+                <select value={preview.temporadaId || ""} onChange={(e) => {
+                  const id = e.target.value;
+                  const t = temporadasDelEquipo.find((x) => x.id === id);
+                  setPreview((prev) => ({
+                    ...prev,
+                    temporadaId: id,
+                    categoria: t?.nombre_competencia || prev.categoria,
+                    // Los rivales cargados en Scouting Hub son por temporada -- si se cambia de
+                    // temporada, el vinculo anterior (de otra competencia) ya no corresponde.
+                    equipoLocalRivalId: "",
+                    equipoVisitanteRivalId: "",
+                  }));
+                }}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                  <option value="">Elegir temporada…</option>
+                  {temporadasDelEquipo.map((t) => (
+                    <option key={t.id} value={t.id}>{t.nombre_competencia} {t.anio}{t.activa ? " (activa)" : ""}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <p className="text-xs text-zinc-500 mb-1">Jornada / Fase</p>
@@ -4321,19 +4354,22 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadingNotas(true);
     (async () => {
-      const { data, error } = await supabase.from("notas_staff").select("*").eq("resuelta", false).order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("notas_staff").select("*")
+        .eq("resuelta", false).eq("categoria", categoria).eq("tira", tira)
+        .order("created_at", { ascending: false });
       if (!cancelled && !error) setNotas(data);
       setLoadingNotas(false);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [categoria, tira]);
 
   const agregarNota = async () => {
     const texto = notaNueva.trim();
     if (!texto) return;
     setNotaNueva("");
-    const { data, error } = await supabase.from("notas_staff").insert({ texto }).select().single();
+    const { data, error } = await supabase.from("notas_staff").insert({ texto, categoria, tira }).select().single();
     if (!error) setNotas((prev) => [data, ...prev]);
   };
 

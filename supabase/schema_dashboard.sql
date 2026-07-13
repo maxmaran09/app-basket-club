@@ -36,4 +36,11 @@ create policy "notas_staff_delete_all" on public.notas_staff for delete using (t
 
 grant select, insert, update, delete on public.notas_staff to anon, authenticated;
 
+-- 4) Notas por Categoria/Tira (antes era un tablon unico para todo el club, inconsistente con el
+-- resto del dashboard que si se filtra por equipo). Nullable para no perder las notas ya
+-- cargadas antes de esta migracion -- simplemente dejan de aparecer en cualquier filtro hasta
+-- que se les asigne un equipo a mano (editando la fila en Supabase) o se resuelvan.
+alter table public.notas_staff add column if not exists categoria text;
+alter table public.notas_staff add column if not exists tira text;
+
 notify pgrst, 'reload schema';
