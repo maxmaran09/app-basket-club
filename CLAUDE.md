@@ -55,16 +55,17 @@ Vista mensual, cada evento enlaza a su ficha (entrenamiento o partido). Tipos de
 Roster del club: nombre, fecha de nacimiento (edad calculada), historial de altura/peso (con opción de borrar un registro puntual si se cargó mal), y soporte para jugadores que juegan en más de una categoría/tira a la vez (`equipos_adicionales`, ahora colgado de `jugador_temporada`). Disponibilidad persistente por jugador (Disponible/Lesionado/Duda + detalle), independiente de la asistencia diaria — alimenta el contador de lesionados del dashboard. Filtro por matriz Categoría/Tira usado en toda la app (Calendario, Entrenamientos, Individual, Inicio) para saber qué jugadores corresponden a cada evento. Membresía de equipo (dorsal, alta/baja) separada por Temporada — ver sección "Temporadas" arriba. Posición secundaria opcional (`posicion_secundaria`, ej: Ala-Pivot y Pivot, o Base y Escolta) para jugadores híbridos — se muestra como "Base · Escolta" en listados y fichas (helper `formatPosicion` en `constants.js`), y el mismo campo existe en Scouting para jugadores rivales.
 
 ### Entrenamientos
-Ficha por sesión: fecha, objetivo de la semana, asistencia, y una lista de **bloques de trabajo** (rango de minutos + título + descripción del ejercicio) — reflejando cómo está organizada hoy la pestaña "Federal 2026 - Temporada Regular + Post Temporada" (semanas en columnas, bloques de tiempo tipo `0'-5': Charla`, `5'-20': 5v0 Spacing`, etc). Cada bloque se puede **duplicar** (clona horario/título/descripción/diagramas) para repetir una dinámica sin recrearla.
+Ficha por sesión: fecha, objetivo de la semana, asistencia, y una lista de **bloques de trabajo** (rango de minutos + título + descripción del ejercicio) — reflejando cómo está organizada hoy la pestaña "Federal 2026 - Temporada Regular + Post Temporada" (semanas en columnas, bloques de tiempo tipo `0'-5': Charla`, `5'-20': 5v0 Spacing`, etc). Cada bloque se puede **duplicar** (clona horario/título/descripción/diagramas) o **editar** (horario/título/descripción, con los diagramas de cancha intactos) una vez ya creado, para repetir o corregir una dinámica sin recrearla.
 
 **Control de carga física (RPE)**: por jugador, escala 1-10 con semáforo de color (1-3 verde, 4-6 amarillo, 7-8 naranja, 9-10 rojo) + nota, cargable individualmente o con "Asignar a todos".
 
 **Evento Individual**: variante de Entrenamiento para trabajo 1 a 1 — un mismo evento contiene un plan por jugador (objetivo, prep. física, bloques de cancha propios), reutilizando los mismos componentes de bloques/diagramas. Cada plan tiene un jugador asignado editable (se puede corregir sin borrar todo) y se puede **duplicar el plan completo** de un jugador a otro cuando dos hicieron el mismo trabajo.
 
 **Diagramas de cancha por bloque** (inspirado en la app "Basketball Playbook"):
-- Herramientas: Mover, + Jugador ofensivo, + Jugador defensivo, Balón, Pase, Dribbling, Corte, Cortina, Borrar.
+- Herramientas: Mover, + Jugador ofensivo, + Jugador defensivo, + Coach, Balón, Pase, Dribbling, Corte, Cortina, Lanzamiento, Borrar — la barra muestra solo el ícono de cada una (igual en mobile y desktop) con tooltip nativo (`title`) al pasar el mouse para saber qué es.
 - Jugadores: círculos numerados, ofensivos en azul, defensivos en rojo con "X" + número, se agregan tocando la cancha y se arrastran con la herramienta "Mover".
-- Balón: se asigna a un jugador con la herramienta "Balón" (un puntito naranja al lado del jugador).
+- Coach: círculo dorado con la letra "C" (sin número), misma mecánica que un jugador (se agrega/mueve/borra igual).
+- Balón: se pueden agregar **varios** balones (cada clic con la herramienta "Balón" suma uno nuevo, no reemplaza al anterior), cada uno movible/borrable por separado. Los diagramas guardados con el formato viejo (un solo balón) se siguen mostrando bien.
 - Líneas (según convención real del básquet):
   - **Pase** = línea punteada con flecha.
   - **Dribbling** = línea en zigzag con flecha.
