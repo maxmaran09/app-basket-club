@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2 } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
@@ -1897,6 +1897,232 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
   );
 }
 
+// Protocolo de evaluaciones fisicas consensuado con los PFs del club: 14 ejercicios en 3
+// grupos, guardados dentro del mismo jugadores.evaluaciones_pfs (jsonb) que ya usaba
+// ActualizarMedidasModal para altura/peso -- una entrada nueva puede traer cualquier
+// combinacion de "fuerza"/"potencia"/"aceleracion" segun lo que se haya tomado ese dia.
+const CAMPOS_FUERZA = [
+  { k: "sentadilla", l: "Sentadilla", u: "kg" },
+  { k: "pechoPlano", l: "Pecho Plano", u: "kg" },
+  { k: "pesoMuerto", l: "Peso Muerto", u: "kg" },
+  { k: "dominadas", l: "Dominadas (lastre)", u: "kg" },
+];
+const CAMPOS_POTENCIA = [
+  { k: "cmj", l: "CMJ", u: "cm" },
+  { k: "cmjDer", l: "CMJ Pierna Derecha", u: "cm" },
+  { k: "cmjIzq", l: "CMJ Pierna Izquierda", u: "cm" },
+  { k: "squatJump", l: "Squat Jump", u: "cm" },
+  { k: "saltoLargo", l: "Salto en Largo (2 piernas)", u: "cm" },
+  { k: "saltoLargoDer", l: "Salto en Largo Pierna Derecha", u: "cm" },
+  { k: "saltoLargoIzq", l: "Salto en Largo Pierna Izquierda", u: "cm" },
+];
+const CAMPOS_ACELERACION = [
+  { k: "m5", l: "5 metros", u: "s" },
+  { k: "m10", l: "10 metros", u: "s" },
+  { k: "m15", l: "15 metros", u: "s" },
+];
+const TABS_EVALUACION = [["fuerza", "Fuerza"], ["potencia", "Potencia"], ["aceleracion", "Aceleración"]];
+
+function EvaluacionFisicaModal({ jugador, onCancel, onSave }) {
+  const [fecha, setFecha] = useState(todayKeyBA());
+  const [tab, setTab] = useState("fuerza");
+  const [valores, setValores] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const set = (k, v) => setValores((prev) => ({ ...prev, [k]: v }));
+
+  const grupoDe = (campos) => {
+    const obj = {};
+    campos.forEach((c) => { if (valores[c.k] !== undefined && valores[c.k] !== "") obj[c.k] = Number(valores[c.k]); });
+    return Object.keys(obj).length > 0 ? obj : null;
+  };
+
+  const submit = async () => {
+    const fuerza = grupoDe(CAMPOS_FUERZA);
+    const potencia = grupoDe(CAMPOS_POTENCIA);
+    const aceleracion = grupoDe(CAMPOS_ACELERACION);
+    if (!fuerza && !potencia && !aceleracion) return;
+    setSaving(true);
+    const entry = { fecha, ...(fuerza && { fuerza }), ...(potencia && { potencia }), ...(aceleracion && { aceleracion }) };
+    const evaluaciones = [...(jugador.evaluaciones_pfs || []), entry];
+    await onSave({ evaluaciones_pfs: evaluaciones });
+    setSaving(false);
+  };
+
+  const camposDeTab = tab === "fuerza" ? CAMPOS_FUERZA : tab === "potencia" ? CAMPOS_POTENCIA : CAMPOS_ACELERACION;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-sm mb-3">Evaluación física — {jugador.nombre_apellido}</h3>
+        <p className="text-xs text-zinc-500 mb-1">Fecha</p>
+        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-3" />
+
+        <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-3 gap-1">
+          {TABS_EVALUACION.map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className={`flex-1 text-xs font-semibold py-1.5 rounded-md ${tab === k ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>{l}</button>
+          ))}
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {camposDeTab.map((c) => (
+            <div key={c.k} className="flex items-center gap-2">
+              <label className="flex-1 min-w-0 text-sm text-zinc-300 truncate">{c.l}</label>
+              <input type="number" step="0.01" value={valores[c.k] ?? ""} onChange={(e) => set(c.k, e.target.value)}
+                className="w-20 shrink-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 text-right" />
+              <span className="text-xs text-zinc-500 w-6 shrink-0">{c.u}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button disabled={saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">
+            {saving ? "Guardando…" : "Guardar evaluación"}
+          </button>
+          <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Busca, entre las filas ya ordenadas de mas reciente a mas vieja, el primer valor de "getter"
+// despues de la posicion "i" -- el registro anterior de ESE campo puntual, que no siempre es la
+// fila de al lado (una fecha puede no haber tomado ese ejercicio).
+function valorAnteriorEnFilas(filasDesc, i, getter) {
+  for (let k = i + 1; k < filasDesc.length; k++) {
+    const v = getter(filasDesc[k].ev);
+    if (v != null) return v;
+  }
+  return null;
+}
+
+// Tabla de evolucion de campos sueltos en la raiz de la entrada (altura/peso).
+function TablaEvolucionSimple({ filasDesc, campos, puedeEliminar, onEliminar }) {
+  return (
+    <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+      <table className="w-full text-xs whitespace-nowrap">
+        <thead>
+          <tr className="bg-zinc-950 text-zinc-500">
+            <th className="text-left font-normal px-2.5 py-2 sticky left-0 bg-zinc-950">Fecha</th>
+            {campos.map((c) => <th key={c.k} className="text-right font-normal px-2.5 py-2">{c.l}</th>)}
+            {puedeEliminar && <th className="px-2 py-2" />}
+          </tr>
+        </thead>
+        <tbody>
+          {filasDesc.map((f, i) => (
+            <tr key={f.idx} className="border-t border-zinc-800">
+              <td className={`px-2.5 py-2 sticky left-0 bg-zinc-900 ${i === 0 ? "text-zinc-100 font-semibold" : "text-zinc-400"}`}>{f.ev.fecha}</td>
+              {campos.map((c) => {
+                const v = f.ev[c.k];
+                if (v == null) return <td key={c.k} className="px-2.5 py-2 text-right text-zinc-700">—</td>;
+                const prev = valorAnteriorEnFilas(filasDesc, i, (ev) => ev[c.k]);
+                return (
+                  <td key={c.k} className="px-2.5 py-2 text-right text-zinc-300">
+                    {v}{c.u} <CambioBadge curr={v} prev={prev} lowerIsBetter={c.lowerIsBetter} />
+                  </td>
+                );
+              })}
+              {puedeEliminar && (
+                <td className="px-2 py-2 text-center">
+                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400">
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Tabla de evolucion de un grupo del protocolo del PF (fuerza/potencia/aceleracion) -- solo
+// muestra las fechas que tengan algo cargado en ese grupo puntual.
+function TablaEvolucionGrupo({ filasDesc, grupo, campos, lowerIsBetter, puedeEliminar, onEliminar }) {
+  const filas = filasDesc.filter((f) => f.ev[grupo]);
+  if (filas.length === 0) return <p className="text-xs text-zinc-500 py-3 text-center">Sin registros de {grupo}.</p>;
+  return (
+    <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+      <table className="w-full text-xs whitespace-nowrap">
+        <thead>
+          <tr className="bg-zinc-950 text-zinc-500">
+            <th className="text-left font-normal px-2.5 py-2 sticky left-0 bg-zinc-950">Fecha</th>
+            {campos.map((c) => <th key={c.k} className="text-right font-normal px-2.5 py-2">{c.l}</th>)}
+            {puedeEliminar && <th className="px-2 py-2" />}
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f, i) => (
+            <tr key={f.idx} className="border-t border-zinc-800">
+              <td className={`px-2.5 py-2 sticky left-0 bg-zinc-900 ${i === 0 ? "text-zinc-100 font-semibold" : "text-zinc-400"}`}>{f.ev.fecha}</td>
+              {campos.map((c) => {
+                const v = f.ev[grupo]?.[c.k];
+                if (v == null) return <td key={c.k} className="px-2.5 py-2 text-right text-zinc-700">—</td>;
+                const prev = valorAnteriorEnFilas(filas, i, (ev) => ev[grupo]?.[c.k]);
+                return (
+                  <td key={c.k} className="px-2.5 py-2 text-right text-zinc-300">
+                    {v}{c.u} <CambioBadge curr={v} prev={prev} lowerIsBetter={lowerIsBetter} />
+                  </td>
+                );
+              })}
+              {puedeEliminar && (
+                <td className="px-2 py-2 text-center">
+                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400">
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Modal "Ver evolucion": medidas corporales + evaluacion fisica completa (todas las fechas, no
+// solo el ultimo valor como en Jugador 360). Reemplaza la vieja lista de texto que solo
+// mostraba altura/peso y no tenia forma de mostrar el protocolo nuevo. Diseno validado antes en
+// un prototipo de Claude Artifacts.
+function EvolucionJugadorModal({ jugador, puedeEliminar, onEliminar, onCancel }) {
+  const [tab, setTab] = useState("fuerza");
+  const filasDesc = (jugador.evaluaciones_pfs || []).map((ev, idx) => ({ ev, idx })).reverse();
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-2xl w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <h3 className="font-bold text-sm">Evolución — {jugador.nombre_apellido}</h3>
+          <button onClick={onCancel} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">Medidas corporales y evaluación física a lo largo del tiempo.</p>
+
+        <SeccionMini>Medidas corporales</SeccionMini>
+        <div className="mb-4">
+          <TablaEvolucionSimple
+            filasDesc={filasDesc}
+            campos={[{ k: "altura", l: "Altura", u: "m" }, { k: "peso", l: "Peso", u: "kg" }]}
+            puedeEliminar={puedeEliminar}
+            onEliminar={onEliminar}
+          />
+        </div>
+
+        <SeccionMini>Evaluación física</SeccionMini>
+        <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-3 gap-1">
+          {TABS_EVALUACION.map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className={`flex-1 text-xs font-semibold py-1.5 rounded-md ${tab === k ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>{l}</button>
+          ))}
+        </div>
+        {tab === "fuerza" && <TablaEvolucionGrupo filasDesc={filasDesc} grupo="fuerza" campos={CAMPOS_FUERZA} puedeEliminar={puedeEliminar} onEliminar={onEliminar} />}
+        {tab === "potencia" && <TablaEvolucionGrupo filasDesc={filasDesc} grupo="potencia" campos={CAMPOS_POTENCIA} puedeEliminar={puedeEliminar} onEliminar={onEliminar} />}
+        {tab === "aceleracion" && <TablaEvolucionGrupo filasDesc={filasDesc} grupo="aceleracion" campos={CAMPOS_ACELERACION} lowerIsBetter puedeEliminar={puedeEliminar} onEliminar={onEliminar} />}
+      </div>
+    </div>
+  );
+}
+
 function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   const [fecha, setFecha] = useState(todayKeyBA());
   const [altura, setAltura] = useState(jugador.altura ?? "");
@@ -1956,6 +2182,8 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [medidasTarget, setMedidasTarget] = useState(null);
+  const [evaluacionTarget, setEvaluacionTarget] = useState(null);
+  const [evolucionTargetId, setEvolucionTargetId] = useState(null);
   const [promedios, setPromedios] = useState({});
   const [verBaja, setVerBaja] = useState(false);
   const [jugadoresBaja, setJugadoresBaja] = useState([]);
@@ -2036,6 +2264,9 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
 
   const puedeEditar = esTemporadaActiva;
   const listaMostrada = verBaja ? jugadoresBaja : esTemporadaActiva ? filtered : historico;
+  // Se busca en vivo (no una copia guardada al abrir el modal) para que borrar una fila desde
+  // "Ver evolucion" actualice la tabla sin tener que cerrar y volver a abrir el modal.
+  const evolucionJugador = evolucionTargetId ? listaMostrada.find((j) => j.id === evolucionTargetId) : null;
 
   // Mismo orden de columnas que la plantilla del importador, para que el CSV exportado se
   // pueda editar (ej. medidas nuevas) y volver a importar sin reacomodar nada.
@@ -2186,28 +2417,15 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
             )}
             <PromedioMiniStats p={promedios[j.id]} />
             {puedeEditar && !verBaja && (
-              <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setMedidasTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Actualizar medidas</button>
+                <button onClick={() => setEvaluacionTarget(j)} className="text-xs text-sky-400 hover:text-sky-300">Cargar evaluación física</button>
+              </div>
             )}
             {j.evaluaciones_pfs?.length > 0 && (
-              <details className="mt-1">
-                <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Ver evolución ({j.evaluaciones_pfs.length})</summary>
-                <ul className="mt-1 space-y-0.5">
-                  {j.evaluaciones_pfs.map((ev, i) => ({ ev, i })).reverse().map(({ ev, i }) => (
-                    <li key={i} className="flex items-center gap-1.5 text-xs text-zinc-400">
-                      <span>
-                        {ev.fecha}
-                        {ev.altura != null ? ` · ${ev.altura} m` : ""}
-                        {ev.peso != null ? ` · ${ev.peso} kg` : ""}
-                      </span>
-                      {puedeEditar && !verBaja && (
-                        <button onClick={() => eliminarEvaluacion(j, i)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-0.5">
-                          <Trash2 size={11} />
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <button onClick={() => setEvolucionTargetId(j.id)} className="mt-1 text-xs text-zinc-500 hover:text-zinc-300">
+                Ver evolución ({j.evaluaciones_pfs.length})
+              </button>
             )}
           </div>
         ))}
@@ -2244,6 +2462,23 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           jugador={medidasTarget}
           onCancel={() => setMedidasTarget(null)}
           onSave={async (patch) => { await onUpdateJugador(medidasTarget.id, patch); setMedidasTarget(null); }}
+        />
+      )}
+
+      {evaluacionTarget && (
+        <EvaluacionFisicaModal
+          jugador={evaluacionTarget}
+          onCancel={() => setEvaluacionTarget(null)}
+          onSave={async (patch) => { await onUpdateJugador(evaluacionTarget.id, patch); setEvaluacionTarget(null); }}
+        />
+      )}
+
+      {evolucionJugador && (
+        <EvolucionJugadorModal
+          jugador={evolucionJugador}
+          puedeEliminar={puedeEditar && !verBaja}
+          onEliminar={(idx) => eliminarEvaluacion(evolucionJugador, idx)}
+          onCancel={() => setEvolucionTargetId(null)}
         />
       )}
 
@@ -2426,6 +2661,213 @@ function SeccionMini({ children }) {
     <div className="flex items-center gap-2 mb-1.5">
       <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{children}</p>
       <div className="flex-1 h-px bg-zinc-800" />
+    </div>
+  );
+}
+
+// Busca, de la evaluacion mas reciente hacia atras, la primera que tenga cargado este campo --
+// una evaluacion puntual puede traer solo alguno de los 3 grupos (fuerza/potencia/aceleracion),
+// asi que "el ultimo valor" de cada ejercicio no siempre es el de la ultima entrada del array.
+function ultimoValorEjercicio(evaluaciones, grupo, campo) {
+  for (let i = evaluaciones.length - 1; i >= 0; i--) {
+    const v = evaluaciones[i]?.[grupo]?.[campo];
+    if (v != null) return { valor: v, fecha: evaluaciones[i].fecha, idx: i };
+  }
+  return null;
+}
+function valorAnteriorEjercicio(evaluaciones, grupo, campo, antesDeIdx) {
+  for (let i = antesDeIdx - 1; i >= 0; i--) {
+    const v = evaluaciones[i]?.[grupo]?.[campo];
+    if (v != null) return v;
+  }
+  return null;
+}
+
+// % de cambio vs. la toma anterior de ESE ejercicio puntual, coloreado segun si esa direccion es
+// una mejora real (en Aceleracion bajar el tiempo es mejora; en Fuerza/Potencia subir la marca).
+function CambioBadge({ curr, prev, lowerIsBetter, className = "" }) {
+  if (prev == null || curr == null) return null;
+  const diff = curr - prev;
+  const pct = prev !== 0 ? (diff / Math.abs(prev)) * 100 : 0;
+  const neutro = Math.abs(pct) < 0.05;
+  const mejora = lowerIsBetter ? diff < 0 : diff > 0;
+  const cls = neutro ? "text-zinc-500" : mejora ? "text-emerald-400" : "text-red-400";
+  return (
+    <span className={`text-[10px] font-bold ${cls} ${className}`}>
+      {neutro ? "▬" : diff > 0 ? "▲" : "▼"} {pct > 0 ? "+" : ""}{pct.toFixed(1)}%
+    </span>
+  );
+}
+
+// Tile de un ejercicio individual del protocolo del PF, con el % de cambio vs. la toma anterior.
+function CampoEvaluacionTile({ jugador, grupo, campo, label, unidad, lowerIsBetter }) {
+  const evals = jugador.evaluaciones_pfs || [];
+  const ultimo = ultimoValorEjercicio(evals, grupo, campo);
+  if (!ultimo) {
+    return (
+      <div className="bg-zinc-950/40 border border-zinc-800 rounded-lg py-2.5 px-2 text-center">
+        <p className="text-lg font-extrabold text-zinc-600">—</p>
+        <p className="text-[10px] text-zinc-500 uppercase tracking-wide mt-0.5">{label}</p>
+      </div>
+    );
+  }
+  const anterior = valorAnteriorEjercicio(evals, grupo, campo, ultimo.idx);
+  return (
+    <div className="bg-zinc-950/40 border border-zinc-800 rounded-lg py-2.5 px-2 text-center">
+      <p className="text-lg font-extrabold text-zinc-100">{ultimo.valor}<small className="text-xs text-zinc-500 ml-0.5">{unidad}</small></p>
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wide mt-0.5">{label}</p>
+      <CambioBadge curr={ultimo.valor} prev={anterior} lowerIsBetter={lowerIsBetter} className="block mt-0.5" />
+    </div>
+  );
+}
+
+// Comparacion Derecha vs Izquierda con alerta de riesgo si la asimetria supera el 10% -- umbral
+// consensuado con los PFs del club.
+function ParUnilateral({ jugador, label, grupo, campoDer, campoIzq, unidad }) {
+  const evals = jugador.evaluaciones_pfs || [];
+  const der = ultimoValorEjercicio(evals, grupo, campoDer);
+  const izq = ultimoValorEjercicio(evals, grupo, campoIzq);
+  if (!der || !izq) return null;
+  const max = Math.max(der.valor, izq.valor), min = Math.min(der.valor, izq.valor);
+  const diffPct = max ? ((max - min) / max) * 100 : 0;
+  const alerta = diffPct > 10;
+  const scale = max * 1.15 || 1;
+  return (
+    <div className={`border rounded-lg p-3 mb-2 ${alerta ? "bg-red-500/5 border-red-500/40" : "bg-zinc-950/40 border-zinc-800"}`}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">{label}</span>
+        {alerta ? (
+          <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 rounded-full px-2 py-0.5 shrink-0">
+            <AlertTriangle size={10} /> Asimetría {diffPct.toFixed(1)}%
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-emerald-400 shrink-0">Simétrico ({diffPct.toFixed(1)}%)</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 text-center">
+          <p className="text-base font-extrabold">{izq.valor}<span className="text-[10px] text-zinc-500"> {unidad}</span></p>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">Izquierda</p>
+        </div>
+        <div className="flex-[2] flex items-center h-4">
+          <div className="flex-1 h-1.5 bg-zinc-800 rounded-full relative overflow-hidden" style={{ transform: "scaleX(-1)" }}>
+            <div className={`absolute inset-y-0 left-0 rounded-full ${alerta ? "bg-red-400" : "bg-brand-400"}`} style={{ width: `${(izq.valor / scale) * 100}%` }} />
+          </div>
+          <div className="w-0.5 h-4 bg-zinc-700 shrink-0" />
+          <div className="flex-1 h-1.5 bg-zinc-800 rounded-full relative overflow-hidden">
+            <div className={`absolute inset-y-0 left-0 rounded-full ${alerta ? "bg-red-400" : "bg-brand-400"}`} style={{ width: `${(der.valor / scale) * 100}%` }} />
+          </div>
+        </div>
+        <div className="flex-1 text-center">
+          <p className="text-base font-extrabold">{der.valor}<span className="text-[10px] text-zinc-500"> {unidad}</span></p>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mt-0.5">Derecha</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Historial compacto de 3 ejercicios de referencia (uno por grupo) -- no los 14 completos, para
+// que quede legible dentro de la ficha.
+function HistorialEvaluacionesCompacto({ jugador }) {
+  const evals = (jugador.evaluaciones_pfs || []).filter((e) => e.fuerza?.sentadilla != null || e.potencia?.cmj != null || e.aceleracion?.m10 != null);
+  if (evals.length < 2) return null;
+  const filas = [...evals].reverse();
+  return (
+    <div className="mt-4 pt-3 border-t border-zinc-800">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Historial (Sentadilla · CMJ · 10m)</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-zinc-500">
+              <th className="text-left font-normal pb-1">Fecha</th>
+              <th className="text-right font-normal pb-1">Sentadilla</th>
+              <th className="text-right font-normal pb-1">CMJ</th>
+              <th className="text-right font-normal pb-1">10m</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((e, i) => {
+              const prev = filas[i + 1];
+              return (
+                <tr key={i} className="border-t border-zinc-800/60">
+                  <td className={`py-1 whitespace-nowrap ${i === 0 ? "text-zinc-100 font-semibold" : "text-zinc-400"}`}>{e.fecha}</td>
+                  <td className="py-1 text-right whitespace-nowrap">
+                    {e.fuerza?.sentadilla != null ? <>{e.fuerza.sentadilla}kg <CambioBadge curr={e.fuerza.sentadilla} prev={prev?.fuerza?.sentadilla} /></> : "—"}
+                  </td>
+                  <td className="py-1 text-right whitespace-nowrap">
+                    {e.potencia?.cmj != null ? <>{e.potencia.cmj}cm <CambioBadge curr={e.potencia.cmj} prev={prev?.potencia?.cmj} /></> : "—"}
+                  </td>
+                  <td className="py-1 text-right whitespace-nowrap">
+                    {e.aceleracion?.m10 != null ? <>{e.aceleracion.m10}s <CambioBadge curr={e.aceleracion.m10} prev={prev?.aceleracion?.m10} lowerIsBetter /></> : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Fase 2 de Jugador 360: consulta de solo lectura del protocolo de evaluaciones fisicas del PF
+// (se carga desde Plantel, ver EvaluacionFisicaModal) -- Fuerza/Potencia/Aceleracion por
+// pestanas, alerta de asimetria en los saltos unilaterales, e historial compacto. Diseno
+// validado antes en un prototipo de Claude Artifacts con datos mockeados.
+function EvaluacionesFisicasPanel({ jugador }) {
+  const [tab, setTab] = useState("fuerza");
+  const evals = jugador.evaluaciones_pfs || [];
+  const conDatos = [...evals].reverse().find((e) => e.fuerza || e.potencia || e.aceleracion);
+
+  if (!conDatos) {
+    return (
+      <PlaceholderFase360
+        titulo="Evaluaciones físicas (PF)"
+        fase="Fase 2"
+        texto="Todavía no se cargó ninguna evaluación física para este jugador. Se carga desde la ficha del jugador en Plantel."
+      />
+    );
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">Evaluaciones físicas (PF)</p>
+        <span className="text-[10px] text-zinc-500 shrink-0">Última toma: {conDatos.fecha}</span>
+      </div>
+
+      <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-3 gap-1">
+        {TABS_EVALUACION.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className={`flex-1 text-xs font-semibold py-1.5 rounded-md ${tab === k ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>{l}</button>
+        ))}
+      </div>
+
+      {tab === "fuerza" && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {CAMPOS_FUERZA.map((c) => <CampoEvaluacionTile key={c.k} jugador={jugador} grupo="fuerza" campo={c.k} label={c.l} unidad={c.u} />)}
+        </div>
+      )}
+
+      {tab === "potencia" && (
+        <>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <CampoEvaluacionTile jugador={jugador} grupo="potencia" campo="cmj" label="CMJ" unidad="cm" />
+            <CampoEvaluacionTile jugador={jugador} grupo="potencia" campo="squatJump" label="Squat Jump" unidad="cm" />
+            <CampoEvaluacionTile jugador={jugador} grupo="potencia" campo="saltoLargo" label="Salto en largo" unidad="cm" />
+          </div>
+          <ParUnilateral jugador={jugador} label="CMJ Unilateral" grupo="potencia" campoDer="cmjDer" campoIzq="cmjIzq" unidad="cm" />
+          <ParUnilateral jugador={jugador} label="Salto en Largo Unilateral" grupo="potencia" campoDer="saltoLargoDer" campoIzq="saltoLargoIzq" unidad="cm" />
+        </>
+      )}
+
+      {tab === "aceleracion" && (
+        <div className="grid grid-cols-3 gap-2">
+          {CAMPOS_ACELERACION.map((c) => <CampoEvaluacionTile key={c.k} jugador={jugador} grupo="aceleracion" campo={c.k} label={c.l} unidad={c.u} lowerIsBetter />)}
+        </div>
+      )}
+
+      <HistorialEvaluacionesCompacto jugador={jugador} />
     </div>
   );
 }
@@ -2732,8 +3174,7 @@ function Jugador360View({ jugadores }) {
           <div className="grid lg:grid-cols-[280px_1fr] gap-4">
             <FichaBaseJugador jugador={seleccionado} />
             <div className="flex flex-col gap-4">
-              <PlaceholderFase360 titulo="Evaluaciones físicas (PF)" fase="Fase 2"
-                texto="Últimos testeos (salto, velocidad, fuerza) con fecha de la última medición." />
+              <EvaluacionesFisicasPanel jugador={seleccionado} />
               <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-3">
                 <AnaliticaComparada360 equipo={delEquipo} seleccionado={seleccionado} temporadaId={temporadaSeleccionada?.id} />
               </div>
@@ -5134,7 +5575,15 @@ export default function App() {
 
     setJugadores((prev) => prev.map((j) => {
       if (j.id !== id) return j;
-      let next = jugadorRow ? { ...j, ...jugadorRow } : { ...j };
+      // jugadorRow trae TODAS las columnas de "jugadores", incluidas las viejas
+      // categoria_origen/tira/dorsal/equipos_adicionales que quedaron sin uso desde que se
+      // movieron a jugador_temporada (ver seccion "Temporadas" en CLAUDE.md) -- nunca hay que
+      // pisar con esos valores stale lo que ya resolvio vista_plantel_temporada, o el jugador
+      // deja de matchear el filtro de Categoria/Tira y desaparece del Plantel.
+      let next = jugadorRow ? (() => {
+        const { categoria_origen, tira, dorsal, equipos_adicionales, ...bioLimpio } = jugadorRow;
+        return { ...j, ...bioLimpio };
+      })() : { ...j };
       if (jtRow) {
         next = { ...next, dorsal: jtRow.dorsal, estado: jtRow.estado, equipos_adicionales: jtRow.equipos_adicionales, temporada_id: jtRow.temporada_id };
         if (temporadaRow) {
