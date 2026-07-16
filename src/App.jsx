@@ -3067,6 +3067,154 @@ function AnaliticaComparada360({ equipo, seleccionado, temporadaId }) {
   );
 }
 
+// Fila "espejo": el valor de A crece desde el centro hacia la izquierda, el de B hacia la
+// derecha, sobre la misma escala -- el que gana esa metrica puntual se resalta en verde
+// (lowerIsBetter invierte el criterio, ej. PER y %TOV: menos es mejor). Mismo lenguaje visual
+// que la barra de asimetria Derecha/Izquierda de EvaluacionesFisicasPanel, ahora para A/B.
+function FilaEspejo({ label, a, b, lowerIsBetter = false, decimales = 1, suf = "" }) {
+  const va = Number(a) || 0, vb = Number(b) || 0;
+  const aGana = lowerIsBetter ? va < vb : va > vb;
+  const bGana = lowerIsBetter ? vb < va : vb > va;
+  const max = Math.max(va, vb, 0.01) * 1.15;
+  const fmt = (n) => `${n.toFixed(decimales)}${suf}`;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 mb-1.5">
+      <p className="text-[9.5px] font-bold text-zinc-500 uppercase tracking-wide text-center mb-1.5">{label}</p>
+      <div className="flex items-center gap-2">
+        <span className={`w-14 shrink-0 text-center text-sm font-extrabold ${aGana ? "text-emerald-400" : "text-zinc-400"}`}>{fmt(va)}</span>
+        <div className="flex-1 flex items-center h-3.5">
+          <div className="flex-1 h-1.5 bg-zinc-950 rounded-full relative overflow-hidden" style={{ transform: "scaleX(-1)" }}>
+            <div className={`absolute inset-y-0 left-0 rounded-full ${aGana ? "bg-emerald-400" : "bg-brand-400"}`} style={{ width: `${(va / max) * 100}%` }} />
+          </div>
+          <div className="w-0.5 h-3.5 bg-zinc-700 shrink-0" />
+          <div className="flex-1 h-1.5 bg-zinc-950 rounded-full relative overflow-hidden">
+            <div className={`absolute inset-y-0 left-0 rounded-full ${bGana ? "bg-emerald-400" : "bg-orange-400"}`} style={{ width: `${(vb / max) * 100}%` }} />
+          </div>
+        </div>
+        <span className={`w-14 shrink-0 text-center text-sm font-extrabold ${bGana ? "text-emerald-400" : "text-zinc-400"}`}>{fmt(vb)}</span>
+      </div>
+    </div>
+  );
+}
+
+function TiroEspejo({ label, ma, ia, mb, ib }) {
+  const pa = ia ? (ma / ia) * 100 : 0;
+  const pb = ib ? (mb / ib) * 100 : 0;
+  return <FilaEspejo label={label} a={pa} b={pb} decimales={1} suf="%" />;
+}
+
+// Fase 4 de Jugador 360: comparacion directa jugador vs. jugador (en vez de vs. media de
+// equipo/posicion como en Fase 3), mismas metricas de vista_promedios_jugador. Fetch propio y
+// acotado a los 2 jugadores elegidos (no reusa el de AnaliticaComparada360, que trae todo el
+// equipo) para no acoplar los dos componentes. Diseno validado antes en un prototipo de Claude
+// Artifacts con datos mockeados.
+function ModoEspejoPanel({ equipo, seleccionado, temporadaId }) {
+  const [comparando, setComparando] = useState(false);
+  const [rivalId, setRivalId] = useState("");
+  const [promA, setPromA] = useState(null);
+  const [promB, setPromB] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const otrosJugadores = equipo.filter((j) => j.id !== seleccionado.id);
+  const rival = otrosJugadores.find((j) => j.id === rivalId) || null;
+
+  useEffect(() => {
+    if (!comparando || !rivalId || !temporadaId) { setPromA(null); setPromB(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("vista_promedios_jugador")
+        .select("*")
+        .in("jugador_id", [seleccionado.id, rivalId])
+        .eq("temporada_id", temporadaId);
+      if (cancelled) return;
+      if (!error) {
+        setPromA((data || []).find((p) => p.jugador_id === seleccionado.id) || null);
+        setPromB((data || []).find((p) => p.jugador_id === rivalId) || null);
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [comparando, rivalId, seleccionado.id, temporadaId]);
+
+  return (
+    <div className="mt-4 border border-zinc-800 rounded-xl p-4 bg-zinc-900">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="flex items-center gap-2 text-sm text-zinc-300 font-medium"><GitCompare size={15} /> Comparar con otro jugador (modo espejo)</span>
+        {!comparando && (
+          <button onClick={() => setComparando(true)} className="text-xs text-brand-300 hover:text-brand-200 border border-zinc-700 rounded-full px-2.5 py-1 shrink-0">
+            Elegir rival
+          </button>
+        )}
+      </div>
+
+      {comparando && (
+        <>
+          <div className="flex items-center gap-2 mt-3 mb-4">
+            {otrosJugadores.length === 0 ? (
+              <p className="text-sm text-zinc-500">No hay otro jugador en este equipo para comparar.</p>
+            ) : (
+              <select value={rivalId} onChange={(e) => setRivalId(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+                <option value="">Elegir jugador…</option>
+                {otrosJugadores.map((j) => <option key={j.id} value={j.id}>#{j.dorsal ?? "-"} {j.nombre_apellido}</option>)}
+              </select>
+            )}
+            <button onClick={() => { setComparando(false); setRivalId(""); }} className="text-xs text-zinc-500 hover:text-zinc-300 shrink-0">Cerrar</button>
+          </div>
+
+          {!rivalId ? null : loading ? (
+            <p className="text-sm text-zinc-500">Cargando…</p>
+          ) : !promA || !promB ? (
+            <p className="text-sm text-zinc-500">Alguno de los dos todavía no tiene partidos cargados en esta temporada.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="bg-zinc-950/40 border-t-2 border-brand-300 border-x border-b border-zinc-800 rounded-lg p-3 text-center min-w-0">
+                  <p className="text-sm font-bold truncate">{seleccionado.nombre_apellido}</p>
+                  <p className="text-[10px] text-zinc-500">#{seleccionado.dorsal ?? "-"} · {formatPosicion(seleccionado)}</p>
+                </div>
+                <div className="bg-zinc-950/40 border-t-2 border-orange-400 border-x border-b border-zinc-800 rounded-lg p-3 text-center min-w-0">
+                  <p className="text-sm font-bold truncate">{rival.nombre_apellido}</p>
+                  <p className="text-[10px] text-zinc-500">#{rival.dorsal ?? "-"} · {formatPosicion(rival)}</p>
+                </div>
+              </div>
+
+              <SeccionMini>Volumen</SeccionMini>
+              <FilaEspejo label="Partidos jugados" a={promA.pj} b={promB.pj} decimales={0} />
+              <FilaEspejo label="Min. promedio" a={promA.min_prom} b={promB.min_prom} />
+              <FilaEspejo label="Plays / partido" a={promA.play_prom} b={promB.play_prom} />
+
+              <SeccionMini>Métricas base</SeccionMini>
+              {METRICAS_BASE_360.map((m) => (
+                <FilaEspejo key={m.campo} label={m.label} a={promA[m.campo]} b={promB[m.campo]} lowerIsBetter={!m.mejorMayor} />
+              ))}
+
+              <SeccionMini>Control de balón</SeccionMini>
+              {METRICAS_CONTROL_360.map((m) => (
+                <FilaEspejo key={m.campo} label={m.label} a={promA[m.campo]} b={promB[m.campo]} lowerIsBetter={!m.mejorMayor} />
+              ))}
+
+              <SeccionMini>Eficiencia</SeccionMini>
+              <FilaEspejo label="PTS / PLAY" a={promA.pplay_prom} b={promB.pplay_prom} decimales={2} />
+              <FilaEspejo label="eFG%" a={(promA.efg_pct_prom || 0) * 100} b={(promB.efg_pct_prom || 0) * 100} suf="%" />
+              <FilaEspejo label="%TOV" a={(promA.tov_pct_prom || 0) * 100} b={(promB.tov_pct_prom || 0) * 100} suf="%" lowerIsBetter />
+              <FilaEspejo label="AST / TOV" decimales={2}
+                a={promA.per_prom ? promA.ast_prom / promA.per_prom : 0}
+                b={promB.per_prom ? promB.ast_prom / promB.per_prom : 0} />
+
+              <SeccionMini>Efectividad de tiro</SeccionMini>
+              <TiroEspejo label="T2" ma={promA.t2a_prom} ia={promA.t2i_prom} mb={promB.t2a_prom} ib={promB.t2i_prom} />
+              <TiroEspejo label="T3" ma={promA.t3a_prom} ia={promA.t3i_prom} mb={promB.t3a_prom} ib={promB.t3i_prom} />
+              <TiroEspejo label="TL" ma={promA.t1a_prom} ia={promA.t1i_prom} mb={promB.t1a_prom} ib={promB.t1i_prom} />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // Vista 360° del jugador (Fase 1): buscador/selector scopeado a Categoria/Tira/Temporada activa
 // (useTeam(), mismo criterio que Plantel) + ficha base, con los espacios de las Fases 2-4
 // reservados como placeholders explicitos.
@@ -3185,10 +3333,7 @@ function Jugador360View({ jugadores }) {
               </div>
             </div>
           </div>
-          <div className="mt-4 border border-dashed border-zinc-700 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-sm text-zinc-400 font-medium"><GitCompare size={15} /> Comparar con otro jugador (modo espejo)</span>
-            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full shrink-0">Fase 4 · próximamente</span>
-          </div>
+          <ModoEspejoPanel equipo={delEquipo} seleccionado={seleccionado} temporadaId={temporadaSeleccionada?.id} />
         </>
       )}
     </div>
