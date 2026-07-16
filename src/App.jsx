@@ -896,6 +896,11 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
     onChange([...bloques.slice(0, idx + 1), copia, ...bloques.slice(idx + 1)]);
   };
 
+  const deleteBloque = (bloqueId) => {
+    if (!window.confirm("¿Eliminar este bloque de cancha?")) return;
+    onChange(bloques.filter((b) => b.id !== bloqueId));
+  };
+
   return (
     <Section icon={Clock} title="Bloque de cancha" accent="text-cyan-400">
       <div className="space-y-2">
@@ -926,12 +931,15 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                       <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
                     </div>
                     {!soloLectura && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => startEditBloque(b)} title="Editar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400">
-                          <PenLine size={13} /> Editar
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => startEditBloque(b)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
+                          <PenLine size={15} />
                         </button>
-                        <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-cyan-400">
-                          <Copy size={13} /> Duplicar
+                        <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="text-zinc-500 hover:text-cyan-400">
+                          <Copy size={15} />
+                        </button>
+                        <button onClick={() => deleteBloque(b.id)} title="Eliminar bloque" className="text-zinc-500 hover:text-red-400">
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     )}
