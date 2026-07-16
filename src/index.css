@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Si algun elemento puntual se pasa de ancho en mobile (ya paso con el formulario de bloques de
+   cancha), la pagina completa se vuelve scrolleable en horizontal -- en varios navegadores
+   mobile eso arrastra hasta la barra de navegacion fija, dejando ver un margen blanco (fondo por
+   defecto de html/body) del lado derecho en toda la altura de la pantalla. Esto lo evita de raiz
+   (nunca se puede scrollear en horizontal) y ademas deja el fondo en el mismo oscuro de la app
+   como resguardo, para que un desborde puntual que se nos escape no se note como un tajo blanco. */
+html, body {
+  overflow-x: hidden;
+  background-color: #09090b;
+}
+
 /* Azul de marca de Náutico Hacoaj (muestreado de public/escudo-hacoaj.png, #01215A es el
    navy real del escudo). Reemplaza al naranja como color principal/CTA de la app; el naranja
    queda libre para usarlo solo como acento del módulo Partido. Escala propia porque el navy

@@ -775,7 +775,7 @@ function HorariosSection({ data, onSave, soloLectura }) {
   };
 
   return (
-    <Section icon={Clock} title="Horarios" accent="text-amber-400">
+    <Section icon={Clock} title="Horarios" accent="text-cyan-400">
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
         {editHorarios ? (
           <div className="space-y-3">
@@ -789,7 +789,7 @@ function HorariosSection({ data, onSave, soloLectura }) {
                 <input value={horarioFisico} onChange={(e) => setHorarioFisico(e.target.value)} placeholder="ej: 19:00 a 20:00 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
             </div>
-            <button onClick={guardarHorarios} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={guardarHorarios} className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -798,7 +798,7 @@ function HorariosSection({ data, onSave, soloLectura }) {
               <div><p className="text-xs text-zinc-500">Físico</p><p className="text-zinc-200">{horarioFisico || "—"}</p></div>
             </div>
             {!soloLectura && (
-              <button onClick={() => setEditHorarios(true)} className="text-xs text-amber-400 hover:text-amber-300">Editar</button>
+              <button onClick={() => setEditHorarios(true)} className="text-xs text-cyan-400 hover:text-cyan-300">Editar</button>
             )}
           </div>
         )}
@@ -981,7 +981,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                         <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="text-zinc-500 hover:text-cyan-400">
                           <Copy size={15} />
                         </button>
-                        <button onClick={() => guardarEnBiblioteca(b)} title="Guardar en la biblioteca" className="text-zinc-500 hover:text-amber-400">
+                        <button onClick={() => guardarEnBiblioteca(b)} title="Guardar en la biblioteca" className="text-zinc-500 hover:text-cyan-400">
                           <BookmarkPlus size={15} />
                         </button>
                         <button onClick={() => deleteBloque(b.id)} title="Eliminar bloque" className="text-zinc-500 hover:text-red-400">
@@ -1045,7 +1045,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
           <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm hover:text-cyan-300">
             <Plus size={15} /> Agregar bloque de cancha
           </button>
-          <button onClick={() => setShowBiblioteca(true)} className="flex items-center gap-1.5 text-amber-400 text-sm hover:text-amber-300">
+          <button onClick={() => setShowBiblioteca(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm hover:text-cyan-300">
             <Library size={15} /> Desde la biblioteca
           </button>
         </div>
@@ -1055,7 +1055,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowBiblioteca(false)}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 max-w-md w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-amber-400 font-bold text-sm flex items-center gap-1.5"><Library size={15} /> Biblioteca de bloques</h3>
+              <h3 className="text-cyan-400 font-bold text-sm flex items-center gap-1.5"><Library size={15} /> Biblioteca de bloques</h3>
               <button onClick={() => setShowBiblioteca(false)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
             </div>
             {bibliotecaBloques.length === 0 ? (
@@ -1357,7 +1357,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
 
   return (
     <div className="max-w-2xl mx-auto text-zinc-100">
-      <div className="flex items-center gap-2 mb-1 text-amber-400">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
         <Library size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Biblioteca</span>
       </div>
@@ -1380,7 +1380,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                   <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                   <textarea placeholder="Descripción del ejercicio" value={editForm.desc} onChange={(e) => setEditForm({ ...editForm, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                   <div className="flex gap-2">
-                    <button onClick={saveEdit} className="bg-amber-600 hover:bg-amber-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+                    <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
                     <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
                   </div>
                 </div>
@@ -1393,7 +1393,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                     </div>
                     {!soloLectura && (
                       <div className="flex items-center gap-3 shrink-0">
-                        <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-amber-400">
+                        <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
                           <PenLine size={15} />
                         </button>
                         <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400">
@@ -1414,7 +1414,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                             <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
                             {!soloLectura && (
                               <>
-                                <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: d.id })} className="text-xs text-amber-400 hover:text-amber-300 text-left">Editar</button>
+                                <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
                                 <button onClick={() => deleteDiagram(item.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
                               </>
                             )}
@@ -1427,7 +1427,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                       <CourtDiagram initial={null} onSave={(state) => saveDiagram(item.id, "new", state)} onCancel={() => setEditingDiagram(null)} />
                     ) : (
                       !soloLectura && (
-                        <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300">
+                        <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
                           <PenLine size={12} /> Agregar cancha
                         </button>
                       )
@@ -1446,12 +1446,12 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
             <input placeholder="Título del bloque" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             <div className="flex gap-2">
-              <button onClick={addItem} className="bg-amber-600 hover:bg-amber-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
+              <button onClick={addItem} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
               <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
             </div>
           </div>
         ) : (
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-amber-400 text-sm hover:text-amber-300">
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm hover:text-cyan-300">
             <Plus size={15} /> Agregar bloque a la biblioteca
           </button>
         )
