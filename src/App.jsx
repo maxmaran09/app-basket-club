@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
@@ -761,28 +761,23 @@ function AsistenciaSection({ event, jugadores }) {
   );
 }
 
-// Reutilizable: horarios + carga/lugar + enfoque + notas del preparador físico, con Editar/Guardar.
-// Sirve tanto para el plan semanal de un entrenamiento como para el plan de cada jugador en un
-// evento Individual — "data" trae los valores actuales y "onSave" recibe el patch a persistir.
-function PreparacionFisicaSection({ data, onSave, soloLectura }) {
-  const [editFisica, setEditFisica] = useState(false);
+// Reutilizable: horario de cancha (básquet) + horario de físico, con Editar/Guardar.
+// Sirve tanto para el entrenamiento entero como para el plan de cada jugador en un evento
+// Individual — "data" trae los valores actuales y "onSave" recibe el patch a persistir.
+function HorariosSection({ data, onSave, soloLectura }) {
+  const [editHorarios, setEditHorarios] = useState(false);
   const [horarioBasquet, setHorarioBasquet] = useState(data.horarioBasquet || "");
   const [horarioFisico, setHorarioFisico] = useState(data.horarioFisico || "");
-  const [cargaFisica, setCargaFisica] = useState(data.cargaFisica || "Media");
-  const [lugarFisico, setLugarFisico] = useState(data.lugarFisico || "Cancha");
-  const [enfoqueFisico, setEnfoqueFisico] = useState(data.enfoqueFisico || []);
-  const [notasFisicas, setNotasFisicas] = useState(data.notasFisicas || "");
-  const toggleEnfoque = (v) => setEnfoqueFisico(enfoqueFisico.includes(v) ? enfoqueFisico.filter((x) => x !== v) : [...enfoqueFisico, v]);
 
-  const guardarFisica = () => {
-    setEditFisica(false);
-    onSave({ horarioBasquet, horarioFisico, cargaFisica, lugarFisico, enfoqueFisico, notasFisicas });
+  const guardarHorarios = () => {
+    setEditHorarios(false);
+    onSave({ horarioBasquet, horarioFisico });
   };
 
   return (
-    <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
+    <Section icon={Clock} title="Horarios" accent="text-amber-400">
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-        {editFisica ? (
+        {editHorarios ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -794,6 +789,45 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
                 <input value={horarioFisico} onChange={(e) => setHorarioFisico(e.target.value)} placeholder="ej: 19:00 a 20:00 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
             </div>
+            <button onClick={guardarHorarios} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-xs text-zinc-500">Cancha</p><p className="text-zinc-200">{horarioBasquet || "—"}</p></div>
+              <div><p className="text-xs text-zinc-500">Físico</p><p className="text-zinc-200">{horarioFisico || "—"}</p></div>
+            </div>
+            {!soloLectura && (
+              <button onClick={() => setEditHorarios(true)} className="text-xs text-amber-400 hover:text-amber-300">Editar</button>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+// Reutilizable: carga/lugar + enfoque + notas del preparador físico, con Editar/Guardar.
+// Sirve tanto para el plan semanal de un entrenamiento como para el plan de cada jugador en un
+// evento Individual — "data" trae los valores actuales y "onSave" recibe el patch a persistir.
+function PreparacionFisicaSection({ data, onSave, soloLectura }) {
+  const [editFisica, setEditFisica] = useState(false);
+  const [cargaFisica, setCargaFisica] = useState(data.cargaFisica || "Media");
+  const [lugarFisico, setLugarFisico] = useState(data.lugarFisico || "Cancha");
+  const [enfoqueFisico, setEnfoqueFisico] = useState(data.enfoqueFisico || []);
+  const [notasFisicas, setNotasFisicas] = useState(data.notasFisicas || "");
+  const toggleEnfoque = (v) => setEnfoqueFisico(enfoqueFisico.includes(v) ? enfoqueFisico.filter((x) => x !== v) : [...enfoqueFisico, v]);
+
+  const guardarFisica = () => {
+    setEditFisica(false);
+    onSave({ cargaFisica, lugarFisico, enfoqueFisico, notasFisicas });
+  };
+
+  return (
+    <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        {editFisica ? (
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <p className="text-xs text-zinc-500 mb-1">Carga física</p>
@@ -817,10 +851,6 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-xs text-zinc-500">Cancha</p><p className="text-zinc-200">{horarioBasquet || "—"}</p></div>
-              <div><p className="text-xs text-zinc-500">Físico</p><p className="text-zinc-200">{horarioFisico || "—"}</p></div>
-            </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="px-2 py-0.5 rounded text-xs border bg-sky-500/15 text-sky-300 border-sky-500/30">Carga {cargaFisica}</span>
               <span className="px-2 py-0.5 rounded text-xs border bg-zinc-800 text-zinc-300 border-zinc-700">{lugarFisico}</span>
@@ -848,13 +878,16 @@ function clonarBloques(bloques) {
 
 // Reutilizable: lista de bloques de cancha con sus diagramas (secuencia de canchas por bloque).
 // "bloques"/"onChange" son controlados por quien lo use (un entrenamiento entero, o el plan de
-// un jugador puntual dentro de un evento Individual).
-function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
+// un jugador puntual dentro de un evento Individual). "bibliotecaBloques" son los bloques
+// guardados aparte para reutilizar (ver schema_biblioteca_bloques.sql) -- insertar uno clona su
+// contenido con ids nuevos, así editar la copia dentro de este evento nunca toca la biblioteca.
+function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBloques = [], onSaveBiblioteca, onDeleteBiblioteca }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [editing, setEditing] = useState(null); // { bloqueId, diagramId } — diagramId "new" = cancha nueva
   const [editingBloqueId, setEditingBloqueId] = useState(null);
   const [editBloqueForm, setEditBloqueForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
+  const [showBiblioteca, setShowBiblioteca] = useState(false);
 
   const addBloque = () => {
     if (!form.titulo) return;
@@ -901,6 +934,16 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
     onChange(bloques.filter((b) => b.id !== bloqueId));
   };
 
+  const guardarEnBiblioteca = (b) => {
+    onSaveBiblioteca?.({ titulo: b.titulo, desc: b.desc, diagrams: b.diagrams || [] });
+  };
+
+  const agregarDesdeBiblioteca = (item) => {
+    const [copia] = clonarBloques([{ id: "tmp", inicio: "", fin: "", titulo: item.titulo, desc: item.descripcion, diagrams: item.diagrams || [] }]);
+    onChange([...bloques, copia]);
+    setShowBiblioteca(false);
+  };
+
   return (
     <Section icon={Clock} title="Bloque de cancha" accent="text-cyan-400">
       <div className="space-y-2">
@@ -910,10 +953,10 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
             <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
               {editingBloqueId === b.id ? (
                 <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input placeholder="Inicio (ej 0')" value={editBloqueForm.inicio} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                    <input placeholder="Fin (ej 20')" value={editBloqueForm.fin} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, fin: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                    <input placeholder="Título del bloque de cancha" value={editBloqueForm.titulo} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, titulo: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  <div className="flex flex-wrap gap-2">
+                    <input placeholder="Inicio (ej 0')" value={editBloqueForm.inicio} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, inicio: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                    <input placeholder="Fin (ej 20')" value={editBloqueForm.fin} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, fin: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                    <input placeholder="Título del bloque de cancha" value={editBloqueForm.titulo} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, titulo: e.target.value })} className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                   </div>
                   <textarea placeholder="Descripción del ejercicio" value={editBloqueForm.desc} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
                   <div className="flex gap-2">
@@ -937,6 +980,9 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
                         </button>
                         <button onClick={() => duplicateBloque(b.id)} title="Duplicar bloque" className="text-zinc-500 hover:text-cyan-400">
                           <Copy size={15} />
+                        </button>
+                        <button onClick={() => guardarEnBiblioteca(b)} title="Guardar en la biblioteca" className="text-zinc-500 hover:text-amber-400">
+                          <BookmarkPlus size={15} />
                         </button>
                         <button onClick={() => deleteBloque(b.id)} title="Eliminar bloque" className="text-zinc-500 hover:text-red-400">
                           <Trash2 size={15} />
@@ -983,10 +1029,10 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
 
       {soloLectura ? null : showForm ? (
         <div className="mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
-          <div className="flex gap-2">
-            <input placeholder="Inicio (ej 0')" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Fin (ej 20')" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Título del bloque de cancha" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div className="flex flex-wrap gap-2">
+            <input placeholder="Inicio (ej 0')" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Fin (ej 20')" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Título del bloque de cancha" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           </div>
           <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
           <div className="flex gap-2">
@@ -995,15 +1041,52 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura }) {
           </div>
         </div>
       ) : (
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm mt-2 hover:text-cyan-300">
-          <Plus size={15} /> Agregar bloque de cancha
-        </button>
+        <div className="flex flex-wrap items-center gap-4 mt-2">
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-cyan-400 text-sm hover:text-cyan-300">
+            <Plus size={15} /> Agregar bloque de cancha
+          </button>
+          <button onClick={() => setShowBiblioteca(true)} className="flex items-center gap-1.5 text-amber-400 text-sm hover:text-amber-300">
+            <Library size={15} /> Desde la biblioteca
+          </button>
+        </div>
+      )}
+
+      {showBiblioteca && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowBiblioteca(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 max-w-md w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-amber-400 font-bold text-sm flex items-center gap-1.5"><Library size={15} /> Biblioteca de bloques</h3>
+              <button onClick={() => setShowBiblioteca(false)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+            </div>
+            {bibliotecaBloques.length === 0 ? (
+              <p className="text-sm text-zinc-500">Todavía no guardaste ningún bloque en la biblioteca. Usá el ícono <BookmarkPlus size={12} className="inline" /> de un bloque ya creado para guardarlo acá.</p>
+            ) : (
+              <div className="overflow-y-auto space-y-2">
+                {bibliotecaBloques.map((item) => (
+                  <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex items-center gap-2">
+                    {item.diagrams?.[0] && <CourtPreview {...item.diagrams[0]} />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-zinc-100 truncate">{item.titulo}</p>
+                      {item.descripcion && <p className="text-xs text-zinc-500 truncate">{item.descripcion}</p>}
+                    </div>
+                    <button onClick={() => agregarDesdeBiblioteca(item)} title="Agregar a este evento" className="text-cyan-400 hover:text-cyan-300 shrink-0">
+                      <Plus size={16} />
+                    </button>
+                    <button onClick={() => { if (window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) onDeleteBiblioteca?.(item.id); }} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </Section>
   );
 }
 
-function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jugadores, rol }) {
+function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jugadores, rol, bibliotecaBloques, onSaveBiblioteca, onDeleteBiblioteca }) {
   const [bloques, setBloques] = useState(event.bloques || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [objetivoSemana, setObjetivoSemana] = useState(event.objetivoSemana || "");
@@ -1040,16 +1123,18 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
         {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
       </div>
 
-      <EditableField label="Objetivo de la semana" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline soloLectura={headerSoloLectura} />
+      <EditableField label="Objetivo del entrenamiento" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline soloLectura={headerSoloLectura} />
+
+      <HorariosSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
       <AsistenciaSection event={event} jugadores={jugadores} />
 
       <PreparacionFisicaSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
-      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} />
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={onSaveBiblioteca} onDeleteBiblioteca={onDeleteBiblioteca} />
 
       <p className="text-xs text-zinc-600 mt-8 border-t border-zinc-800 pt-3">
-        Diagramas de cancha con jugadores, balón y trayectorias con quiebres. Pendiente: biblioteca de jugadas guardadas y animación.
+        Diagramas de cancha con jugadores, balón y trayectorias con quiebres. Pendiente: animación de la jugada.
       </p>
 
       {confirmDelete && (
@@ -1062,7 +1147,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
 // Plan de trabajo de un jugador puntual dentro de un evento Individual: mismo formato que un
 // entrenamiento (objetivo, preparación física, bloques de cancha con diagramas) pero uno por
 // jugador, todos dentro del mismo evento.
-function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate, rol }) {
+function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate, rol, bibliotecaBloques, onSaveBiblioteca, onDeleteBiblioteca }) {
   const [objetivo, setObjetivo] = useState(plan.objetivo || "");
   const [bloques, setBloques] = useState(plan.bloques || []);
 
@@ -1103,14 +1188,16 @@ function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove
 
       <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline soloLectura={headerSoloLectura} />
 
+      <HorariosSection data={plan} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
+
       <PreparacionFisicaSection data={plan} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
-      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} />
+      <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={onSaveBiblioteca} onDeleteBiblioteca={onDeleteBiblioteca} />
     </div>
   );
 }
 
-function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol }) {
+function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol, bibliotecaBloques, onSaveBiblioteca, onDeleteBiblioteca }) {
   const [planes, setPlanes] = useState(event.planesIndividuales || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const headerSoloLectura = nivelBloque(rol, "individual", "header") !== "rw";
@@ -1202,12 +1289,172 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol }) {
             onRemove={() => removePlan(pid)}
             onDuplicate={() => duplicatePlan(pid)}
             rol={rol}
+            bibliotecaBloques={bibliotecaBloques}
+            onSaveBiblioteca={onSaveBiblioteca}
+            onDeleteBiblioteca={onDeleteBiblioteca}
           />
         );
       })}
 
       {confirmDelete && (
         <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
+      )}
+    </div>
+  );
+}
+
+// Sección propia del menú: administra la biblioteca completa de bloques de cancha reutilizables
+// (ver schema_biblioteca_bloques.sql) -- acá se pueden crear desde cero, no solo guardar desde un
+// bloque ya armado en un entrenamiento (eso sigue existiendo en BloquesConCanchaSection, vía el
+// ícono de guardar). Sin "inicio"/"fin": esos horarios solo tienen sentido una vez que el bloque
+// se inserta dentro de una sesión puntual.
+function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLectura }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ titulo: "", desc: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ titulo: "", desc: "" });
+  const [editingDiagram, setEditingDiagram] = useState(null); // { itemId, diagramId } — diagramId "new" = cancha nueva
+
+  const addItem = () => {
+    if (!form.titulo) return;
+    onAdd({ titulo: form.titulo, desc: form.desc, diagrams: [] });
+    setForm({ titulo: "", desc: "" });
+    setShowForm(false);
+  };
+
+  const startEdit = (item) => {
+    setEditForm({ titulo: item.titulo || "", desc: item.descripcion || "" });
+    setEditingId(item.id);
+  };
+
+  const saveEdit = () => {
+    if (!editForm.titulo) return;
+    onUpdate(editingId, { titulo: editForm.titulo, descripcion: editForm.desc });
+    setEditingId(null);
+  };
+
+  const saveDiagram = (itemId, diagramId, state) => {
+    const item = bibliotecaBloques.find((b) => b.id === itemId);
+    if (!item) return;
+    const diagrams = item.diagrams || [];
+    const next = diagramId === "new"
+      ? [...diagrams, { id: "d" + Date.now(), ...state }]
+      : diagrams.map((d) => (d.id === diagramId ? { id: diagramId, ...state } : d));
+    onUpdate(itemId, { diagrams: next });
+    setEditingDiagram(null);
+  };
+
+  const deleteDiagram = (itemId, diagramId) => {
+    const item = bibliotecaBloques.find((b) => b.id === itemId);
+    if (!item) return;
+    onUpdate(itemId, { diagrams: (item.diagrams || []).filter((d) => d.id !== diagramId) });
+  };
+
+  const deleteItem = (id) => {
+    if (!window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) return;
+    onDelete(id);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-amber-400">
+        <Library size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Biblioteca</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-1">Bloques de cancha reutilizables</h1>
+      <p className="text-sm text-zinc-500 mb-6">
+        Guardá acá los ejercicios y jugadas que se repiten para agregarlos directo a cualquier entrenamiento o plan individual sin recrearlos desde cero. Editar una copia ya insertada en un evento no modifica lo guardado acá.
+      </p>
+
+      {bibliotecaBloques.length === 0 && (
+        <p className="text-sm text-zinc-500 mb-4">Todavía no hay bloques guardados.</p>
+      )}
+
+      <div className="space-y-2 mb-4">
+        {bibliotecaBloques.map((item) => {
+          const diagrams = item.diagrams || [];
+          return (
+            <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              {editingId === item.id ? (
+                <div className="space-y-2">
+                  <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  <textarea placeholder="Descripción del ejercicio" value={editForm.desc} onChange={(e) => setEditForm({ ...editForm, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="bg-amber-600 hover:bg-amber-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+                    <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-100">{item.titulo}</p>
+                      {item.descripcion && <p className="text-sm text-zinc-400 mt-0.5">{item.descripcion}</p>}
+                    </div>
+                    {!soloLectura && (
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-amber-400">
+                          <PenLine size={15} />
+                        </button>
+                        <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {diagrams.map((d, di) =>
+                      !soloLectura && editingDiagram?.itemId === item.id && editingDiagram?.diagramId === d.id ? (
+                        <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(item.id, d.id, state)} onCancel={() => setEditingDiagram(null)} />
+                      ) : (
+                        <div key={d.id} className="flex items-center gap-2">
+                          <CourtPreview {...d} />
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
+                            {!soloLectura && (
+                              <>
+                                <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: d.id })} className="text-xs text-amber-400 hover:text-amber-300 text-left">Editar</button>
+                                <button onClick={() => deleteDiagram(item.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {soloLectura ? null : editingDiagram?.itemId === item.id && editingDiagram?.diagramId === "new" ? (
+                      <CourtDiagram initial={null} onSave={(state) => saveDiagram(item.id, "new", state)} onCancel={() => setEditingDiagram(null)} />
+                    ) : (
+                      !soloLectura && (
+                        <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300">
+                          <PenLine size={12} /> Agregar cancha
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!soloLectura && (
+        showForm ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+            <input placeholder="Título del bloque" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <div className="flex gap-2">
+              <button onClick={addItem} className="bg-amber-600 hover:bg-amber-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
+              <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-amber-400 text-sm hover:text-amber-300">
+            <Plus size={15} /> Agregar bloque a la biblioteca
+          </button>
+        )
       )}
     </div>
   );
@@ -5499,6 +5746,7 @@ const NAV_ITEMS = [
   { id: "plantel", label: "Plantel", icon: Users },
   { id: "jugador360", label: "Jugador 360°", labelMobile: "360°", icon: Target },
   { id: "entrenamientos", label: "Entrenamientos", icon: Dumbbell },
+  { id: "biblioteca", label: "Biblioteca", icon: Library },
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
   { id: "configuracion", label: "Configuración", icon: Settings },
@@ -5513,6 +5761,7 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [jugadores, setJugadores] = useState([]);
   const [equiposRivales, setEquiposRivales] = useState([]);
+  const [bibliotecaBloques, setBibliotecaBloques] = useState([]);
   const [active, setActive] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
@@ -5590,6 +5839,41 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [session]);
+
+  // Biblioteca de bloques de cancha reutilizables entre entrenamientos/planes individuales (ver
+  // schema_biblioteca_bloques.sql). Global para todo el club, no se filtra por categoria/tira -- un
+  // mismo ejercicio táctico sirve para cualquier equipo.
+  useEffect(() => {
+    if (!session) { setBibliotecaBloques([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("biblioteca_bloques").select("*").order("titulo", { ascending: true });
+      if (cancelled) return;
+      if (!error) setBibliotecaBloques(data);
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  // Guarda una copia del bloque (titulo/desc/diagramas) en la biblioteca, sin tocar el bloque
+  // original del evento -- son filas independientes desde el momento en que se guarda.
+  const addBloqueBiblioteca = async (bloque) => {
+    const row = { titulo: bloque.titulo, descripcion: bloque.desc || "", diagrams: bloque.diagrams || [] };
+    const { data, error } = await supabase.from("biblioteca_bloques").insert(row).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setBibliotecaBloques((prev) => [...prev, data].sort((a, b) => a.titulo.localeCompare(b.titulo)));
+  };
+
+  const updateBloqueBiblioteca = async (id, patch) => {
+    const { data, error } = await supabase.from("biblioteca_bloques").update(patch).eq("id", id).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setBibliotecaBloques((prev) => prev.map((b) => (b.id === id ? data : b)).sort((a, b) => a.titulo.localeCompare(b.titulo)));
+  };
+
+  const deleteBloqueBiblioteca = async (id) => {
+    const { error } = await supabase.from("biblioteca_bloques").delete().eq("id", id);
+    if (error) { setErrorMsg(error.message); return; }
+    setBibliotecaBloques((prev) => prev.filter((b) => b.id !== id));
+  };
 
   const addEvent = async (ev) => {
     const { data, error } = await supabase.from("eventos").insert(ev).select().single();
@@ -5972,6 +6256,11 @@ export default function App() {
                   <EntrenamientosView events={events} onSelectEvent={setActive} />
                 </ProtectedRoute>
               } />
+              <Route path="/biblioteca" element={
+                <ProtectedRoute seccionId="biblioteca">
+                  <BibliotecaView bibliotecaBloques={bibliotecaBloques} onAdd={addBloqueBiblioteca} onUpdate={updateBloqueBiblioteca} onDelete={deleteBloqueBiblioteca} soloLectura={!esStaffCompleto(rol)} />
+                </ProtectedRoute>
+              } />
               <Route path="/scouting" element={
                 <ProtectedRoute seccionId="scouting">
                   <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} rol={rol} />
@@ -5992,10 +6281,10 @@ export default function App() {
           )
         )}
         {active?.type === "entrenamiento" && (
-          <EntrenamientoView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} onDuplicate={() => duplicateEvent(active)} />
+          <EntrenamientoView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} onDuplicate={() => duplicateEvent(active)} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={addBloqueBiblioteca} onDeleteBiblioteca={deleteBloqueBiblioteca} />
         )}
         {active?.type === "individual" && (
-          <IndividualView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <IndividualView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={addBloqueBiblioteca} onDeleteBiblioteca={deleteBloqueBiblioteca} />
         )}
         {active?.type === "partido" && (
           <PartidoView event={active} equiposRivales={equiposRivales} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
