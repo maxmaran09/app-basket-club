@@ -5370,7 +5370,7 @@ export default function App() {
   // "inicio" vive en "/", el resto de las secciones son "/<id>" (ver rutaDeSeccion en permisos.js).
   const seccionActiva = location.pathname === "/" ? "inicio" : location.pathname.slice(1);
   const irASeccion = (id) => { setActive(null); navigate(rutaDeSeccion(id)); };
-  const bottomNavRef = useRef(null);
+  const mobileNavRef = useRef(null);
 
   useEffect(() => {
     try { localStorage.setItem("sidebarCollapsed", sidebarCollapsed ? "1" : "0"); } catch {}
@@ -5379,7 +5379,7 @@ export default function App() {
   // La bottom-nav de celular scrollea horizontal (ver mas abajo) -- si el tab activo queda
   // fuera de la parte visible, lo traemos a la vista solo, para que nunca "desaparezca".
   useEffect(() => {
-    const el = bottomNavRef.current?.querySelector('[data-active="true"]');
+    const el = mobileNavRef.current?.querySelector('[data-active="true"]');
     el?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [seccionActiva]);
 
@@ -5767,7 +5767,7 @@ export default function App() {
       </aside>
 
       {/* Contenido principal */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 pb-24 md:pb-6">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 pt-24 md:pt-6">
         <div className="md:hidden flex items-center gap-2 mb-4">
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
           <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
@@ -5849,14 +5849,14 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom nav fija — solo celular. Con muchas secciones no entran todas repartiendo el
+      {/* Nav fija arriba — solo celular. Con muchas secciones no entran todas repartiendo el
           ancho a partes iguales (los labels se pisan) -- cada item tiene un ancho fijo y la
           barra scrollea horizontal en vez de comprimirse; el tab activo se autoscrollea a la
           vista al navegar, para que nunca quede fuera de pantalla sin avisar. */}
       <nav
-        ref={bottomNavRef}
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900 border-t border-zinc-800 flex items-stretch overflow-x-auto"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        ref={mobileNavRef}
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900 border-b border-zinc-800 flex items-stretch overflow-x-auto"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {navItemsVisibles.map((item) => {
           const Icon = item.icon;
