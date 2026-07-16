@@ -129,3 +129,36 @@ El escudo de Náutico Hacoaj ya está cargado en la app. La paleta ya no es un p
 Colores por tipo de evento/módulo (siguen existiendo aparte del azul de marca, para poder distinguir de un vistazo qué es cada cosa en el Calendario): Entrenamiento = cyan, Individual = teal, Partido = azul de marca, Libre = gris, Optativo = ámbar, Especial/Evento = púrpura. Los colores semánticos de estado (semáforo RPE 1-10, Disponible = verde, Lesionado = rojo, Duda = ámbar) no se tocaron — no son de marca, son códigos de significado.
 
 **Mobile (`src/index.css`)**: todo `input`/`select`/`textarea` fuerza `font-size: 16px` por debajo de 768px, para que iOS/Android no disparen su zoom automático al enfocar un campo con texto más chico (quedaba con el zoom pegado). El color de foco también se fuerza al azul de marca (`outline`), en vez del acento que traiga el navegador por defecto (ej. Samsung Internet lo muestra naranja). Fuera de eso, filas de cabecera con varios botones (fichas de evento, header de Plantel, etc.) usan `flex-wrap` para no desbordar el ancho de pantalla en vez de asumir que siempre entran en una sola línea.
+
+## Módulos planificados (roadmap técnico)
+
+Reingenierías definidas pero **todavía no arrancadas** — no tocar código/Supabase para esto hasta que se pida explícitamente empezarlo.
+
+### 🔄 Módulo Planificado (Próximamente): Migración de RPE a Control de Wellness Automatizado por Categoría y Tira
+
+**Objetivo:** Reemplazar por completo el actual módulo de control de carga manual RPE por un sistema automatizado de Cuestionario de Bienestar (Wellness / Control de Fatiga), consumiendo datos de forma nativa desde un único formulario inteligente de Google Forms sin intermediarios externos.
+
+**Arquitectura Técnica del Sistema:**
+
+#### 📱 1. Flujo del Formulario Único Inteligente (Google Forms)
+- **Sección 1 (Matriz):** El jugador selecciona su equipo exacto mediante un menú desplegable estructurado por pares (ej: "Mayores - Tira Blanca", "Mayores - Tira Azul", "Liga Próximo - Tira Blanca").
+- **Sección 2 (Lógica de Salto):** El formulario redirige al usuario a la sección específica de su Categoría y Tira, mostrando un desplegable que contiene ÚNICAMENTE los nombres de los jugadores activos de ese equipo.
+- **Sección 3 (Métricas):** El jugador responde las 4 preguntas estándar de Bienestar antes de entrenar en escala del 1 al 10: Calidad del Sueño, Nivel de Fatiga, Dolor Muscular (DOMS) y Nivel de Estrés.
+
+#### 🗄️ 2. Mutación de la Base de Datos (Supabase)
+La infraestructura del antiguo RPE se reconvierte en la tabla `public.wellness_diario` con la siguiente estructura:
+- `id` (uuid, primary key)
+- `jugador_id` (uuid, references public.jugadores)
+- `temporada_id` (uuid, references public.temporadas — para aislamiento de torneos)
+- `fecha` (date — extraída de la marca de tiempo de Google)
+- `categoria` y `tira` (text — para indexación rápida)
+- `sueno`, `fatiga`, `dolor_muscular`, `estres` (integers del 1 al 10)
+- `promedio_wellness` (numeric — cálculo automático: suma de las 4 variables dividida entre 4)
+- `notas_medicas` (text — casillero mutable para que el PF edite estados o trabajos diferenciados desde la interfaz)
+
+#### 🔄 3. Automatización Nativa (Google Apps Script)
+- **Ingreso de Datos (Disparador OnFormSubmit):** Un script de JavaScript alojado en el Google Sheet vinculado procesará cada envío en tiempo real, calculará las métricas, resolverá el `jugador_id` mediante una consulta API rápida a Supabase según el nombre/equipo en la temporada activa, y realizará un `.upsert()` limpio en la tabla.
+- **Sincronización de Roster (Webhook Inverso):** Al añadir o dar de baja un jugador en la app, Supabase disparará un Webhook hacia Google Apps Script (Web App endpoint) para reescribir automáticamente los menús desplegables de nombres en Google Forms, evitando el mantenimiento manual.
+
+#### 📊 4. Rediseño del Dashboard del PF
+El semáforo deportivo actual se reconvierte para escuchar el `promedio_wellness`. Si un jugador registra un índice bajo en la fecha actual, la portada disparará una alerta roja visual de riesgo de lesión antes de que inicie la práctica de Hacoaj HoopsPro.

@@ -135,7 +135,8 @@ select
   jt.dorsal,
   jt.estado,
   jt.equipos_adicionales,
-  j.posicion_secundaria
+  j.posicion_secundaria,
+  j.dni
 from public.jugador_temporada jt
 join public.jugadores j on j.id = jt.jugador_id
 join public.temporadas t on t.id = jt.temporada_id;

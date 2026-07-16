@@ -44,6 +44,15 @@ alter table public.jugadores drop column if exists edad;
 alter table public.jugadores add column if not exists equipos_adicionales jsonb not null default '[]'::jsonb;
 alter table public.jugadores add column if not exists posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot'));
 
+-- DNI: identificador real de la persona para trazabilidad y vinculo con bases externas. NO
+-- reemplaza a "id" (uuid) como primary key -- ese sigue siendo la clave estable que ya usan
+-- jugador_temporada/asistencias/jugador_partido_stats/alias_jugador, las vistas y el archivo de
+-- foto en Storage; cambiar el PK hubiera significado migrar las 4 tablas + storage + ~90 usos
+-- en el frontend por un beneficio que una columna UNIQUE ya cubre igual de bien. Nullable a
+-- proposito (no todos los jugadores ya cargados tienen el dato), unique solo entre los no nulos
+-- (comportamiento estandar de Postgres: una columna UNIQUE permite multiples NULL).
+alter table public.jugadores add column if not exists dni text unique;
+
 create index if not exists jugadores_categoria_tira_idx on public.jugadores (categoria_origen, tira);
 
 drop trigger if exists jugadores_set_updated_at on public.jugadores;

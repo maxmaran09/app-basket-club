@@ -11,10 +11,24 @@ function hoyBA() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
-// Busca, dentro del plantel del club ya cargado, un jugador con el mismo nombre que juegue en
-// la categoria/tira de esta fila (equipo principal o adicional) -- para actualizarlo en vez de
-// crear un duplicado si el CSV vuelve a traer a alguien que ya está cargado.
-function buscarExistente(jugadoresExistentes, nombre, categoria, tira) {
+// Traduce la violacion de la restriccion UNIQUE de "dni" a un mensaje entendible en vez del
+// texto crudo de Postgres.
+function mensajeErrorImport(error) {
+  if (error?.code === "23505" && error.message?.includes("dni")) return "Hay un DNI repetido en el CSV (o ya pertenece a otro jugador del club).";
+  return error?.message || "Error desconocido";
+}
+
+// Busca, dentro del plantel del club ya cargado, un jugador que ya exista -- para actualizarlo
+// en vez de crear un duplicado si el CSV vuelve a traer a alguien que ya está cargado. El DNI
+// (si la fila lo trae y el jugador ya lo tenía) es más confiable que el nombre -- identifica a
+// la persona en cualquier categoria/tira del club, no solo en la de esta fila, y no se confunde
+// con dos jugadores tocayos.
+function buscarExistente(jugadoresExistentes, nombre, categoria, tira, dni) {
+  const dniLimpio = (dni || "").trim();
+  if (dniLimpio) {
+    const porDni = (jugadoresExistentes || []).find((j) => (j.dni || "").trim() === dniLimpio);
+    if (porDni) return porDni;
+  }
   const norm = normalizeName(nombre);
   return (jugadoresExistentes || []).find((j) => {
     if (normalizeName(j.nombre_apellido) !== norm) return false;
@@ -30,6 +44,7 @@ const HEADER_ALIASES = {
   nombre_apellido: "nombre_apellido",
   nombre: "nombre_apellido",
   nombre_y_apellido: "nombre_apellido",
+  dni: "dni",
   posicion: "posicion",
   altura: "altura",
   peso: "peso",
@@ -51,7 +66,7 @@ const HEADER_ALIASES = {
 };
 
 export const CSV_HEADERS_TEMPLATE = [
-  "dorsal", "nombre_apellido", "posicion", "altura", "peso", "fecha_medicion", "fecha_nacimiento",
+  "dorsal", "nombre_apellido", "dni", "posicion", "altura", "peso", "fecha_medicion", "fecha_nacimiento",
   "categoria_principal", "tira_principal", "notas", "disponibilidad",
   "detalle_lesion", "fecha_lesion_desde", "equipos_adicionales",
 ];
@@ -63,6 +78,7 @@ export const CSV_HEADERS_TEMPLATE = [
 const CSV_FILA_INSTRUCCIONES = [
   "Nº opcional",
   "▲ BORRAR ESTA FILA (es solo ayuda) ▲",
+  "opcional, ayuda a no duplicar si dos jugadores comparten nombre",
   POSICIONES.join(" / "),
   "en metros, ej: 1.90",
   "en kg, entero",
@@ -79,8 +95,8 @@ const CSV_FILA_INSTRUCCIONES = [
 
 const CSV_FILAS_EJEMPLO = [
   CSV_FILA_INSTRUCCIONES,
-  ["7", "Juan Pérez", "Base", "1.85", "78", "", "2001-04-12", "Mayores", "Blanca", "Buen tiro exterior, capitán", "Disponible", "", "", "Liga Próximo:Blanca"],
-  ["23", "Marcos Díaz", "Pivot", "2.02", "102", "2026-07-01", "1999-11-02", "Mayores", "Blanca", "", "Lesionado", "Esguince de tobillo", "2026-06-30", ""],
+  ["7", "Juan Pérez", "30123456", "Base", "1.85", "78", "", "2001-04-12", "Mayores", "Blanca", "Buen tiro exterior, capitán", "Disponible", "", "", "Liga Próximo:Blanca"],
+  ["23", "Marcos Díaz", "31987654", "Pivot", "2.02", "102", "2026-07-01", "1999-11-02", "Mayores", "Blanca", "", "Lesionado", "Esguince de tobillo", "2026-06-30", ""],
 ];
 
 // Formato simple para equipos_adicionales en la celda: "Categoria:Tira|Categoria2:Tira2"
@@ -119,6 +135,10 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas,
   const nombre = (raw.nombre_apellido || "").trim();
   if (!nombre) errores.push("falta nombre_apellido (obligatorio)");
   data.nombre_apellido = nombre;
+
+  const dniRaw = (raw.dni || "").trim();
+  provisto.dni = !!dniRaw;
+  data.dni = dniRaw || null;
 
   const dorsalRaw = (raw.dorsal || "").trim();
   provisto.dorsal = !!dorsalRaw;
@@ -219,7 +239,7 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas,
   // Si ya hay un jugador con este nombre en este mismo equipo, se actualiza en vez de duplicarlo.
   // Comparacion con Number(...) de los dos lados porque "numeric"/PostgREST a veces vuelve como
   // string -- sin esto, una fila sin cambios reales podria registrarse como cambio igual.
-  const existente = buscarExistente(jugadoresExistentes, data.nombre_apellido, data.categoria_origen, data.tira);
+  const existente = buscarExistente(jugadoresExistentes, data.nombre_apellido, data.categoria_origen, data.tira, data.dni);
   data.alturaCambio = !!existente && provisto.altura && Number(data.altura) !== Number(existente.altura ?? NaN);
   data.pesoCambio = !!existente && provisto.peso && Number(data.peso) !== Number(existente.peso ?? NaN);
   if (data.alturaCambio) warnings.push(`altura cambia de ${existente.altura ?? "—"} a ${data.altura} — se agrega a la evolución con fecha ${data.fecha_medicion || "de hoy"}`);
@@ -308,6 +328,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
     if (altas.length > 0) {
       const bioPayload = altas.map((f) => ({
         nombre_apellido: f.data.nombre_apellido,
+        dni: f.data.dni,
         posicion: f.data.posicion,
         altura: f.data.altura,
         peso: f.data.peso,
@@ -319,7 +340,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
       }));
       const { data: jugadoresInsertados, error: errJugadores } = await supabase.from("jugadores").insert(bioPayload).select();
       if (errJugadores) {
-        setErrorImport(errJugadores.message);
+        setErrorImport(mensajeErrorImport(errJugadores));
         setFase("preview");
         return;
       }
@@ -346,6 +367,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
           id: row.id,
           jugador_temporada_id: jt.id,
           nombre_apellido: row.nombre_apellido,
+          dni: row.dni,
           posicion: row.posicion,
           altura: row.altura,
           peso: row.peso,
@@ -373,6 +395,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
     for (const f of actualizaciones) {
       const { data: d, existente } = f;
       const bioPatch = {};
+      if (d.provisto.dni) bioPatch.dni = d.dni;
       if (d.provisto.posicion) bioPatch.posicion = d.posicion;
       if (d.provisto.fecha_nacimiento) bioPatch.fecha_nacimiento = d.fecha_nacimiento;
       if (d.provisto.notas_comentarios) bioPatch.notas_comentarios = d.notas_comentarios;
@@ -393,7 +416,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
 
       if (Object.keys(bioPatch).length > 0) {
         const { error } = await supabase.from("jugadores").update(bioPatch).eq("id", existente.id);
-        if (error) { setErrorImport(error.message); setFase("preview"); return; }
+        if (error) { setErrorImport(mensajeErrorImport(error)); setFase("preview"); return; }
       }
 
       const jtPatch = {};

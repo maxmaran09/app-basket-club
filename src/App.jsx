@@ -1719,6 +1719,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
   const [form, setForm] = useState({
     dorsal: jugador?.dorsal ?? "",
     nombre_apellido: jugador?.nombre_apellido ?? "",
+    dni: jugador?.dni ?? "",
     posicion: jugador?.posicion ?? POSICIONES[0],
     posicion_secundaria: jugador?.posicion_secundaria ?? "",
     altura: jugador?.altura ?? "",
@@ -1772,6 +1773,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
     await onSave({
       dorsal: form.dorsal ? Number(form.dorsal) : null,
       nombre_apellido: form.nombre_apellido,
+      dni: form.dni.trim() || null,
       posicion: form.posicion,
       posicion_secundaria: form.posicion_secundaria || null,
       altura: form.altura ? Number(form.altura) : null,
@@ -1815,6 +1817,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
                 <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                 <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
+              <input placeholder="DNI (opcional)" value={form.dni} onChange={(e) => set("dni", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               <div className="flex gap-2">
                 <select value={form.posicion} onChange={(e) => {
                   const nueva = e.target.value;
@@ -2274,6 +2277,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
     const filas = listaMostrada.map((j) => [
       j.dorsal ?? "",
       j.nombre_apellido || "",
+      j.dni || "",
       j.posicion || "",
       j.altura ?? "",
       j.peso ?? "",
@@ -2405,6 +2409,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
               {j.altura != null && <Chip>{j.altura} m</Chip>}
               {j.peso != null && <Chip>{j.peso} kg</Chip>}
               {calcularEdad(j.fecha_nacimiento) != null && <Chip>{calcularEdad(j.fecha_nacimiento)} años</Chip>}
+              {j.dni && <Chip>DNI {j.dni}</Chip>}
               {(j.equipos_adicionales || []).map((e, i) => (
                 <Chip key={i} tone="blue">+ {e.categoria} · {e.tira}</Chip>
               ))}
@@ -5475,6 +5480,7 @@ export default function App() {
     id: jugadorRow.id,
     jugador_temporada_id: jtRow.id,
     nombre_apellido: jugadorRow.nombre_apellido,
+    dni: jugadorRow.dni,
     posicion: jugadorRow.posicion,
     posicion_secundaria: jugadorRow.posicion_secundaria,
     altura: jugadorRow.altura,
@@ -5496,6 +5502,13 @@ export default function App() {
     equipos_adicionales: jtRow.equipos_adicionales,
   });
 
+  // Traduce la violacion de la restriccion UNIQUE de "dni" a un mensaje entendible en vez del
+  // texto crudo de Postgres ("duplicate key value violates unique constraint...").
+  const mensajeErrorJugador = (error) => {
+    if (error?.code === "23505" && error.message?.includes("dni")) return "Ya existe un jugador cargado con ese DNI.";
+    return error?.message || "Error desconocido";
+  };
+
   const addJugador = async (j) => {
     const temporadaDestino = temporadas.find((t) => t.categoria === j.categoria_origen && t.tira === j.tira && t.activa);
     if (!temporadaDestino) {
@@ -5504,7 +5517,7 @@ export default function App() {
     }
     const { dorsal, categoria_origen, tira, equipos_adicionales, ...bio } = j;
     const { data: jugadorRow, error: errJugador } = await supabase.from("jugadores").insert(bio).select().single();
-    if (errJugador) { setErrorMsg(errJugador.message); return; }
+    if (errJugador) { setErrorMsg(mensajeErrorJugador(errJugador)); return; }
     const { data: jtRow, error: errJt } = await supabase
       .from("jugador_temporada")
       .insert({ jugador_id: jugadorRow.id, temporada_id: temporadaDestino.id, dorsal: dorsal || null, equipos_adicionales: equipos_adicionales || [] })
@@ -5552,7 +5565,7 @@ export default function App() {
     let jugadorRow = null;
     if (Object.keys(patchBio).length > 0) {
       const { data, error } = await supabase.from("jugadores").update(patchBio).eq("id", id).select().single();
-      if (error) { setErrorMsg(error.message); return; }
+      if (error) { setErrorMsg(mensajeErrorJugador(error)); return; }
       jugadorRow = data;
     }
 
