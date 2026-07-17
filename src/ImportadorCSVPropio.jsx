@@ -87,7 +87,7 @@ const CSV_FILA_INSTRUCCIONES = [
   `${CATEGORIAS.join(" / ")} (vacío = usa la categoría del filtro activo)`,
   `${TIRAS.join(" / ")} (vacío = usa la tira del filtro activo)`,
   "texto libre, opcional",
-  "Disponible / Duda / Lesionado (vacío = Disponible)",
+  "Disponible / Diferenciado / Lesionado (vacío = Disponible)",
   "obligatorio si disponibilidad no es Disponible",
   "AAAA-MM-DD, obligatorio si disponibilidad no es Disponible",
   "Categoria:Tira|Categoria2:Tira2 (opcional)",
@@ -210,8 +210,8 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas,
 
   const dispRaw = (raw.disponibilidad || "").trim();
   provisto.disponibilidad = !!dispRaw;
-  const disponibilidad = dispRaw ? buscarEnLista(dispRaw, ["Disponible", "Duda", "Lesionado"]) : "Disponible";
-  if (dispRaw && !disponibilidad) errores.push(`disponibilidad "${dispRaw}" inválida (usar: Disponible, Duda, Lesionado)`);
+  const disponibilidad = dispRaw ? buscarEnLista(dispRaw, ["Disponible", "Diferenciado", "Lesionado"]) : "Disponible";
+  if (dispRaw && !disponibilidad) errores.push(`disponibilidad "${dispRaw}" inválida (usar: Disponible, Diferenciado, Lesionado)`);
   data.disponibilidad = disponibilidad || dispRaw || "Disponible";
 
   const detalle = (raw.lesion_detalle || "").trim();

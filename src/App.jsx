@@ -35,12 +35,16 @@ const CARGAS_FISICAS = ["Baja", "Media", "Alta"];
 const LUGARES_FISICOS = ["Cancha", "Gimnasio de pesas", "Mixto"];
 const ENFOQUES_FISICOS = ["Velocidad", "Potencia", "Fuerza", "Resistencia", "Movilidad"];
 
-const ESTADOS_ASISTENCIA = ["Presente", "Ausente", "Tarde", "Lesionado"];
+// "Lesionado"/"Diferenciado" ya NO son un estado diario acá -- viven en jugadores.disponibilidad
+// (persistente, se carga una vez en Plantel) y se muestran como chip aparte en la lista de
+// Asistencia, para no tener que re-seleccionarlo en cada entrenamiento. El estado del día queda
+// libre para combinarse con esa condición persistente (ej: Lesionado + Presente = vino e hizo
+// trabajo diferenciado ese día, Lesionado + Ausente = no vino).
+const ESTADOS_ASISTENCIA = ["Presente", "Ausente", "Tarde"];
 const ESTADO_ESTILO = {
   Presente: "bg-emerald-500/20 border-emerald-500/50 text-emerald-300",
   Ausente: "bg-red-500/20 border-red-500/50 text-red-300",
   Tarde: "bg-amber-500/20 border-amber-500/50 text-amber-300",
-  Lesionado: "bg-purple-500/20 border-purple-500/50 text-purple-300",
 };
 
 function toKey(y, m, d) { return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
@@ -650,6 +654,11 @@ function AsistenciaSection({ event, jugadores }) {
                       {j.nombre_apellido}
                       {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
                         <span className="ml-1.5 text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>
+                      )}
+                      {j.disponibilidad && j.disponibilidad !== "Disponible" && (
+                        <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded border ${j.disponibilidad === "Lesionado" ? "bg-red-500/15 text-red-300 border-red-500/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30"}`}>
+                          {j.disponibilidad}
+                        </span>
                       )}
                     </span>
                   </div>
@@ -2156,7 +2165,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
             <p className="text-xs text-zinc-500 mb-1">Disponibilidad</p>
             <select value={form.disponibilidad} onChange={(e) => set("disponibilidad", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 mb-2">
               <option value="Disponible">Disponible</option>
-              <option value="Duda">Duda</option>
+              <option value="Diferenciado">Diferenciado</option>
               <option value="Lesionado">Lesionado</option>
             </select>
             {form.disponibilidad !== "Disponible" && (
@@ -2907,7 +2916,7 @@ function FichaBaseJugador({ jugador }) {
   const edad = calcularEdad(jugador.fecha_nacimiento);
   const semaforo = {
     Disponible: { dot: "bg-emerald-400", text: "text-emerald-300", bg: "bg-emerald-500/10 border-emerald-500/25" },
-    Duda: { dot: "bg-amber-400", text: "text-amber-300", bg: "bg-amber-500/10 border-amber-500/25" },
+    Diferenciado: { dot: "bg-amber-400", text: "text-amber-300", bg: "bg-amber-500/10 border-amber-500/25" },
     Lesionado: { dot: "bg-red-400", text: "text-red-300", bg: "bg-red-500/10 border-red-500/25" },
   }[jugador.disponibilidad || "Disponible"];
 

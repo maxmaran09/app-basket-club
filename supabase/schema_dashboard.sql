@@ -9,6 +9,17 @@ alter table public.jugadores add column if not exists disponibilidad text not nu
 alter table public.jugadores add column if not exists lesion_detalle text;
 alter table public.jugadores add column if not exists lesion_desde date;
 
+-- 1b) "Duda" (incertidumbre medica) se renombra a "Diferenciado" (hizo/hace trabajos
+-- diferenciados) -- el estado de asistencia diario ya no tiene a "Lesionado" como cuarta opcion
+-- (ver ESTADOS_ASISTENCIA en src/App.jsx), asi que esta condicion persistente de Plantel se
+-- combina con Presente/Ausente/Tarde de esa sesion puntual, en vez de competir con ellos.
+-- Migra los datos existentes ANTES de tocar el constraint, para que ninguna fila vieja quede
+-- invalida.
+update public.jugadores set disponibilidad = 'Diferenciado' where disponibilidad = 'Duda';
+alter table public.jugadores drop constraint if exists jugadores_disponibilidad_check;
+alter table public.jugadores add constraint jugadores_disponibilidad_check
+  check (disponibilidad in ('Disponible','Lesionado','Diferenciado'));
+
 -- 2) Que lado de cada partido cargado en Estadisticas somos nosotros (Nautico Hacoaj), para poder
 -- calcular "puntos a favor vs en contra" sin adivinar por nombre cada vez. Se completa solo al
 -- guardar el PDF (comparando contra "NAUTICO HACOAJ") y se puede corregir a mano en la vista previa
