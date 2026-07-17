@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
@@ -588,45 +588,24 @@ function CourtPreview({ courtType, players = [], lines = [], ball, balls, shots 
   );
 }
 
-const RPE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-// Semáforo deportivo: 1-3 verde (ligera/recuperación), 4-6 amarillo (moderada/aeróbica),
-// 7-8 naranja (dura/umbral), 9-10 rojo (máxima/sobrecarga).
-function rpeColorClasses(v) {
-  if (v == null || v === "") return "bg-zinc-950 border-zinc-700 text-zinc-400";
-  if (v <= 3) return "bg-emerald-500/20 border-emerald-500/50 text-emerald-300";
-  if (v <= 6) return "bg-amber-500/20 border-amber-500/50 text-amber-300";
-  if (v <= 8) return "bg-orange-500/20 border-orange-500/50 text-orange-300";
-  return "bg-red-500/20 border-red-500/50 text-red-300";
-}
-
-// Lista de asistencia dinámica + control de carga física RPE: trae el plantel que corresponde a
-// la categoría/tira del entrenamiento y guarda estado + RPE (1-10) + nota contra "asistencias"
-// (upsert por jugador+evento).
+// Lista de asistencia dinámica: trae el plantel que corresponde a la categoría/tira del
+// entrenamiento y guarda el estado (Presente/Ausente/Tarde/Lesionado) contra "asistencias"
+// (upsert por jugador+evento). El control de carga física ahora vive en Wellness (ver
+// WellnessHoyPanel más abajo), ya no en este componente.
 function AsistenciaSection({ event, jugadores }) {
   const [estados, setEstados] = useState({});
-  const [rpeValores, setRpeValores] = useState({});
-  const [rpeNotas, setRpeNotas] = useState({});
-  const [notasAbiertas, setNotasAbiertas] = useState({});
-  const [cargaGeneral, setCargaGeneral] = useState(null);
   const [loadingAsist, setLoadingAsist] = useState(true);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("asistencias").select("jugador_id, estado, rpe_valor, rpe_nota").eq("entrenamiento_id", event.id);
+      const { data, error } = await supabase.from("asistencias").select("jugador_id, estado").eq("entrenamiento_id", event.id);
       if (cancelled) return;
       if (!error && data) {
-        const estMap = {}, rpeMap = {}, notaMap = {};
-        data.forEach((r) => {
-          estMap[r.jugador_id] = r.estado;
-          if (r.rpe_valor != null) rpeMap[r.jugador_id] = r.rpe_valor;
-          if (r.rpe_nota) notaMap[r.jugador_id] = r.rpe_nota;
-        });
+        const estMap = {};
+        data.forEach((r) => { estMap[r.jugador_id] = r.estado; });
         setEstados(estMap);
-        setRpeValores(rpeMap);
-        setRpeNotas(notaMap);
       }
       setLoadingAsist(false);
     })();
@@ -640,38 +619,13 @@ function AsistenciaSection({ event, jugadores }) {
     setSaved(false);
   };
 
-  const setRpe = (jugadorId, valor) => {
-    setRpeValores((prev) => ({ ...prev, [jugadorId]: valor }));
-    setSaved(false);
-  };
-
-  const setNota = (jugadorId, texto) => {
-    setRpeNotas((prev) => ({ ...prev, [jugadorId]: texto }));
-    setSaved(false);
-  };
-
-  const toggleNota = (jugadorId) => setNotasAbiertas((prev) => ({ ...prev, [jugadorId]: !prev[jugadorId] }));
-
-  const asignarATodos = () => {
-    if (cargaGeneral == null) return;
-    setRpeValores((prev) => {
-      const next = { ...prev };
-      roster.forEach((j) => { next[j.id] = cargaGeneral; });
-      return next;
-    });
-    setSaved(false);
-  };
-
   const guardar = async () => {
-    const jugadorIds = new Set([...Object.keys(estados), ...Object.keys(rpeValores), ...Object.keys(rpeNotas)]);
-    const rows = [...jugadorIds]
-      .filter((id) => estados[id] || rpeValores[id] != null || rpeNotas[id])
+    const rows = Object.keys(estados)
+      .filter((id) => estados[id])
       .map((jugador_id) => ({
         entrenamiento_id: event.id,
         jugador_id,
-        estado: estados[jugador_id] || "Presente",
-        rpe_valor: rpeValores[jugador_id] ?? null,
-        rpe_nota: rpeNotas[jugador_id] || null,
+        estado: estados[jugador_id],
       }));
     if (rows.length === 0) return;
     const { error } = await supabase.from("asistencias").upsert(rows, { onConflict: "entrenamiento_id,jugador_id" });
@@ -679,28 +633,13 @@ function AsistenciaSection({ event, jugadores }) {
   };
 
   return (
-    <Section icon={Users} title="Asistencia y carga física (RPE)" accent="text-cyan-400">
+    <Section icon={Users} title="Asistencia" accent="text-cyan-400">
       {loadingAsist ? (
         <p className="text-sm text-zinc-500">Cargando plantel…</p>
       ) : roster.length === 0 ? (
         <p className="text-sm text-zinc-500">No hay jugadores cargados para {event.categoria} · {event.tira}. Agregalos desde la pestaña Plantel.</p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2 mb-3 bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
-            <span className="text-xs text-zinc-400 shrink-0">Carga general del entrenamiento (RPE):</span>
-            <div className="flex gap-1 flex-wrap">
-              {RPE_VALUES.map((n) => (
-                <button key={n} onClick={() => setCargaGeneral(n)}
-                  className={`w-7 h-7 rounded text-xs font-bold border flex items-center justify-center ${rpeColorClasses(n)} ${cargaGeneral === n ? "ring-2 ring-white/60" : ""}`}>
-                  {n}
-                </button>
-              ))}
-            </div>
-            <button onClick={asignarATodos} disabled={cargaGeneral == null} className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-3 py-1.5 rounded shrink-0">
-              Asignar a todos
-            </button>
-          </div>
-
           <div className="space-y-1.5 mb-3">
             {roster.map((j) => (
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
@@ -723,39 +662,139 @@ function AsistenciaSection({ event, jugadores }) {
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-2 pl-9">
-                  <span className="text-xs text-zinc-500 shrink-0">RPE</span>
-                  <select
-                    value={rpeValores[j.id] ?? ""}
-                    onChange={(e) => setRpe(j.id, e.target.value ? Number(e.target.value) : undefined)}
-                    className={`text-xs rounded px-2 py-1 border font-bold ${rpeColorClasses(rpeValores[j.id])}`}
-                  >
-                    <option value="">—</option>
-                    {RPE_VALUES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                  <button onClick={() => toggleNota(j.id)} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
-                    <MessageSquare size={12} /> Nota{rpeNotas[j.id] ? " ✓" : ""}
-                  </button>
-                </div>
-                {notasAbiertas[j.id] && (
-                  <div className="mt-2 pl-9">
-                    <textarea
-                      value={rpeNotas[j.id] || ""}
-                      onChange={(e) => setNota(j.id, e.target.value)}
-                      placeholder="Observación individual (ej: sintió sobrecarga en el gemelo)"
-                      rows={2}
-                      className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100"
-                    />
-                  </div>
-                )}
               </div>
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={guardar} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar Asistencia y Carga</button>
+            <button onClick={guardar} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar asistencia</button>
             {saved && <span className="text-emerald-400 text-xs">Guardado ✓</span>}
           </div>
         </>
+      )}
+    </Section>
+  );
+}
+
+// Alto = bueno (verde), bajo = alerta (rojo). Para promedio_wellness y sueno (cargados/calculados
+// para que "alto" sea siempre buen estado). OJO: polaridad OPUESTA al viejo semáforo de RPE
+// (ahí alto era malo, sobrecarga).
+function wellnessColorAsc(v) {
+  if (v == null) return "bg-zinc-950 border-zinc-700 text-zinc-400";
+  if (v <= 3) return "bg-red-500/20 border-red-500/50 text-red-300";
+  if (v <= 6) return "bg-orange-500/20 border-orange-500/50 text-orange-300";
+  if (v <= 8) return "bg-amber-500/20 border-amber-500/50 text-amber-300";
+  return "bg-emerald-500/20 border-emerald-500/50 text-emerald-300";
+}
+
+// Bajo = bueno (verde), alto = alerta (rojo) -- misma polaridad que el viejo RPE. Para
+// fatiga/dolor_muscular/estres, que están cargados en su sentido natural (1=nada, 10=extremo,
+// "alto" ahí es malo, al revés que sueno/promedio_wellness).
+function wellnessColorDesc(v) {
+  if (v == null) return "bg-zinc-950 border-zinc-700 text-zinc-400";
+  if (v <= 3) return "bg-emerald-500/20 border-emerald-500/50 text-emerald-300";
+  if (v <= 6) return "bg-amber-500/20 border-amber-500/50 text-amber-300";
+  if (v <= 8) return "bg-orange-500/20 border-orange-500/50 text-orange-300";
+  return "bg-red-500/20 border-red-500/50 text-red-300";
+}
+
+// Wellness del día del evento (no "hoy" -- así una ficha vieja sigue mostrando el wellness real
+// de esa fecha) para el roster de un Entrenamiento o de un plan Individual. Las filas las crea
+// únicamente el Google Apps Script (ver google-apps-script/wellness-sync.gs.txt) cuando el
+// jugador responde el formulario diario -- acá solo se lee, y se puede editar la nota médica de
+// una fila que ya existe (no se puede crear una fila nueva desde la app).
+function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
+  const [filas, setFilas] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [editandoId, setEditandoId] = useState(null);
+  const [notaDraft, setNotaDraft] = useState("");
+
+  const roster = jugadores.filter((j) => jugadorEnEquipo(j, event.categoria, event.tira));
+  const puedeEditar = nivelBloque(rol, tipoEvento, "wellness") === "rw";
+
+  useEffect(() => {
+    if (roster.length === 0) { setFilas({}); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("wellness_diario")
+        .select("id, jugador_id, sueno, fatiga, dolor_muscular, estres, promedio_wellness, notas_medicas")
+        .eq("categoria", event.categoria).eq("tira", event.tira).eq("fecha", event.date)
+        .in("jugador_id", roster.map((j) => j.id));
+      if (cancelled) return;
+      if (!error && data) {
+        setFilas(Object.fromEntries(data.map((f) => [f.jugador_id, f])));
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.categoria, event.tira, event.date, roster.map((j) => j.id).join(",")]);
+
+  const startEdit = (fila) => { setNotaDraft(fila.notas_medicas || ""); setEditandoId(fila.id); };
+
+  const guardarNota = async (fila) => {
+    const { error } = await supabase.from("wellness_diario").update({ notas_medicas: notaDraft }).eq("id", fila.id);
+    if (!error) {
+      setFilas((prev) => ({ ...prev, [fila.jugador_id]: { ...fila, notas_medicas: notaDraft } }));
+      setEditandoId(null);
+    }
+  };
+
+  if (roster.length === 0) return null;
+
+  return (
+    <Section icon={Activity} title="Wellness de hoy" accent="text-brand-400">
+      {loading ? (
+        <p className="text-sm text-zinc-500">Cargando…</p>
+      ) : (
+        <div className="space-y-1.5">
+          {roster.map((j) => {
+            const f = filas[j.id];
+            return (
+              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                  <span className="text-sm text-zinc-200 flex-1 min-w-0">{j.nombre_apellido}</span>
+                  {f ? (
+                    <>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded border ${wellnessColorAsc(f.promedio_wellness)}`}>
+                        {Number(f.promedio_wellness).toFixed(1)}
+                      </span>
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${wellnessColorAsc(f.sueno)}`}>Sueño {f.sueno}</span>
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${wellnessColorDesc(f.fatiga)}`}>Fatiga {f.fatiga}</span>
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${wellnessColorDesc(f.dolor_muscular)}`}>Dolor {f.dolor_muscular}</span>
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${wellnessColorDesc(f.estres)}`}>Estrés {f.estres}</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-zinc-600">Sin registro hoy</span>
+                  )}
+                </div>
+                {f && puedeEditar && (
+                  editandoId === f.id ? (
+                    <div className="mt-2 pl-9 space-y-1.5">
+                      <textarea
+                        value={notaDraft}
+                        onChange={(e) => setNotaDraft(e.target.value)}
+                        placeholder="Nota médica (ej: seguimiento de sobrecarga en el gemelo)"
+                        rows={2}
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => guardarNota(f)} className="bg-brand-600 hover:bg-brand-500 text-white text-xs px-2.5 py-1 rounded">Guardar</button>
+                        <button onClick={() => setEditandoId(null)} className="text-zinc-400 text-xs px-2.5 py-1">Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => startEdit(f)} className="mt-1.5 ml-9 flex items-center gap-1 text-xs text-zinc-500 hover:text-brand-400">
+                      <MessageSquare size={12} /> {f.notas_medicas ? f.notas_medicas : "Agregar nota médica"}
+                    </button>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </Section>
   );
@@ -1129,6 +1168,8 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
 
       <AsistenciaSection event={event} jugadores={jugadores} />
 
+      <WellnessHoyPanel event={event} jugadores={jugadores} rol={rol} tipoEvento="entrenamiento" />
+
       <PreparacionFisicaSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
       <BloquesConCanchaSection bloques={bloques} onChange={(next) => { setBloques(next); onUpdate({ bloques: next }); }} soloLectura={bloquesSoloLectura} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={onSaveBiblioteca} onDeleteBiblioteca={onDeleteBiblioteca} />
@@ -1147,7 +1188,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
 // Plan de trabajo de un jugador puntual dentro de un evento Individual: mismo formato que un
 // entrenamiento (objetivo, preparación física, bloques de cancha con diagramas) pero uno por
 // jugador, todos dentro del mismo evento.
-function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate, rol, bibliotecaBloques, onSaveBiblioteca, onDeleteBiblioteca }) {
+function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove, onDuplicate, rol, bibliotecaBloques, onSaveBiblioteca, onDeleteBiblioteca, fecha, categoria, tira }) {
   const [objetivo, setObjetivo] = useState(plan.objetivo || "");
   const [bloques, setBloques] = useState(plan.bloques || []);
 
@@ -1189,6 +1230,8 @@ function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove
       <EditableField label="Objetivo individual" icon={Trophy} accent="text-teal-400" value={objetivo} onSave={(v) => { setObjetivo(v); onUpdate({ objetivo: v }); }} multiline soloLectura={headerSoloLectura} />
 
       <HorariosSection data={plan} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
+
+      <WellnessHoyPanel event={{ date: fecha, categoria, tira }} jugadores={jugador ? [jugador] : []} rol={rol} tipoEvento="individual" />
 
       <PreparacionFisicaSection data={plan} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
@@ -1292,6 +1335,9 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol, bib
             bibliotecaBloques={bibliotecaBloques}
             onSaveBiblioteca={onSaveBiblioteca}
             onDeleteBiblioteca={onDeleteBiblioteca}
+            fecha={event.date}
+            categoria={event.categoria}
+            tira={event.tira}
           />
         );
       })}
@@ -5420,7 +5466,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
     await supabase.from("notas_staff").update({ resuelta: true }).eq("id", id);
   };
 
-  const [rpeProm, setRpeProm] = useState(null);
+  const [wellnessProm, setWellnessProm] = useState(null);
   const [asistenciaPct, setAsistenciaPct] = useState(null);
   const [loadingSemana, setLoadingSemana] = useState(true);
 
@@ -5432,18 +5478,22 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       desde.setDate(desde.getDate() - 6);
       const desdeKey = desde.toISOString().slice(0, 10);
 
-      const { data: entrenos, error: errEnt } = await supabase
-        .from("eventos")
-        .select("id")
-        .eq("type", "entrenamiento")
-        .eq("categoria", categoria)
-        .eq("tira", tira)
-        .gte("date", desdeKey)
-        .lte("date", hoy);
+      const [{ data: entrenos, error: errEnt }, { data: wellRows, error: errWell }] = await Promise.all([
+        supabase.from("eventos").select("id")
+          .eq("type", "entrenamiento").eq("categoria", categoria).eq("tira", tira)
+          .gte("date", desdeKey).lte("date", hoy),
+        supabase.from("wellness_diario").select("promedio_wellness")
+          .eq("categoria", categoria).eq("tira", tira)
+          .gte("fecha", desdeKey).lte("fecha", hoy),
+      ]);
 
       if (cancelled) return;
+
+      if (!errWell && wellRows) {
+        setWellnessProm(wellRows.length ? Math.round((wellRows.reduce((s, r) => s + Number(r.promedio_wellness), 0) / wellRows.length) * 10) / 10 : null);
+      }
+
       if (errEnt || !entrenos || entrenos.length === 0) {
-        setRpeProm(null);
         setAsistenciaPct(null);
         setLoadingSemana(false);
         return;
@@ -5451,13 +5501,11 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
 
       const { data: asis, error: errAsis } = await supabase
         .from("asistencias")
-        .select("estado, rpe_valor")
+        .select("estado")
         .in("entrenamiento_id", entrenos.map((e) => e.id));
 
       if (cancelled) return;
       if (!errAsis && asis) {
-        const conRpe = asis.filter((a) => a.rpe_valor != null);
-        setRpeProm(conRpe.length ? Math.round((conRpe.reduce((s, a) => s + a.rpe_valor, 0) / conRpe.length) * 10) / 10 : null);
         const presentes = asis.filter((a) => a.estado === "Presente").length;
         setAsistenciaPct(asis.length ? Math.round((presentes / asis.length) * 100) : null);
       }
@@ -5535,7 +5583,10 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
 
   const entrenoHoy = events.find((e) => e.type === "entrenamiento" && e.categoria === categoria && e.tira === tira && e.date === hoy) || null;
 
-  const semaforoRpe = (v) => (v == null ? "text-zinc-500" : v <= 3 ? "text-emerald-400" : v <= 6 ? "text-yellow-400" : v <= 8 ? "text-orange-400" : "text-red-400");
+  // Alto = bueno (verde), bajo = alerta (rojo) -- promedio_wellness ya viene armado para que
+  // "alto" sea siempre buen estado (ver wellnessColorAsc/schema_wellness.sql). Polaridad
+  // OPUESTA al viejo semáforo de RPE, donde alto era malo (sobrecarga).
+  const semaforoWellness = (v) => (v == null ? "text-zinc-500" : v <= 3 ? "text-red-400" : v <= 6 ? "text-orange-400" : v <= 8 ? "text-amber-400" : "text-emerald-400");
 
   return (
     <div className="max-w-6xl mx-auto text-zinc-100">
@@ -5581,8 +5632,8 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       {/* 2. Indicadores clave */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-          <p className="text-xs text-zinc-500 mb-1">RPE promedio semanal</p>
-          <p className={`text-2xl font-bold ${semaforoRpe(rpeProm)}`}>{loadingSemana ? "…" : rpeProm ?? "-"}</p>
+          <p className="text-xs text-zinc-500 mb-1">Wellness promedio (7 días)</p>
+          <p className={`text-2xl font-bold ${semaforoWellness(wellnessProm)}`}>{loadingSemana ? "…" : wellnessProm ?? "-"}</p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
           <p className="text-xs text-zinc-500 mb-1">Lesionados / enfermería</p>

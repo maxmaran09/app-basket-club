@@ -40,12 +40,13 @@ export const esStaffCompleto = (rol) => rol === ROLES.HEAD_COACH || rol === ROLE
 const PERMISOS_BLOQUE_EVENTO = {
   entrenamiento: {
     header: { [ROLES.PREPARADOR_FISICO]: "ro", [ROLES.JUGADOR]: "none" },
-    asistenciaRpe: { [ROLES.PREPARADOR_FISICO]: "rw", [ROLES.JUGADOR]: "none" },
+    wellness: { [ROLES.PREPARADOR_FISICO]: "rw", [ROLES.JUGADOR]: "none" },
     preparacionFisica: { [ROLES.PREPARADOR_FISICO]: "rw", [ROLES.JUGADOR]: "none" },
     bloquesCancha: { [ROLES.PREPARADOR_FISICO]: "ro", [ROLES.JUGADOR]: "none" },
   },
   individual: {
     header: { [ROLES.PREPARADOR_FISICO]: "ro", [ROLES.JUGADOR]: "none" },
+    wellness: { [ROLES.PREPARADOR_FISICO]: "rw", [ROLES.JUGADOR]: "none" },
     preparacionFisica: { [ROLES.PREPARADOR_FISICO]: "rw", [ROLES.JUGADOR]: "none" },
     bloquesCancha: { [ROLES.PREPARADOR_FISICO]: "ro", [ROLES.JUGADOR]: "none" },
   },

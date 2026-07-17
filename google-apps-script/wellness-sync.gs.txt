@@ -1,0 +1,306 @@
+/**
+ * Wellness diario — Google Apps Script de referencia.
+ *
+ * Esto NO se ejecuta desde este repo. Es el código que hay que pegar a mano en un proyecto de
+ * Apps Script (script.google.com > Proyecto nuevo, o Extensions > Apps Script desde un Google
+ * Sheet/Form) y correr una vez. Reemplaza al RPE manual: arma y mantiene un Google Form con
+ * ramificación por Categoría/Tira, y cada respuesta se sube a la tabla `wellness_diario` de
+ * Supabase (ver supabase/schema_wellness.sql).
+ *
+ * ============================================================================
+ * PASOS PARA DESPLEGAR (una sola vez)
+ * ============================================================================
+ * 1. En https://script.google.com, crear un proyecto nuevo (o desde un Sheet/Form ya creado,
+ *    Extensions > Apps Script). Pegar TODO este archivo.
+ * 2. Project Settings (ícono de engranaje) > Script Properties > agregar:
+ *      SUPABASE_URL            = https://<tu-proyecto>.supabase.co
+ *      SUPABASE_SERVICE_KEY    = <la service_role key, Supabase > Settings > API>
+ *    IMPORTANTE: la service_role key bypassea TODOS los permisos (RLS) del proyecto. Nunca la
+ *    pegues en el repo de la app, ni se la mandes a nadie por chat/email — solo acá, en Script
+ *    Properties, que Google guarda cifrado y no es legible desde afuera del proyecto.
+ * 3. Correr la función `setup` una vez a mano (seleccionarla en el desplegable de arriba del
+ *    editor y tocar "Ejecutar"). Google va a pedir autorización la primera vez — aceptar.
+ *    Esto crea el Form (si no existía), lo llena con el plantel activo, e instala los triggers
+ *    (onFormSubmit + resync diario a las 6am).
+ * 4. Copiar el link del Form (`FormApp.getActiveForm().getPublishedUrl()`, o desde el editor de
+ *    Forms directamente) y compartirlo con los jugadores.
+ *
+ * Si cambia el plantel (alta/baja de jugador) y no querés esperar al resync diario, correr
+ * `resyncFormulario` a mano de nuevo.
+ *
+ * ============================================================================
+ * SIMPLIFICACIÓN v1 (a diferencia del plan original en CLAUDE.md)
+ * ============================================================================
+ * El plan original hablaba de un "Webhook Inverso": Supabase avisando a este script en el
+ * instante en que se da de alta/baja a un jugador. Eso requiere activar Database Webhooks en
+ * Supabase (extensión pg_net) + desplegar este script como Web App con un `doPost(e)`. Para v1
+ * se resuelve más simple con un trigger diario que vuelve a llamar `resyncFormulario` — un
+ * jugador nuevo tarda hasta 24hs en aparecer en el desplegable del Form. Si más adelante hace
+ * falta que sea instantáneo, ese es el upgrade path (no está armado acá).
+ */
+
+// Escudo del club, mismo archivo que usa la app (public/escudo-hacoaj.png, servido por Vercel).
+// Si cambia el dominio de deploy, actualizar acá.
+const LOGO_URL = "https://hacoaj-hoopspro.vercel.app/escudo-hacoaj.png";
+
+// ============================================================================
+// Config / helpers de Supabase (REST / PostgREST)
+// ============================================================================
+
+function getConfig_() {
+  const props = PropertiesService.getScriptProperties();
+  const url = props.getProperty("SUPABASE_URL");
+  const key = props.getProperty("SUPABASE_SERVICE_KEY");
+  const formId = props.getProperty("FORM_ID"); // se completa solo la primera vez que corre setup()
+  if (!url || !key) {
+    throw new Error("Faltan SUPABASE_URL / SUPABASE_SERVICE_KEY en Project Settings > Script Properties.");
+  }
+  return { url, key, formId };
+}
+
+function sbGet_(path, query) {
+  const { url, key } = getConfig_();
+  const full = `${url}/rest/v1/${path}?${query}`;
+  const res = UrlFetchApp.fetch(full, {
+    method: "get",
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error(`Supabase GET ${path} -> ${res.getResponseCode()}: ${res.getContentText()}`);
+  }
+  return JSON.parse(res.getContentText());
+}
+
+// onConflictCols: string tipo "jugador_id,categoria,tira,fecha" (coincide con el unique de la tabla).
+function sbUpsert_(table, rows, onConflictCols) {
+  const { url, key } = getConfig_();
+  const full = `${url}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflictCols)}`;
+  const res = UrlFetchApp.fetch(full, {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    payload: JSON.stringify(rows),
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error(`Supabase UPSERT ${table} -> ${res.getResponseCode()}: ${res.getContentText()}`);
+  }
+}
+
+function setFormId_(id) {
+  PropertiesService.getScriptProperties().setProperty("FORM_ID", id);
+}
+
+// Fecha de hoy en huso horario de Buenos Aires, como "YYYY-MM-DD" -- mismo criterio que
+// todayKeyBA() en src/App.jsx, para que "fecha" coincida con lo que la app muestra como "hoy".
+function fechaBA_(date) {
+  return Utilities.formatDate(date, "America/Argentina/Buenos_Aires", "yyyy-MM-dd");
+}
+
+// ============================================================================
+// Armado / actualización del Form a partir del plantel activo de Supabase
+// ============================================================================
+
+function traerPlantelActivo_() {
+  // vista_plantel_temporada, filtrado a jugadores activos de una temporada activa. La
+  // service_role key bypassea el "grant select to authenticated" de la vista, no hace falta
+  // ningún permiso extra del lado de Supabase.
+  const filas = sbGet_(
+    "vista_plantel_temporada",
+    "select=id,nombre_apellido,categoria_origen,tira,equipos_adicionales&estado=eq.activo&temporada_activa=eq.true&order=nombre_apellido.asc"
+  );
+  const porEquipo = {}; // "Categoria|||Tira" -> [{id, nombre_apellido}]
+  const agregar = (clave, j) => {
+    if (!porEquipo[clave]) porEquipo[clave] = [];
+    porEquipo[clave].push({ id: j.id, nombre: j.nombre_apellido });
+  };
+  filas.forEach((j) => {
+    // Mismo criterio que jugadorEnEquipo() en src/App.jsx: un jugador multi-equipo aparece en
+    // el desplegable de CADA equipo (el de origen + los de equipos_adicionales), así puede
+    // elegir para cuál está reportando ese día.
+    agregar(`${j.categoria_origen}|||${j.tira}`, j);
+    (j.equipos_adicionales || []).forEach((e) => agregar(`${e.categoria}|||${e.tira}`, j));
+  });
+  return porEquipo;
+}
+
+function getOrCreateForm_() {
+  const { formId } = getConfig_();
+  if (formId) {
+    try {
+      return FormApp.openById(formId);
+    } catch (e) {
+      // El id guardado ya no existe (se borró el Form a mano) -- se crea uno nuevo.
+    }
+  }
+  const form = FormApp.create("Wellness diario — Náutico Hacoaj");
+  setFormId_(form.getId());
+  return form;
+}
+
+/**
+ * Reconstruye el Form completo desde cero cada vez que corre (no hay forma limpia de "diffear"
+ * contra la Forms API) -- por eso: no editar el Form a mano, cualquier cambio manual se pierde
+ * en el próximo resync.
+ */
+function resyncFormulario() {
+  const form = getOrCreateForm_();
+
+  // Limpia todo lo que haya (preguntas de una corrida anterior).
+  form.getItems().forEach((item) => form.deleteItem(item));
+  form.setTitle("Wellness diario — Náutico Hacoaj");
+  form.setDescription("Completá esto antes de entrenar. Te toma menos de un minuto.");
+
+  // Escudo del club como primer ítem del form (Apps Script no expone la imagen de portada/tema
+  // de Forms -- addImageItem() es el workaround estándar: un ítem de imagen posicionado antes
+  // de la primera pregunta, que visualmente funciona como logo).
+  let logoItem = null;
+  try {
+    const escudoBlob = UrlFetchApp.fetch(LOGO_URL).getBlob();
+    logoItem = form.addImageItem().setImage(escudoBlob).setTitle("Náutico Hacoaj").setAlignment(FormApp.Alignment.CENTER);
+  } catch (err) {
+    Logger.log(`No se pudo cargar el escudo (${LOGO_URL}): ${err} -- el form se arma igual, sin logo.`);
+  }
+
+  const porEquipo = traerPlantelActivo_();
+  const equipos = Object.keys(porEquipo).sort();
+  if (equipos.length === 0) {
+    throw new Error("No hay jugadores activos en ninguna temporada activa -- revisá Plantel/Configuración en la app antes de correr esto.");
+  }
+
+  // 1ra pasada: crear la sección de cada equipo (jugador + 4 preguntas), guardando el
+  // PageBreakItem de arranque de cada una para poder apuntarle desde la intro después.
+  const pageBreakPorEquipo = {};
+  equipos.forEach((clave) => {
+    const [categoria, tira] = clave.split("|||");
+    const jugadoresEquipo = porEquipo[clave];
+
+    const pageBreak = form.addPageBreakItem().setTitle(`${categoria} - ${tira}`);
+    pageBreakPorEquipo[clave] = pageBreak;
+
+    form.addListItem()
+      .setTitle("Elegí tu nombre")
+      .setChoiceValues(jugadoresEquipo.map((j) => j.nombre))
+      .setRequired(true);
+
+    form.addScaleItem().setTitle("Calidad del sueño").setBounds(1, 10)
+      .setLabels("Muy mala", "Excelente").setRequired(true);
+    form.addScaleItem().setTitle("Nivel de fatiga").setBounds(1, 10)
+      .setLabels("Nada", "Extrema").setRequired(true);
+    form.addScaleItem().setTitle("Dolor muscular").setBounds(1, 10)
+      .setLabels("Nada", "Extremo").setRequired(true);
+    form.addScaleItem().setTitle("Nivel de estrés").setBounds(1, 10)
+      .setLabels("Nada", "Extremo").setRequired(true);
+
+    // Al terminar esta sección, enviar directo (no hay más secciones después de la propia).
+    pageBreak.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+  });
+
+  // 2da pasada: la pregunta de arranque, con un choice por equipo que salta a su PageBreakItem.
+  // Tiene que crearse DESPUÉS de las secciones porque createChoice necesita la referencia viva
+  // al PageBreakItem destino.
+  const intro = form.addMultipleChoiceItem();
+  intro.setTitle("¿En qué equipo vas a entrenar hoy?").setRequired(true);
+  const choices = equipos.map((clave) => {
+    const [categoria, tira] = clave.split("|||");
+    return intro.createChoice(`${categoria} - ${tira}`, pageBreakPorEquipo[clave]);
+  });
+  intro.setChoices(choices);
+  form.moveItem(intro.getIndex(), 0); // la intro pasa a ser la primera...
+  if (logoItem) form.moveItem(logoItem.getIndex(), 0); // ...y el escudo la empuja a la 2da, quedando él primero
+
+  Logger.log(`Form actualizado: ${equipos.length} equipos, ${Object.values(porEquipo).flat().length} jugadores.`);
+}
+
+// ============================================================================
+// Recepción de respuestas
+// ============================================================================
+
+/**
+ * Trigger instalable, disparado por Google en cada envío del Form (ver setup() más abajo, que
+ * lo instala con ScriptApp.newTrigger(...).onFormSubmit()).
+ */
+function onFormSubmit(e) {
+  try {
+    const resp = e.response.getItemResponses();
+    const valores = {}; // titulo del item -> respuesta
+    resp.forEach((r) => { valores[r.getItem().getTitle()] = r.getResponse(); });
+
+    const equipoTexto = valores["¿En qué equipo vas a entrenar hoy?"]; // "Categoria - Tira"
+    const nombre = valores["Elegí tu nombre"];
+    const [categoria, tira] = equipoTexto.split(" - ");
+
+    const sueno = Number(valores["Calidad del sueño"]);
+    const fatiga = Number(valores["Nivel de fatiga"]);
+    const dolorMuscular = Number(valores["Dolor muscular"]);
+    const estres = Number(valores["Nivel de estrés"]);
+
+    // Resuelve jugador_id por nombre dentro del plantel activo, aceptando que el equipo
+    // elegido sea el de origen O uno de sus equipos_adicionales (mismo criterio que
+    // jugadorEnEquipo() en src/App.jsx, para jugadores que juegan en dos equipos a la vez). Sin
+    // DNI acá -- mismo criterio de matching por nombre que ya usa el importador de CSV de la
+    // app (src/ImportadorCSVPropio.jsx). Si dos compañeros del mismo equipo comparten nombre y
+    // apellido exactos, esto toma el primero que matchee -- limitación aceptada.
+    const candidatos = sbGet_(
+      "vista_plantel_temporada",
+      `select=id,categoria_origen,tira,equipos_adicionales&nombre_apellido=eq.${encodeURIComponent(nombre)}` +
+      `&estado=eq.activo&temporada_activa=eq.true`
+    );
+    const jugador = (candidatos || []).find((j) =>
+      (j.categoria_origen === categoria && j.tira === tira) ||
+      (j.equipos_adicionales || []).some((eq) => eq.categoria === categoria && eq.tira === tira)
+    );
+    if (!jugador) {
+      Logger.log(`SIN MATCH: "${nombre}" en "${categoria} - ${tira}" -- respuesta descartada.`);
+      return;
+    }
+
+    // temporada_id es la temporada ACTIVA del equipo elegido en el form, no necesariamente la
+    // del equipo de origen del jugador (si respondió por un equipo_adicional, es una
+    // competencia distinta a la de su jugador_temporada de origen).
+    const temporadas = sbGet_(
+      "temporadas",
+      `select=id&categoria=eq.${encodeURIComponent(categoria)}&tira=eq.${encodeURIComponent(tira)}&activa=eq.true`
+    );
+    const temporadaId = temporadas && temporadas[0] ? temporadas[0].id : null;
+
+    sbUpsert_("wellness_diario", [{
+      jugador_id: jugador.id,
+      temporada_id: temporadaId,
+      fecha: fechaBA_(e.response.getTimestamp()),
+      categoria,
+      tira,
+      sueno,
+      fatiga,
+      dolor_muscular: dolorMuscular,
+      estres,
+    }], "jugador_id,categoria,tira,fecha");
+  } catch (err) {
+    // No dejar que un error puntual tire el trigger silenciosamente -- queda en el log de
+    // ejecuciones del proyecto (ícono de reloj en el editor de Apps Script).
+    Logger.log(`Error en onFormSubmit: ${err}`);
+    throw err;
+  }
+}
+
+// ============================================================================
+// Setup (correr una vez a mano)
+// ============================================================================
+
+function setup() {
+  resyncFormulario();
+  const form = getOrCreateForm_();
+
+  // Evita duplicar triggers si setup() se corre más de una vez.
+  ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
+
+  ScriptApp.newTrigger("onFormSubmit").forForm(form).onFormSubmit().create();
+  ScriptApp.newTrigger("resyncFormulario").timeBased().everyDays(1).atHour(6).create();
+
+  Logger.log(`Listo. Form: ${form.getPublishedUrl()}`);
+}
