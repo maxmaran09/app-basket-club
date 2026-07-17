@@ -5228,6 +5228,18 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
       const rivales = filas.filter((f) => f.condicion !== propioPorPartido[f.partido_id]);
       if (propias.length === 0) { setRc(false); return; }
 
+      // Record ganados/perdidos: compara los PTS de "nosotros" contra el rival DENTRO del mismo
+      // partido (no vista_record_equipo, que agrupa por el texto libre "equipo" del PDF y se
+      // desarma si el nombre del club viene escrito distinto entre partidos -- acá se reutiliza
+      // el mismo equipo_propio ya resuelto por partido que usa el resto del panel).
+      let ganados = 0, perdidos = 0;
+      for (const p of partidos) {
+        const propiaRow = filas.find((f) => f.partido_id === p.id && f.condicion === p.equipo_propio);
+        const rivalRow = filas.find((f) => f.partido_id === p.id && f.condicion !== p.equipo_propio);
+        if (!propiaRow || !rivalRow) continue;
+        if ((Number(propiaRow.pts) || 0) > (Number(rivalRow.pts) || 0)) ganados++; else perdidos++;
+      }
+
       const sum = (arr, k) => arr.reduce((s, f) => s + (Number(f[k]) || 0), 0);
       const pj = propias.length;
       const t2i = sum(propias, "t2i"), t3i = sum(propias, "t3i"), t1i = sum(propias, "t1i");
@@ -5249,6 +5261,7 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
 
       setRc({
         pj,
+        record: { ganados, perdidos },
         pts: {
           general: { favor: pts / pj, contra: sum(rivales, "pts") / pj },
           local: promPtsDe(localIds),
@@ -5299,6 +5312,15 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
         <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido en esta temporada.</p>
       ) : (
         <>
+          <div className="flex items-center gap-2 mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Récord</p>
+            <div className="flex-1 h-px bg-zinc-800" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <StatTile value={rc.record.ganados} label="Ganados" tone="good" />
+            <StatTile value={rc.record.perdidos} label="Perdidos" tone="bad" />
+          </div>
+
           <div className="flex items-center gap-2 mb-1.5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Puntos por partido</p>
             <div className="flex-1 h-px bg-zinc-800" />
