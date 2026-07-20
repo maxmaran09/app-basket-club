@@ -320,7 +320,18 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
   const importar = async () => {
     setFase("importando");
     setErrorImport("");
+    try {
+      await ejecutarImport();
+    } catch (err) {
+      // Red temporalmente ancha: si algo tira una excepcion real (no un {error} controlado de
+      // Supabase -- ej. se corta la conexion a mitad de un pedido), sin este catch quedaba
+      // colgado en "Importando..." para siempre, sin mensaje y sin forma de volver a intentar.
+      setErrorImport(err?.message || "Error inesperado durante la importación. Probá de nuevo.");
+      setFase("preview");
+    }
+  };
 
+  const ejecutarImport = async () => {
     const altas = validas.filter((f) => !f.existente);
     const actualizaciones = validas.filter((f) => f.existente);
 
@@ -399,13 +410,13 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
     // filas posteriores sin intentar), acá se intentan todas las filas y recién al final se
     // reporta si alguna falló.
     const resultadosActualizacion = await Promise.all(actualizaciones.map(async (f) => {
-      const { data: d, existente } = f;
+      const { data: d, provisto, existente } = f;
       const bioPatch = {};
-      if (d.provisto.dni) bioPatch.dni = d.dni;
-      if (d.provisto.posicion) bioPatch.posicion = d.posicion;
-      if (d.provisto.fecha_nacimiento) bioPatch.fecha_nacimiento = d.fecha_nacimiento;
-      if (d.provisto.notas_comentarios) bioPatch.notas_comentarios = d.notas_comentarios;
-      if (d.provisto.disponibilidad) {
+      if (provisto.dni) bioPatch.dni = d.dni;
+      if (provisto.posicion) bioPatch.posicion = d.posicion;
+      if (provisto.fecha_nacimiento) bioPatch.fecha_nacimiento = d.fecha_nacimiento;
+      if (provisto.notas_comentarios) bioPatch.notas_comentarios = d.notas_comentarios;
+      if (provisto.disponibilidad) {
         bioPatch.disponibilidad = d.disponibilidad;
         bioPatch.lesion_detalle = d.lesion_detalle;
         bioPatch.lesion_desde = d.lesion_desde;
@@ -426,8 +437,8 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
       }
 
       const jtPatch = {};
-      if (d.provisto.dorsal) jtPatch.dorsal = d.dorsal;
-      if (d.provisto.equipos_adicionales) jtPatch.equipos_adicionales = d.equipos_adicionales;
+      if (provisto.dorsal) jtPatch.dorsal = d.dorsal;
+      if (provisto.equipos_adicionales) jtPatch.equipos_adicionales = d.equipos_adicionales;
       if (Object.keys(jtPatch).length > 0) {
         const { error } = await supabase.from("jugador_temporada").update(jtPatch).eq("id", existente.jugador_temporada_id);
         if (error) return { ok: false, error: error.message };
