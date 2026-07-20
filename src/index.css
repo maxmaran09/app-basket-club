@@ -29,7 +29,7 @@ html, body {
    el zoom queda pegado hasta que el usuario lo saca a mano. Forzando 16px en foco el navegador
    nunca dispara ese zoom, en vez de tratar de "resetearlo" después con JS. */
 @media (max-width: 767px) {
-  input, select, textarea {
+  input, select, textarea, .rte-content {
     font-size: 16px !important;
   }
 }
@@ -37,8 +37,44 @@ html, body {
 /* Sin esto, el color de foco de un input/select/textarea queda en lo que traiga el navegador
    por defecto (ej. Samsung Internet lo marca en naranja/ámbar) -- se reemplaza por el azul de
    marca para que sea consistente con el resto de la paleta. */
-input:focus, select:focus, textarea:focus {
+input:focus, select:focus, textarea:focus, .rte-content:focus {
   outline: 2px solid var(--color-brand-500);
   outline-offset: 1px;
   border-color: var(--color-brand-500);
+}
+
+/* Editor de texto enriquecido de la descripción de un bloque (RichTextEditor) y su render de
+   solo lectura (.desc-render, donde se muestra ya guardado) comparten el mismo espaciado de
+   párrafos/listas, para que se vea igual mientras se edita y después de guardar. */
+.rte-content p, .desc-render p {
+  margin: 0 0 0.5em;
+}
+.rte-content p:last-child, .desc-render p:last-child {
+  margin-bottom: 0;
+}
+/* Tailwind Preflight resetea "list-style: none" en ul/ol por default -- sin esto, una lista
+   armada desde el editor se ve igual que texto suelto, sin bullet ni numero. */
+.rte-content ul, .desc-render ul {
+  list-style-type: disc;
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.25em;
+}
+.rte-content ol, .desc-render ol {
+  list-style-type: decimal;
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.25em;
+}
+.rte-content li, .desc-render li {
+  margin-bottom: 0.15em;
+}
+.rte-content strong, .desc-render strong {
+  color: #f4f4f5;
+  font-weight: 700;
+}
+.rte-content em, .desc-render em {
+  font-style: italic;
+}
+.rte-content:empty::before {
+  content: attr(data-placeholder);
+  color: #71717a;
 }

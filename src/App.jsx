@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2 } from "lucide-react";
+import DOMPurify from "dompurify";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
 import { CATEGORIAS, TIRAS, POSICIONES, formatPosicion } from "./constants";
@@ -387,21 +388,56 @@ const TOOLS = [
 ];
 
 function CourtDiagram({ initial, onSave, onCancel }) {
-  const [courtType, setCourtType] = useState(initial?.courtType || "half");
-  const [players, setPlayers] = useState(initial?.players || []);
-  const [lines, setLines] = useState(initial?.lines || []);
-  const [balls, setBalls] = useState(initial?.balls || (initial?.ball ? [{ id: "ball-legacy", ...initial.ball }] : []));
-  const [shots, setShots] = useState(initial?.shots || []);
+  const initialDiagram = {
+    courtType: initial?.courtType || "half",
+    players: initial?.players || [],
+    lines: initial?.lines || [],
+    balls: initial?.balls || (initial?.ball ? [{ id: "ball-legacy", ...initial.ball }] : []),
+    shots: initial?.shots || [],
+  };
+  // Todo el contenido editable de la cancha vive en un solo objeto (en vez de un useState por
+  // pieza) para poder deshacer/rehacer con una sola pila de historial, en vez de tener que
+  // coordinar 5 historiales separados.
+  const [diagram, setDiagram] = useState(initialDiagram);
+  const [history, setHistory] = useState([initialDiagram]);
+  const [histIndex, setHistIndex] = useState(0);
+  const { courtType, players, lines, balls, shots } = diagram;
+
   const [shotDraft, setShotDraft] = useState(null);
   const [tool, setTool] = useState("ataque");
   const [drawingPath, setDrawingPath] = useState(null);
   const [previewPt, setPreviewPt] = useState(null);
   const svgRef = useRef(null);
   const dragRef = useRef(null);
+  const dragMovedRef = useRef(false);
   const offCount = useRef((initial?.players || []).filter((p) => p.team === "off").reduce((m, p) => Math.max(m, p.num), 0));
   const defCount = useRef((initial?.players || []).filter((p) => p.team === "def").reduce((m, p) => Math.max(m, p.num), 0));
   const coachCount = useRef((initial?.players || []).filter((p) => p.team === "coach").reduce((m, p) => Math.max(m, p.num), 0));
   const markerId = useId();
+
+  // Aplica un cambio al diagrama y lo registra como un paso de deshacer -- recorta cualquier
+  // "rehacer" pendiente, igual que cualquier editor. No se usa mientras se arrastra algo (eso se
+  // registra una sola vez al soltar, en onUp, para no llenar el historial con cada pixel movido).
+  const commit = (next) => {
+    setDiagram(next);
+    setHistory((h) => [...h.slice(0, histIndex + 1), next].slice(-60));
+    setHistIndex((i) => Math.min(i + 1, 59));
+  };
+
+  const canUndo = histIndex > 0;
+  const canRedo = histIndex < history.length - 1;
+
+  const undo = () => {
+    if (!canUndo) return;
+    setDiagram(history[histIndex - 1]);
+    setHistIndex(histIndex - 1);
+  };
+
+  const redo = () => {
+    if (!canRedo) return;
+    setDiagram(history[histIndex + 1]);
+    setHistIndex(histIndex + 1);
+  };
 
   const vbW = 150, vbH = courtType === "half" ? 140 : 280;
   const LINE_TOOLS = ["pase", "dribbling", "corte", "cortina"];
@@ -416,17 +452,17 @@ function CourtDiagram({ initial, onSave, onCancel }) {
   const finalizeDrawing = (extraPt) => {
     if (!drawingPath) return;
     const points = extraPt ? [...drawingPath.points, extraPt] : drawingPath.points;
-    if (points.length >= 2) setLines((ls) => [...ls, { id: "l" + Date.now(), type: drawingPath.type, points }]);
+    if (points.length >= 2) commit({ ...diagram, lines: [...lines, { id: "l" + Date.now(), type: drawingPath.type, points }] });
     setDrawingPath(null);
     setPreviewPt(null);
   };
 
   const onCourtDown = (evt) => {
     const pt = getPoint(evt);
-    if (tool === "ataque") { offCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }]); }
-    else if (tool === "defensa") { defCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }]); }
-    else if (tool === "coach") { coachCount.current += 1; setPlayers((p) => [...p, { id: "p" + Date.now(), num: coachCount.current, team: "coach", x: pt.x, y: pt.y }]); }
-    else if (tool === "balon") { setBalls((bs) => [...bs, { id: "ball" + Date.now(), x: pt.x, y: pt.y }]); }
+    if (tool === "ataque") { offCount.current += 1; commit({ ...diagram, players: [...players, { id: "p" + Date.now(), num: offCount.current, team: "off", x: pt.x, y: pt.y }] }); }
+    else if (tool === "defensa") { defCount.current += 1; commit({ ...diagram, players: [...players, { id: "p" + Date.now(), num: defCount.current, team: "def", x: pt.x, y: pt.y }] }); }
+    else if (tool === "coach") { coachCount.current += 1; commit({ ...diagram, players: [...players, { id: "p" + Date.now(), num: coachCount.current, team: "coach", x: pt.x, y: pt.y }] }); }
+    else if (tool === "balon") { commit({ ...diagram, balls: [...balls, { id: "ball" + Date.now(), x: pt.x, y: pt.y }] }); }
   };
 
   const onCourtClick = (evt) => {
@@ -435,7 +471,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
       if (!shotDraft) { setShotDraft(pt); }
       else {
         const angle = Math.atan2(pt.y - shotDraft.y, pt.x - shotDraft.x);
-        setShots((s) => [...s, { id: "s" + Date.now(), x: shotDraft.x, y: shotDraft.y, angle }]);
+        commit({ ...diagram, shots: [...shots, { id: "s" + Date.now(), x: shotDraft.x, y: shotDraft.y, angle }] });
         setShotDraft(null);
         setPreviewPt(null);
       }
@@ -456,37 +492,50 @@ function CourtDiagram({ initial, onSave, onCancel }) {
     if (drawingPath || shotDraft) setPreviewPt(getPoint(evt));
     if (!dragRef.current) return;
     evt.preventDefault();
+    dragMovedRef.current = true;
     const pt = getPoint(evt);
-    if (dragRef.current.type === "player") setPlayers((ps) => ps.map((p) => (p.id === dragRef.current.id ? { ...p, x: pt.x, y: pt.y } : p)));
-    else if (dragRef.current.type === "ball") setBalls((bs) => bs.map((b) => (b.id === dragRef.current.id ? { ...b, x: pt.x, y: pt.y } : b)));
-    else if (dragRef.current.type === "shot") setShots((ss) => ss.map((s) => (s.id === dragRef.current.id ? { ...s, x: pt.x, y: pt.y } : s)));
+    if (dragRef.current.type === "player") setDiagram((d) => ({ ...d, players: d.players.map((p) => (p.id === dragRef.current.id ? { ...p, x: pt.x, y: pt.y } : p)) }));
+    else if (dragRef.current.type === "ball") setDiagram((d) => ({ ...d, balls: d.balls.map((b) => (b.id === dragRef.current.id ? { ...b, x: pt.x, y: pt.y } : b)) }));
+    else if (dragRef.current.type === "shot") setDiagram((d) => ({ ...d, shots: d.shots.map((s) => (s.id === dragRef.current.id ? { ...s, x: pt.x, y: pt.y } : s)) }));
   };
 
-  const onUp = () => { dragRef.current = null; };
+  // Si se arrastró algo, la posición final ya quedó reflejada en "diagram" (via los setDiagram
+  // de onMove) -- acá se registra como UN solo paso de deshacer, no uno por cada pixel movido.
+  const onUp = () => {
+    if (dragRef.current && dragMovedRef.current) {
+      setHistory((h) => [...h.slice(0, histIndex + 1), diagram].slice(-60));
+      setHistIndex((i) => Math.min(i + 1, 59));
+    }
+    dragRef.current = null;
+  };
 
   const onPlayerDown = (evt, p) => {
     evt.stopPropagation();
-    if (tool === "mover") dragRef.current = { type: "player", id: p.id };
-    else if (tool === "borrar") setPlayers((ps) => ps.filter((x) => x.id !== p.id));
+    if (tool === "mover") { dragRef.current = { type: "player", id: p.id }; dragMovedRef.current = false; }
+    else if (tool === "borrar") commit({ ...diagram, players: players.filter((x) => x.id !== p.id) });
   };
 
   const onBallDown = (evt, ballId) => {
     evt.stopPropagation();
-    if (tool === "mover") dragRef.current = { type: "ball", id: ballId };
-    else if (tool === "borrar") setBalls((bs) => bs.filter((b) => b.id !== ballId));
+    if (tool === "mover") { dragRef.current = { type: "ball", id: ballId }; dragMovedRef.current = false; }
+    else if (tool === "borrar") commit({ ...diagram, balls: balls.filter((b) => b.id !== ballId) });
   };
 
   const onShotDown = (evt, s) => {
     evt.stopPropagation();
-    if (tool === "mover") dragRef.current = { type: "shot", id: s.id };
-    else if (tool === "borrar") setShots((ss) => ss.filter((x) => x.id !== s.id));
+    if (tool === "mover") { dragRef.current = { type: "shot", id: s.id }; dragMovedRef.current = false; }
+    else if (tool === "borrar") commit({ ...diagram, shots: shots.filter((x) => x.id !== s.id) });
   };
 
-  const onLineClick = (evt, l) => { evt.stopPropagation(); if (tool === "borrar") setLines((ls) => ls.filter((x) => x.id !== l.id)); };
+  const onLineClick = (evt, l) => { evt.stopPropagation(); if (tool === "borrar") commit({ ...diagram, lines: lines.filter((x) => x.id !== l.id) }); };
 
   const selectTool = (id) => { setTool(id); setDrawingPath(null); setPreviewPt(null); setShotDraft(null); };
 
-  const clearAll = () => { setPlayers([]); setLines([]); setBalls([]); setShots([]); setShotDraft(null); setDrawingPath(null); setPreviewPt(null); offCount.current = 0; defCount.current = 0; coachCount.current = 0; };
+  const clearAll = () => {
+    commit({ courtType, players: [], lines: [], balls: [], shots: [] });
+    setShotDraft(null); setDrawingPath(null); setPreviewPt(null);
+    offCount.current = 0; defCount.current = 0; coachCount.current = 0;
+  };
 
   const previewPoints = drawingPath ? [...drawingPath.points, ...(previewPt ? [previewPt] : [])] : [];
 
@@ -502,7 +551,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
             </button>
           );
         })}
-        <button onClick={() => setCourtType(courtType === "half" ? "full" : "half")} title={courtType === "half" ? "Cambiar a cancha completa" : "Cambiar a media cancha"}
+        <button onClick={() => commit({ ...diagram, courtType: courtType === "half" ? "full" : "half" })} title={courtType === "half" ? "Cambiar a cancha completa" : "Cambiar a media cancha"}
           className="p-1.5 rounded border bg-zinc-900 border-zinc-700 text-zinc-400">
           {courtType === "half" ? <Maximize2 size={15} /> : <Minimize2 size={15} />}
         </button>
@@ -511,6 +560,12 @@ function CourtDiagram({ initial, onSave, onCancel }) {
             <Check size={15} />
           </button>
         )}
+        <button onClick={undo} disabled={!canUndo} title="Deshacer" className="p-1.5 rounded border bg-zinc-900 border-zinc-700 text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed">
+          <Undo2 size={15} />
+        </button>
+        <button onClick={redo} disabled={!canRedo} title="Rehacer" className="p-1.5 rounded border bg-zinc-900 border-zinc-700 text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed">
+          <Redo2 size={15} />
+        </button>
         <button onClick={clearAll} title="Limpiar cancha" className="p-1.5 rounded border bg-red-500/10 border-red-500/30 text-red-300">
           <Trash2 size={15} />
         </button>
@@ -915,6 +970,91 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
   );
 }
 
+// Etiquetas/atributos permitidos en la descripción de un bloque -- es exactamente lo que la
+// barra de herramientas de RichTextEditor puede producir (negrita/cursiva/listas), así que
+// cualquier otra cosa que llegue por copiar/pegar (estilos, scripts, imágenes) se descarta acá.
+const DESCRIPCION_SANITIZE_CONFIG = { ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "ul", "ol", "li"], ALLOWED_ATTR: [] };
+
+function sanitizeDescripcionHtml(html) {
+  return DOMPurify.sanitize(html || "", DESCRIPCION_SANITIZE_CONFIG);
+}
+
+// Los bloques cargados antes de pasar a HTML (o pegados como texto plano) no tienen tags -- se
+// escapan y cada salto de línea pasa a ser su propio párrafo, para no perder el formato viejo.
+function descripcionToHtml(desc) {
+  if (!desc) return "";
+  if (/<[a-z][\s\S]*>/i.test(desc)) return desc;
+  const esc = desc.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return esc.split("\n").map((linea) => `<p>${linea || "<br>"}</p>`).join("");
+}
+
+// Para previews de una sola línea (ej. el selector de la biblioteca) donde no hay espacio para
+// mostrar negrita/listas -- saca las etiquetas y deja el texto plano.
+function htmlToPlainText(html) {
+  const div = document.createElement("div");
+  div.innerHTML = sanitizeDescripcionHtml(descripcionToHtml(html));
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+// Editor de texto enriquecido (negrita/cursiva/listas) para la descripción de un bloque de
+// cancha. "initialValue" solo se aplica al montar -- para resetear con contenido nuevo (otro
+// bloque, formulario limpio) el que lo usa tiene que cambiarle la "key" desde afuera, así React
+// lo remonta en vez de pisar lo que el usuario está escribiendo en cada tecla.
+function RichTextEditor({ initialValue, onChange, placeholder }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = sanitizeDescripcionHtml(descripcionToHtml(initialValue));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const emitChange = () => onChange(sanitizeDescripcionHtml(ref.current.innerHTML));
+
+  const exec = (cmd) => {
+    ref.current.focus();
+    document.execCommand(cmd, false, null);
+    emitChange();
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData("text/html");
+    const texto = e.clipboardData.getData("text/plain");
+    const limpio = sanitizeDescripcionHtml(html || descripcionToHtml(texto));
+    document.execCommand("insertHTML", false, limpio);
+    emitChange();
+  };
+
+  const BOTONES = [
+    { cmd: "bold", icon: Bold, title: "Negrita" },
+    { cmd: "italic", icon: Italic, title: "Cursiva" },
+    { cmd: "insertUnorderedList", icon: List, title: "Lista" },
+    { cmd: "insertOrderedList", icon: ListOrdered, title: "Lista numerada" },
+    { cmd: "removeFormat", icon: Eraser, title: "Borrar formato" },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center gap-0.5 bg-zinc-950 border border-zinc-700 border-b-0 rounded-t px-1 py-1">
+        {BOTONES.map(({ cmd, icon: Icon, title }) => (
+          <button key={cmd} type="button" title={title} onMouseDown={(e) => e.preventDefault()} onClick={() => exec(cmd)}
+            className="w-7 h-7 rounded flex items-center justify-center text-zinc-400 hover:bg-cyan-500/15 hover:text-cyan-300">
+            <Icon size={14} />
+          </button>
+        ))}
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        onInput={emitChange}
+        onPaste={handlePaste}
+        data-placeholder={placeholder}
+        className="rte-content w-full bg-zinc-950 border border-zinc-700 rounded-b px-2 py-1.5 text-sm text-zinc-100 min-h-[70px]"
+      />
+    </div>
+  );
+}
+
 // Clona un array de bloques (y sus diagramas) con ids nuevos, para duplicar sin pisar el original.
 function clonarBloques(bloques) {
   return (bloques || []).map((b, i) => ({
@@ -1006,7 +1146,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                     <input placeholder="Fin (ej 20')" value={editBloqueForm.fin} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, fin: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                     <input placeholder="Título del bloque de cancha" value={editBloqueForm.titulo} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, titulo: e.target.value })} className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                   </div>
-                  <textarea placeholder="Descripción del ejercicio" value={editBloqueForm.desc} onChange={(e) => setEditBloqueForm({ ...editBloqueForm, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
+                  <RichTextEditor initialValue={editBloqueForm.desc} onChange={(html) => setEditBloqueForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
                   <div className="flex gap-2">
                     <button onClick={saveBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
                     <button onClick={() => setEditingBloqueId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
@@ -1019,7 +1159,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-zinc-100">{b.titulo}</p>
-                      <p className="text-sm text-zinc-400 mt-0.5">{b.desc}</p>
+                      <div className="text-sm text-zinc-400 mt-0.5 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(b.desc)) }} />
                     </div>
                     {!soloLectura && (
                       <div className="flex items-center gap-3 shrink-0">
@@ -1082,7 +1222,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
             <input placeholder="Fin (ej 20')" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} className="w-20 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             <input placeholder="Título del bloque de cancha" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           </div>
-          <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" rows={2} />
+          <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
           <div className="flex gap-2">
             <button onClick={addBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
             <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
@@ -1115,7 +1255,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                     {item.diagrams?.[0] && <CourtPreview {...item.diagrams[0]} />}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-zinc-100 truncate">{item.titulo}</p>
-                      {item.descripcion && <p className="text-xs text-zinc-500 truncate">{item.descripcion}</p>}
+                      {item.descripcion && <p className="text-xs text-zinc-500 truncate">{htmlToPlainText(item.descripcion)}</p>}
                     </div>
                     <button onClick={() => agregarDesdeBiblioteca(item)} title="Agregar a este evento" className="text-cyan-400 hover:text-cyan-300 shrink-0">
                       <Plus size={16} />
@@ -1433,7 +1573,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
               {editingId === item.id ? (
                 <div className="space-y-2">
                   <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                  <textarea placeholder="Descripción del ejercicio" value={editForm.desc} onChange={(e) => setEditForm({ ...editForm, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  <RichTextEditor initialValue={editForm.desc} onChange={(html) => setEditForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
                   <div className="flex gap-2">
                     <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
                     <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
@@ -1444,7 +1584,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-zinc-100">{item.titulo}</p>
-                      {item.descripcion && <p className="text-sm text-zinc-400 mt-0.5">{item.descripcion}</p>}
+                      {item.descripcion && <div className="text-sm text-zinc-400 mt-0.5 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(item.descripcion)) }} />}
                     </div>
                     {!soloLectura && (
                       <div className="flex items-center gap-3 shrink-0">
@@ -1499,7 +1639,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         showForm ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
             <input placeholder="Título del bloque" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <textarea placeholder="Descripción del ejercicio" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
               <button onClick={addItem} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
               <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>

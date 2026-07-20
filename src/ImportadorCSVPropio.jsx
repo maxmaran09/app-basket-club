@@ -391,8 +391,14 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
     }
 
     const hoy = hoyBA();
-    const actualizadosFlattened = [];
-    for (const f of actualizaciones) {
+    // Las actualizaciones van en paralelo (Promise.all) en vez de una por una esperando a la
+    // anterior -- con un plantel de 20+ jugadores, hacerlas secuenciales significaba 2 pedidos a
+    // Supabase por fila, cada uno esperando al de la fila previa (podía tardar varios segundos
+    // reales). En paralelo, el tiempo total queda acotado por el pedido más lento, no por la suma
+    // de todos. A diferencia del loop secuencial (que cortaba en la primera fila con error, dejando
+    // filas posteriores sin intentar), acá se intentan todas las filas y recién al final se
+    // reporta si alguna falló.
+    const resultadosActualizacion = await Promise.all(actualizaciones.map(async (f) => {
       const { data: d, existente } = f;
       const bioPatch = {};
       if (d.provisto.dni) bioPatch.dni = d.dni;
@@ -416,7 +422,7 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
 
       if (Object.keys(bioPatch).length > 0) {
         const { error } = await supabase.from("jugadores").update(bioPatch).eq("id", existente.id);
-        if (error) { setErrorImport(mensajeErrorImport(error)); setFase("preview"); return; }
+        if (error) return { ok: false, error: mensajeErrorImport(error) };
       }
 
       const jtPatch = {};
@@ -424,11 +430,15 @@ export default function ImportadorCSVPropio({ categoriaDefault, tiraDefault, tem
       if (d.provisto.equipos_adicionales) jtPatch.equipos_adicionales = d.equipos_adicionales;
       if (Object.keys(jtPatch).length > 0) {
         const { error } = await supabase.from("jugador_temporada").update(jtPatch).eq("id", existente.jugador_temporada_id);
-        if (error) { setErrorImport(error.message); setFase("preview"); return; }
+        if (error) return { ok: false, error: error.message };
       }
 
-      actualizadosFlattened.push({ ...existente, ...bioPatch, ...jtPatch });
-    }
+      return { ok: true, flattened: { ...existente, ...bioPatch, ...jtPatch } };
+    }));
+
+    const fallo = resultadosActualizacion.find((r) => !r.ok);
+    if (fallo) { setErrorImport(fallo.error); setFase("preview"); return; }
+    const actualizadosFlattened = resultadosActualizacion.map((r) => r.flattened);
 
     setResultado({ insertados: nuevosFlattened.length, actualizados: actualizadosFlattened.length, omitidas: invalidas.length });
     onImported(nuevosFlattened, actualizadosFlattened);
