@@ -2378,7 +2378,7 @@ const CAMPOS_POTENCIA = [
 const CAMPOS_ACELERACION = [
   { k: "m5", l: "5 metros", u: "s" },
   { k: "m10", l: "10 metros", u: "s" },
-  { k: "m15", l: "15 metros", u: "s" },
+  { k: "m20", l: "20 metros", u: "s" },
 ];
 const TABS_EVALUACION = [["fuerza", "Fuerza"], ["potencia", "Potencia"], ["aceleracion", "Aceleración"]];
 
