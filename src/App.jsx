@@ -4856,6 +4856,22 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     return match ? match.id : null;
   };
 
+  const linkJugadorRivalPorNombre = (nombre, equipoRivalId) => {
+    if (!equipoRivalId) return null;
+    return aliasJugadorRival[`${equipoRivalId}::${normalizeName(nombre)}`] || null;
+  };
+
+  // Reintenta vincular los jugadores de un lado contra los alias de jugador rival, para un
+  // equipo puntual -- se usa tanto al parsear el PDF (si el equipo ya estaba aliasado en ese
+  // momento) como cuando el equipo recien se vincula a mano en la vista previa (el vinculo de
+  // jugadores solo se intentaba UNA vez, al leer el archivo, con el equipo todavia sin resolver
+  // -- elegirlo despues nunca reintentaba autocompletar las filas de esa mano).
+  const relinkJugadoresRivales = (rows, equipoRivalId) => rows.map((row) => {
+    if (row.jugador_id || row.jugador_rival_id) return row; // ya vinculado, no pisar lo elegido a mano
+    const jugadorRivalId = linkJugadorRivalPorNombre(row.nombre_jugador, equipoRivalId);
+    return jugadorRivalId ? { ...row, jugador_rival_id: jugadorRivalId } : row;
+  });
+
   const handleFile = async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
@@ -4873,9 +4889,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       const equipoVisitanteRivalId = aliasEquipo[normalizeName(result.equipoVisitante)] || "";
       const mapJugador = (j, equipoRivalId) => {
         const jugadorId = linkJugadorPorNombre(j.nombre_jugador);
-        const jugadorRivalId = !jugadorId && equipoRivalId
-          ? aliasJugadorRival[`${equipoRivalId}::${normalizeName(j.nombre_jugador)}`] || null
-          : null;
+        const jugadorRivalId = !jugadorId ? linkJugadorRivalPorNombre(j.nombre_jugador, equipoRivalId) : null;
         return { ...j, jugador_id: jugadorId, jugador_rival_id: jugadorRivalId };
       };
       setPreview({
@@ -5268,7 +5282,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
               {preview.equipoPropio !== "LOCAL" && (
                 <select value={preview.equipoLocalRivalId} onChange={(e) => {
                   const value = e.target.value;
-                  setPreview((prev) => ({ ...prev, equipoLocalRivalId: value }));
+                  setPreview((prev) => ({ ...prev, equipoLocalRivalId: value, jugadoresLocal: relinkJugadoresRivales(prev.jugadoresLocal, value) }));
                   if (value) persistAliasEquipo(preview.equipoLocal, value);
                 }}
                   className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
@@ -5291,7 +5305,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
               {preview.equipoPropio !== "VISITANTE" && (
                 <select value={preview.equipoVisitanteRivalId} onChange={(e) => {
                   const value = e.target.value;
-                  setPreview((prev) => ({ ...prev, equipoVisitanteRivalId: value }));
+                  setPreview((prev) => ({ ...prev, equipoVisitanteRivalId: value, jugadoresVisitante: relinkJugadoresRivales(prev.jugadoresVisitante, value) }));
                   if (value) persistAliasEquipo(preview.equipoVisitante, value);
                 }}
                   className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
