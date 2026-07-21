@@ -4772,9 +4772,12 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         supabase.from("alias_jugador_rival").select("*"),
       ]);
       if (cancelled) return;
-      if (!eq.error && eq.data) setAliasEquipo(Object.fromEntries(eq.data.map((a) => [a.nombre_pdf, a.equipo_rival_id])));
-      if (!ju.error && ju.data) setAliasJugador(Object.fromEntries(ju.data.map((a) => [a.nombre_pdf, a.jugador_id])));
-      if (!jr.error && jr.data) setAliasJugadorRival(Object.fromEntries(jr.data.map((a) => [`${a.equipo_rival_id}::${a.nombre_pdf}`, a.jugador_rival_id])));
+      // Se vuelve a pasar "a.nombre_pdf" por normalizeName acá (no solo confiar en como haya
+      // quedado guardado) -- así un alias guardado antes de que normalizeName empezara a sacar
+      // tildes sigue matcheando igual contra un PDF nuevo, sin necesidad de tocar la tabla.
+      if (!eq.error && eq.data) setAliasEquipo(Object.fromEntries(eq.data.map((a) => [normalizeName(a.nombre_pdf), a.equipo_rival_id])));
+      if (!ju.error && ju.data) setAliasJugador(Object.fromEntries(ju.data.map((a) => [normalizeName(a.nombre_pdf), a.jugador_id])));
+      if (!jr.error && jr.data) setAliasJugadorRival(Object.fromEntries(jr.data.map((a) => [`${a.equipo_rival_id}::${normalizeName(a.nombre_pdf)}`, a.jugador_rival_id])));
     })();
     return () => { cancelled = true; };
   }, []);

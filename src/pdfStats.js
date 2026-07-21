@@ -7,8 +7,14 @@ export const round2 = (n) => Math.round(n * 100) / 100;
 export const round3 = (n) => Math.round(n * 1000) / 1000;
 
 // Normaliza un nombre (de equipo o jugador) para comparar de forma exacta pero insensible a
-// mayúsculas/espacios — es la clave que usan las tablas de alias para "recordar" un vínculo.
-export const normalizeName = (s) => (s || "").toUpperCase().replace(/\s+/g, " ").trim();
+// mayúsculas/espacios/tildes — es la clave que usan las tablas de alias para "recordar" un
+// vínculo. Sin ignorar tildes, "Martínez" en un PDF y "Martinez" en otro (muy común entre
+// distintos exports de la CABB) se trataban como dos jugadores distintos y el alias nunca
+// matcheaba -- normalize("NFD") separa cada letra acentuada en base + marca diacrítica (ej. "í"
+// -> "i" + U+0301), y ̀-ͯ (rango Unicode de "Combining Diacritical Marks") las saca.
+export const normalizeName = (s) => (s || "")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toUpperCase().replace(/\s+/g, " ").trim();
 
 // Nombre del club propio tal como aparece en el encabezado del PDF de la CABB — se usa para
 // detectar solo, al guardar un partido, si jugamos de local o visitante (necesario para calcular
