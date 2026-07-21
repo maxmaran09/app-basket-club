@@ -780,11 +780,17 @@ function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
     let cancelled = false;
     setLoading(true);
     (async () => {
+      // Sin filtro de categoria/tira a propósito: un jugador multi-equipo responde el form UNA
+      // sola vez, para el equipo que el form le ofreció ese día -- esa misma respuesta tiene que
+      // valer para TODOS sus equipos, no solo para el que eligió. Se matchea por jugador_id +
+      // fecha; si por algún motivo hay más de una fila el mismo día (respondió para dos equipos
+      // distintos), created_at ascendente + Object.fromEntries se queda con la más reciente.
       const { data, error } = await supabase
         .from("wellness_diario")
         .select("id, jugador_id, sueno, fatiga, dolor_muscular, estres, promedio_wellness, notas_medicas")
-        .eq("categoria", event.categoria).eq("tira", event.tira).eq("fecha", event.date)
-        .in("jugador_id", roster.map((j) => j.id));
+        .eq("fecha", event.date)
+        .in("jugador_id", roster.map((j) => j.id))
+        .order("created_at", { ascending: true });
       if (cancelled) return;
       if (!error && data) {
         setFilas(Object.fromEntries(data.map((f) => [f.jugador_id, f])));
@@ -793,7 +799,7 @@ function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event.categoria, event.tira, event.date, roster.map((j) => j.id).join(",")]);
+  }, [event.date, roster.map((j) => j.id).join(",")]);
 
   const startEdit = (fila) => { setNotaDraft(fila.notas_medicas || ""); setEditandoId(fila.id); };
 
@@ -5627,13 +5633,19 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       desde.setDate(desde.getDate() - 6);
       const desdeKey = desde.toISOString().slice(0, 10);
 
+      // Sin filtro de categoria/tira sobre wellness_diario a propósito -- se filtra por el
+      // roster (via jugadorEnEquipo, que ya contempla equipos_adicionales) para que la respuesta
+      // de un jugador multi-equipo cuente acá sin importar para cuál de sus equipos la cargó.
+      const rosterIds = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira)).map((j) => j.id);
       const [{ data: entrenos, error: errEnt }, { data: wellRows, error: errWell }] = await Promise.all([
         supabase.from("eventos").select("id")
           .eq("type", "entrenamiento").eq("categoria", categoria).eq("tira", tira)
           .gte("date", desdeKey).lte("date", hoy),
-        supabase.from("wellness_diario").select("promedio_wellness")
-          .eq("categoria", categoria).eq("tira", tira)
-          .gte("fecha", desdeKey).lte("fecha", hoy),
+        rosterIds.length
+          ? supabase.from("wellness_diario").select("promedio_wellness")
+              .in("jugador_id", rosterIds)
+              .gte("fecha", desdeKey).lte("fecha", hoy)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       if (cancelled) return;
@@ -5661,7 +5673,8 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       setLoadingSemana(false);
     })();
     return () => { cancelled = true; };
-  }, [categoria, tira, hoy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoria, tira, hoy, jugadores]);
 
   const [ultimoPartido, setUltimoPartido] = useState(null);
   const [lideres, setLideres] = useState({ puntos: [], eficiencia: [], rebotes: [] });
