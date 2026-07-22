@@ -78,6 +78,15 @@ function jugadorEnEquipo(j, categoria, tira) {
   return (j.equipos_adicionales || []).some((e) => e.categoria === categoria && e.tira === tira);
 }
 
+// Dorsal que le corresponde a un jugador en un equipo puntual -- puede jugar con un número
+// distinto en cada equipo adicional (ej. sube a Primera con el 12 pero en su categoría es el 7).
+// Si el equipo adicional no tiene un dorsal propio cargado, cae al de su equipo principal.
+function dorsalEnEquipo(j, categoria, tira) {
+  if (j.categoria_origen === categoria && j.tira === tira) return j.dorsal ?? null;
+  const extra = (j.equipos_adicionales || []).find((e) => e.categoria === categoria && e.tira === tira);
+  return extra?.dorsal ?? j.dorsal ?? null;
+}
+
 function Chip({ children, tone = "zinc" }) {
   const map = {
     zinc: "bg-zinc-800 text-zinc-300 border-zinc-700",
@@ -704,7 +713,7 @@ function AsistenciaSection({ event, jugadores }) {
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex items-center gap-2 min-w-0 sm:flex-1">
-                    <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                    <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{dorsalEnEquipo(j, event.categoria, event.tira) ?? "-"}</span>
                     <span className="text-sm text-zinc-200 flex-1 min-w-0">
                       {j.nombre_apellido}
                       {(j.categoria_origen !== event.categoria || j.tira !== event.tira) && (
@@ -824,7 +833,7 @@ function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
             return (
               <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{j.dorsal ?? "-"}</span>
+                  <span className="text-brand-300 font-mono text-xs w-7 shrink-0">#{dorsalEnEquipo(j, event.categoria, event.tira) ?? "-"}</span>
                   <span className="text-sm text-zinc-200 flex-1 min-w-0">{j.nombre_apellido}</span>
                   {f ? (
                     <>
@@ -925,6 +934,10 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
   const [lugarFisico, setLugarFisico] = useState(data.lugarFisico || "Cancha");
   const [enfoqueFisico, setEnfoqueFisico] = useState(data.enfoqueFisico || []);
   const [notasFisicas, setNotasFisicas] = useState(data.notasFisicas || "");
+  const [fotoUrl, setFotoUrl] = useState(data.fotoFisicaUrl || "");
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [errorFoto, setErrorFoto] = useState("");
+  const [lightboxAbierto, setLightboxAbierto] = useState(false);
   const toggleEnfoque = (v) => setEnfoqueFisico(enfoqueFisico.includes(v) ? enfoqueFisico.filter((x) => x !== v) : [...enfoqueFisico, v]);
 
   const guardarFisica = () => {
@@ -932,9 +945,32 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
     onSave({ cargaFisica, lugarFisico, enfoqueFisico, notasFisicas });
   };
 
+  // La foto se sube/reemplaza al toque (no queda atada al ciclo Editar/Guardar de arriba) --
+  // path "<data.id>.<ext>" con upsert, mismo criterio que la foto de perfil de un jugador.
+  const handleFotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setErrorFoto("");
+    setSubiendoFoto(true);
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const { error: errUpload } = await supabase.storage.from("fotos-preparacion-fisica").upload(`${data.id}.${ext}`, file, { upsert: true, cacheControl: "3600" });
+    if (errUpload) { setErrorFoto(errUpload.message); setSubiendoFoto(false); return; }
+    const { data: pub } = supabase.storage.from("fotos-preparacion-fisica").getPublicUrl(`${data.id}.${ext}`);
+    const nuevaUrl = `${pub.publicUrl}?v=${Date.now()}`;
+    setFotoUrl(nuevaUrl);
+    setSubiendoFoto(false);
+    onSave({ fotoFisicaUrl: nuevaUrl });
+  };
+
+  const quitarFoto = () => {
+    setFotoUrl("");
+    onSave({ fotoFisicaUrl: null });
+  };
+
   return (
     <Section icon={Dumbbell} title="Preparación física" accent="text-sky-400">
-      <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
         {editFisica ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
@@ -971,7 +1007,36 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
             )}
           </div>
         )}
+
+        <div className="pt-3 border-t border-zinc-800">
+          {fotoUrl ? (
+            <div className="flex items-center gap-3">
+              <button onClick={() => setLightboxAbierto(true)} className="shrink-0">
+                <img src={fotoUrl} alt="Foto de preparación física" className="w-16 h-16 object-cover rounded-lg border border-zinc-700 hover:opacity-80" />
+              </button>
+              {!soloLectura && (
+                <div className="flex flex-col items-start gap-1">
+                  <label className="text-xs text-sky-400 hover:text-sky-300 cursor-pointer">
+                    {subiendoFoto ? "Subiendo…" : "Reemplazar foto"}
+                    <input type="file" accept="image/*" onChange={handleFotoChange} disabled={subiendoFoto} className="hidden" />
+                  </label>
+                  <button onClick={quitarFoto} className="text-xs text-zinc-500 hover:text-red-400">Quitar foto</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            !soloLectura && (
+              <label className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+                <Camera size={13} /> {subiendoFoto ? "Subiendo…" : "Agregar foto"}
+                <input type="file" accept="image/*" onChange={handleFotoChange} disabled={subiendoFoto} className="hidden" />
+              </label>
+            )
+          )}
+          {errorFoto && <p className="text-xs text-red-400 mt-1">{errorFoto}</p>}
+        </div>
       </div>
+
+      {lightboxAbierto && <FotoLightboxModal url={fotoUrl} onClose={() => setLightboxAbierto(false)} />}
     </Section>
   );
 }
@@ -1356,7 +1421,7 @@ function PlanIndividualCard({ jugador, plan, opcionesJugador, onUpdate, onRemove
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-teal-300 font-mono text-xs shrink-0">#{jugador?.dorsal ?? "-"}</span>
+          <span className="text-teal-300 font-mono text-xs shrink-0">#{(jugador && dorsalEnEquipo(jugador, categoria, tira)) ?? "-"}</span>
           {headerSoloLectura ? (
             <span className="text-sm font-bold text-zinc-100">{jugador?.nombre_apellido ?? "Sin asignar"}</span>
           ) : (
@@ -1676,6 +1741,20 @@ function youtubeEmbedUrl(url) {
 }
 
 // Reproductor emergente: el video corre adentro de la app, sin redirigir a YouTube.
+// Ventana grande para ver una foto (ej. la de Preparación física) tocando su miniatura.
+function FotoLightboxModal({ url, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end mb-2">
+          <button onClick={onClose} className="text-zinc-300 hover:text-white"><X size={20} /></button>
+        </div>
+        <img src={url} alt="" className="w-full h-auto max-h-[80vh] object-contain rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
 function VideoPlayerModal({ url, onClose }) {
   const embedUrl = youtubeEmbedUrl(url);
   return (
@@ -2222,6 +2301,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
     setEquipos([...equipos, { categoria: nuevoCat, tira: nuevoTira }]);
   };
   const removeEquipo = (idx) => setEquipos(equipos.filter((_, i) => i !== idx));
+  const updateEquipoDorsal = (idx, value) => setEquipos((prev) => prev.map((e, i) => (i === idx ? { ...e, dorsal: value ? Number(value) : null } : e)));
 
   const submit = async () => {
     if (!form.nombre_apellido) return;
@@ -2328,8 +2408,16 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
               {equipos.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {equipos.map((e, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300">
+                    <span key={i} className="inline-flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300">
                       {e.categoria} · {e.tira}
+                      <input
+                        type="number"
+                        value={e.dorsal ?? ""}
+                        onChange={(ev) => updateEquipoDorsal(i, ev.target.value)}
+                        placeholder={form.dorsal || "#"}
+                        title="Dorsal en este equipo (vacío = el mismo que en su equipo principal)"
+                        className="w-11 bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100"
+                      />
                       <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
                     </span>
                   ))}
@@ -2833,7 +2921,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <FotoJugadorMini url={j.foto_url} size={24} />
-              <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+              <span className="text-brand-300 font-mono text-xs">#{dorsalEnEquipo(j, categoria, tira) ?? "-"}</span>
               <span className="font-medium text-sm">{j.nombre_apellido}</span>
               {(j.categoria_origen !== categoria || j.tira !== tira) && (
                 <span className="text-xs text-zinc-500">(de {j.categoria_origen} · {j.tira})</span>

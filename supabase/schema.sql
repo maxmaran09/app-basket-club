@@ -41,6 +41,7 @@ create table if not exists public.eventos (
   "lugarFisico" text check ("lugarFisico" in ('Cancha','Gimnasio de pesas','Mixto')),
   "enfoqueFisico" jsonb not null default '[]'::jsonb,
   "notasFisicas" text,
+  "fotoFisicaUrl" text,
 
   -- Partido: header
   rival text,
@@ -65,6 +66,7 @@ create table if not exists public.eventos (
 -- Por si la tabla ya existia de una corrida anterior (sin "individual" como tipo valido ni la
 -- columna de planes individuales): estas lineas son seguras de correr siempre.
 alter table public.eventos add column if not exists "planesIndividuales" jsonb not null default '[]'::jsonb;
+alter table public.eventos add column if not exists "fotoFisicaUrl" text;
 alter table public.eventos drop constraint if exists eventos_type_check;
 alter table public.eventos add constraint eventos_type_check
   check (type in ('entrenamiento','partido','libre','optativo','especial','individual'));
@@ -118,3 +120,34 @@ create policy "eventos_update_all" on public.eventos for update using (true);
 
 drop policy if exists "eventos_delete_all" on public.eventos;
 create policy "eventos_delete_all" on public.eventos for delete using (true);
+
+-- Bucket de Storage para la foto del bloque de Preparación física (Entrenamiento/Individual).
+-- Path de cada archivo = "<event.id o plan.id>.<ext>", con upsert desde el frontend, así una
+-- foto nueva reemplaza a la vieja en vez de acumular archivos huérfanos -- mismo criterio que
+-- "fotos-jugadores" (ver schema_jugador360.sql). Público de lectura (no es información
+-- sensible); solo puede subir/reemplazar/borrar quien tenga rw sobre "preparacionFisica"
+-- (staff completo + Preparador Físico, ver permisos.js). A diferencia del resto de este
+-- archivo, estas policies SÍ dependen de mi_rol() -- si esto se corre en una instalación nueva
+-- desde cero, correr primero schema_auth.sql (en este proyecto ya en producción no aplica,
+-- mi_rol() ya existe).
+insert into storage.buckets (id, name, public)
+values ('fotos-preparacion-fisica', 'fotos-preparacion-fisica', true)
+on conflict (id) do nothing;
+
+drop policy if exists "fotos_prep_fisica_select_todos" on storage.objects;
+create policy "fotos_prep_fisica_select_todos" on storage.objects for select to authenticated
+  using (bucket_id = 'fotos-preparacion-fisica');
+
+drop policy if exists "fotos_prep_fisica_insert_staff_pf" on storage.objects;
+create policy "fotos_prep_fisica_insert_staff_pf" on storage.objects for insert to authenticated
+  with check (bucket_id = 'fotos-preparacion-fisica' and public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+
+drop policy if exists "fotos_prep_fisica_update_staff_pf" on storage.objects;
+create policy "fotos_prep_fisica_update_staff_pf" on storage.objects for update to authenticated
+  using (bucket_id = 'fotos-preparacion-fisica' and public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+
+drop policy if exists "fotos_prep_fisica_delete_staff_pf" on storage.objects;
+create policy "fotos_prep_fisica_delete_staff_pf" on storage.objects for delete to authenticated
+  using (bucket_id = 'fotos-preparacion-fisica' and public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+
+notify pgrst, 'reload schema';
