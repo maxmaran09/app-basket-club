@@ -990,7 +990,7 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
             <TagPicker label="Enfoque físico" options={ENFOQUES_FISICOS} selected={enfoqueFisico} onToggle={toggleEnfoque} tone="blue" />
             <div>
               <p className="text-xs text-zinc-500 mb-1">Notas del preparador físico</p>
-              <textarea value={notasFisicas} onChange={(e) => setNotasFisicas(e.target.value)} rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              <RichTextEditor initialValue={notasFisicas} onChange={setNotasFisicas} placeholder="Notas del preparador físico" />
             </div>
             <button onClick={guardarFisica} className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
           </div>
@@ -1001,7 +1001,9 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
               <span className="px-2 py-0.5 rounded text-xs border bg-zinc-800 text-zinc-300 border-zinc-700">{lugarFisico}</span>
               {enfoqueFisico.map((f) => <Chip key={f}>{f}</Chip>)}
             </div>
-            {notasFisicas && <p className="text-sm text-zinc-400 italic">"{notasFisicas}"</p>}
+            {notasFisicas && (
+              <div className="text-sm text-zinc-400 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(notasFisicas)) }} />
+            )}
             {!soloLectura && (
               <button onClick={() => setEditFisica(true)} className="text-xs text-sky-400 hover:text-sky-300">Editar</button>
             )}
