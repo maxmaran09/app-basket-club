@@ -104,22 +104,14 @@ create trigger eventos_set_updated_at
 before update on public.eventos
 for each row execute function public.set_updated_at();
 
--- RLS: acceso abierto de lectura/escritura (MVP sin login, todo el staff edita por igual,
--- segun CLAUDE.md). Cuando se sume login (Fase 1), reemplazar "using (true)" por reglas
--- basadas en auth.uid().
+-- RLS: las policies reales (basadas en mi_rol()) viven en schema_auth.sql -- ese archivo es la
+-- unica fuente de verdad para permisos de esta tabla. No se dejan policies "using (true)" aca a
+-- proposito: si este archivo se re-corre despues de schema_auth.sql (por un cambio de columna
+-- sin relacion con seguridad, por ejemplo), no debe poder reabrir el acceso publico por error
+-- (paso ya vivido una vez en produccion). En una instalacion nueva desde cero, correr
+-- schema_auth.sql inmediatamente despues de este archivo -- hasta ese momento la tabla queda
+-- con RLS activo y sin policies, es decir sin acceso para nadie salvo service_role.
 alter table public.eventos enable row level security;
-
-drop policy if exists "eventos_select_all" on public.eventos;
-create policy "eventos_select_all" on public.eventos for select using (true);
-
-drop policy if exists "eventos_insert_all" on public.eventos;
-create policy "eventos_insert_all" on public.eventos for insert with check (true);
-
-drop policy if exists "eventos_update_all" on public.eventos;
-create policy "eventos_update_all" on public.eventos for update using (true);
-
-drop policy if exists "eventos_delete_all" on public.eventos;
-create policy "eventos_delete_all" on public.eventos for delete using (true);
 
 -- Bucket de Storage para la foto del bloque de Preparación física (Entrenamiento/Individual).
 -- Path de cada archivo = "<event.id o plan.id>.<ext>", con upsert desde el frontend, así una

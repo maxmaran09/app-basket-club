@@ -26,7 +26,8 @@ create index if not exists partidos_stats_temporada_idx on public.partidos_stats
 -- ============================================================================
 
 drop view if exists public.vista_promedios_jugador;
-create view public.vista_promedios_jugador as
+create view public.vista_promedios_jugador
+with (security_invoker = true) as
 select
   max(jps.jugador_id::text)::uuid as jugador_id,
   max(jps.jugador_rival_id::text)::uuid as jugador_rival_id,
@@ -63,7 +64,8 @@ join public.partidos_stats ps on ps.id = jps.partido_id
 group by coalesce(jps.jugador_id::text, 'r:' || jps.jugador_rival_id::text, 'n:' || lower(trim(jps.nombre_jugador))), jps.equipo, ps.temporada_id;
 
 drop view if exists public.vista_totales_equipo_partido;
-create view public.vista_totales_equipo_partido as
+create view public.vista_totales_equipo_partido
+with (security_invoker = true) as
 select jps.partido_id, jps.equipo, ps.temporada_id,
   sum(jps.pts) as pts,
   sum(jps.t2a) as t2a, sum(jps.t2i) as t2i,
@@ -77,7 +79,8 @@ join public.partidos_stats ps on ps.id = jps.partido_id
 group by jps.partido_id, jps.equipo, ps.temporada_id;
 
 drop view if exists public.vista_promedios_equipo;
-create view public.vista_promedios_equipo as
+create view public.vista_promedios_equipo
+with (security_invoker = true) as
 select
   max(eps.equipo_rival_id::text)::uuid as equipo_rival_id,
   max(eps.equipo) as equipo,
@@ -103,7 +106,8 @@ join public.partidos_stats ps on ps.id = eps.partido_id
 group by coalesce(eps.equipo_rival_id::text, 'n:' || lower(trim(eps.equipo))), ps.temporada_id;
 
 drop view if exists public.vista_record_equipo;
-create view public.vista_record_equipo as
+create view public.vista_record_equipo
+with (security_invoker = true) as
 select equipo, condicion, temporada_id,
   count(*) as jugados,
   count(*) filter (where resultado = 'W') as ganados,
@@ -121,10 +125,10 @@ from (
 ) t
 group by equipo, condicion, temporada_id;
 
-grant select on public.vista_promedios_jugador to anon, authenticated;
-grant select on public.vista_totales_equipo_partido to anon, authenticated;
-grant select on public.vista_promedios_equipo to anon, authenticated;
-grant select on public.vista_record_equipo to anon, authenticated;
+grant select on public.vista_promedios_jugador to authenticated;
+grant select on public.vista_totales_equipo_partido to authenticated;
+grant select on public.vista_promedios_equipo to authenticated;
+grant select on public.vista_record_equipo to authenticated;
 
 -- ============================================================================
 -- BACKFILL (una sola vez): vincula cada partido ya cargado con categoria_equipo/tira_equipo a

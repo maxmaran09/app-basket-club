@@ -60,16 +60,9 @@ create trigger jugadores_set_updated_at
 before update on public.jugadores
 for each row execute function public.set_updated_at_snake();
 
+-- RLS: las policies reales viven en schema_auth.sql (unica fuente de verdad) -- no se dejan
+-- policies "using (true)" aca a proposito, ver el comentario largo en schema.sql para el motivo.
 alter table public.jugadores enable row level security;
-
-drop policy if exists "jugadores_select_all" on public.jugadores;
-create policy "jugadores_select_all" on public.jugadores for select using (true);
-drop policy if exists "jugadores_insert_all" on public.jugadores;
-create policy "jugadores_insert_all" on public.jugadores for insert with check (true);
-drop policy if exists "jugadores_update_all" on public.jugadores;
-create policy "jugadores_update_all" on public.jugadores for update using (true);
-drop policy if exists "jugadores_delete_all" on public.jugadores;
-create policy "jugadores_delete_all" on public.jugadores for delete using (true);
 
 
 create table if not exists public.asistencias (
@@ -103,13 +96,6 @@ create trigger asistencias_set_updated_at
 before update on public.asistencias
 for each row execute function public.set_updated_at_snake();
 
+-- RLS: las policies reales viven en schema_auth.sql (unica fuente de verdad) -- no se dejan
+-- policies "using (true)" aca a proposito, ver el comentario largo en schema.sql para el motivo.
 alter table public.asistencias enable row level security;
-
-drop policy if exists "asistencias_select_all" on public.asistencias;
-create policy "asistencias_select_all" on public.asistencias for select using (true);
-drop policy if exists "asistencias_insert_all" on public.asistencias;
-create policy "asistencias_insert_all" on public.asistencias for insert with check (true);
-drop policy if exists "asistencias_update_all" on public.asistencias;
-create policy "asistencias_update_all" on public.asistencias for update using (true);
-drop policy if exists "asistencias_delete_all" on public.asistencias;
-create policy "asistencias_delete_all" on public.asistencias for delete using (true);

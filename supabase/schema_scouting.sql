@@ -26,15 +26,9 @@ create trigger equipos_rivales_set_updated_at
 before update on public.equipos_rivales
 for each row execute function public.set_updated_at_snake();
 
+-- RLS: las policies reales viven en schema_auth.sql (unica fuente de verdad) -- no se dejan
+-- policies "using (true)" aca a proposito, ver el comentario largo en schema.sql para el motivo.
 alter table public.equipos_rivales enable row level security;
-drop policy if exists "equipos_rivales_select_all" on public.equipos_rivales;
-create policy "equipos_rivales_select_all" on public.equipos_rivales for select using (true);
-drop policy if exists "equipos_rivales_insert_all" on public.equipos_rivales;
-create policy "equipos_rivales_insert_all" on public.equipos_rivales for insert with check (true);
-drop policy if exists "equipos_rivales_update_all" on public.equipos_rivales;
-create policy "equipos_rivales_update_all" on public.equipos_rivales for update using (true);
-drop policy if exists "equipos_rivales_delete_all" on public.equipos_rivales;
-create policy "equipos_rivales_delete_all" on public.equipos_rivales for delete using (true);
 
 
 create table if not exists public.jugadores_rivales (
@@ -66,15 +60,9 @@ create trigger jugadores_rivales_set_updated_at
 before update on public.jugadores_rivales
 for each row execute function public.set_updated_at_snake();
 
+-- RLS: las policies reales viven en schema_auth.sql (unica fuente de verdad) -- no se dejan
+-- policies "using (true)" aca a proposito, ver el comentario largo en schema.sql para el motivo.
 alter table public.jugadores_rivales enable row level security;
-drop policy if exists "jugadores_rivales_select_all" on public.jugadores_rivales;
-create policy "jugadores_rivales_select_all" on public.jugadores_rivales for select using (true);
-drop policy if exists "jugadores_rivales_insert_all" on public.jugadores_rivales;
-create policy "jugadores_rivales_insert_all" on public.jugadores_rivales for insert with check (true);
-drop policy if exists "jugadores_rivales_update_all" on public.jugadores_rivales;
-create policy "jugadores_rivales_update_all" on public.jugadores_rivales for update using (true);
-drop policy if exists "jugadores_rivales_delete_all" on public.jugadores_rivales;
-create policy "jugadores_rivales_delete_all" on public.jugadores_rivales for delete using (true);
 
 
 -- eventos: columna relacional nueva para el rival. Se deja el viejo campo de texto "rival" tal

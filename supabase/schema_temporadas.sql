@@ -112,7 +112,8 @@ create policy "jugador_temporada_delete_staff_completo" on public.jugador_tempor
 -- "id" es el id de la PERSONA (jugadores.id), no el de esta fila puntual, porque asistencias,
 -- jugador_partido_stats, alias_jugador y los diccionarios de RPE ya usan jugadores.id como
 -- clave estable entre temporadas.
-create or replace view public.vista_plantel_temporada as
+create or replace view public.vista_plantel_temporada
+with (security_invoker = true) as
 select
   j.id,
   jt.id as jugador_temporada_id,

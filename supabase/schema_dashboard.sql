@@ -35,17 +35,11 @@ create table if not exists public.notas_staff (
   resuelta boolean not null default false
 );
 
+-- RLS: las policies reales viven en schema_auth.sql (unica fuente de verdad) -- no se dejan
+-- policies "using (true)" aca a proposito, ver el comentario largo en schema.sql para el motivo.
 alter table public.notas_staff enable row level security;
-drop policy if exists "notas_staff_select_all" on public.notas_staff;
-create policy "notas_staff_select_all" on public.notas_staff for select using (true);
-drop policy if exists "notas_staff_insert_all" on public.notas_staff;
-create policy "notas_staff_insert_all" on public.notas_staff for insert with check (true);
-drop policy if exists "notas_staff_update_all" on public.notas_staff;
-create policy "notas_staff_update_all" on public.notas_staff for update using (true);
-drop policy if exists "notas_staff_delete_all" on public.notas_staff;
-create policy "notas_staff_delete_all" on public.notas_staff for delete using (true);
 
-grant select, insert, update, delete on public.notas_staff to anon, authenticated;
+grant select, insert, update, delete on public.notas_staff to authenticated;
 
 -- 4) Notas por Categoria/Tira (antes era un tablon unico para todo el club, inconsistente con el
 -- resto del dashboard que si se filtra por equipo). Nullable para no perder las notas ya

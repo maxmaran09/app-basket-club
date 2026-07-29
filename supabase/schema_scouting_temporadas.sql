@@ -24,7 +24,8 @@ create index if not exists equipos_rivales_temporada_idx on public.equipos_rival
 -- Vista "aplanada": misma forma que hoy tienen las filas de equipos_rivales (categoria/tira como
 -- nombre de columna, derivados de la temporada), para que ScoutingHubView/EquipoRivalFicha y
 -- Estadisticas (que ya filtra equiposRivales por .categoria/.tira) sigan funcionando igual.
-create or replace view public.vista_equipos_rivales_temporada as
+create or replace view public.vista_equipos_rivales_temporada
+with (security_invoker = true) as
 select
   er.id,
   er.nombre_club,
