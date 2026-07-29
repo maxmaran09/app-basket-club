@@ -30,6 +30,10 @@ drop policy if exists "biblioteca_bloques_insert_all" on public.biblioteca_bloqu
 create policy "biblioteca_bloques_insert_all" on public.biblioteca_bloques for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
 
+drop policy if exists "biblioteca_bloques_update_all" on public.biblioteca_bloques;
+create policy "biblioteca_bloques_update_all" on public.biblioteca_bloques for update to authenticated
+  using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
+
 drop policy if exists "biblioteca_bloques_delete_all" on public.biblioteca_bloques;
 create policy "biblioteca_bloques_delete_all" on public.biblioteca_bloques for delete to authenticated
   using (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
