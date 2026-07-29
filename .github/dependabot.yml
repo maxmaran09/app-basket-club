@@ -5,3 +5,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Los saltos de version mayor (0.x -> 1.x, 7.x -> 8.x) suelen traer breaking changes reales
+    # (ej: lucide-react 1.27.0 saco/renombro el icono "Youtube" y rompio el build) -- Dependabot
+    # solo propone actualizaciones de patch/minor, mas seguras de mergear sin revisar a mano.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
