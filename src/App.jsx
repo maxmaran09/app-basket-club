@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2 } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2, HeartPulse, FileText } from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
@@ -2252,7 +2252,8 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
 
 // Sirve para alta y edición: si viene "jugador", precarga sus datos y guarda un patch (update);
 // si no, arranca vacío con la categoría/tira del filtro activo y crea uno nuevo (insert).
-function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamposMedicos = false }) {
+function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamposMedicos = false, tieneLesionActiva = false }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     dorsal: jugador?.dorsal ?? "",
     nombre_apellido: jugador?.nombre_apellido ?? "",
@@ -2396,11 +2397,26 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
               <option value="Diferenciado">Diferenciado</option>
               <option value="Lesionado">Lesionado</option>
             </select>
-            {form.disponibilidad !== "Disponible" && (
+            {form.disponibilidad === "Diferenciado" && (
               <div className="flex gap-2">
-                <input placeholder="Detalle (ej: esguince tobillo)" value={form.lesion_detalle} onChange={(e) => set("lesion_detalle", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <input placeholder="Detalle" value={form.lesion_detalle} onChange={(e) => set("lesion_detalle", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
                 <input type="date" value={form.lesion_desde} onChange={(e) => set("lesion_desde", e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
+            )}
+            {form.disponibilidad === "Lesionado" && (
+              jugador ? (
+                <button type="button" onClick={() => navigate("/lesionados", { state: { jugadorId: jugador.id } })}
+                  className="w-full flex items-center justify-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-2 rounded">
+                  <HeartPulse size={13} /> {tieneLesionActiva ? "Ver ficha de lesión" : "Cargar ficha de lesión"}
+                </button>
+              ) : (
+                // Jugador nuevo, todavia sin id -- no hay a donde navegar hasta guardarlo, se
+                // completa el detalle simple aca como fallback (mismo campo de siempre).
+                <div className="flex gap-2">
+                  <input placeholder="Detalle (ej: esguince tobillo)" value={form.lesion_detalle} onChange={(e) => set("lesion_detalle", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                  <input type="date" value={form.lesion_desde} onChange={(e) => set("lesion_desde", e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                </div>
+              )
             )}
           </div>
 
@@ -2715,7 +2731,7 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   );
 }
 
-function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, onReactivarJugador, rol }) {
+function PlantelView({ jugadores, lesiones, onAddJugador, onDeleteJugador, onUpdateJugador, onImportJugadores, onReactivarJugador, rol }) {
   const {
     categoria, tira, setCategoria, setTira,
     temporadas, temporadasDelEquipo, temporadaId, temporadaSeleccionada, esTemporadaActiva,
@@ -2988,6 +3004,7 @@ function PlantelView({ jugadores, onAddJugador, onDeleteJugador, onUpdateJugador
           categoria={categoria}
           tira={tira}
           soloCamposMedicos={soloCamposMedicos}
+          tieneLesionActiva={!!(editTarget && lesiones?.some((l) => l.jugador_id === editTarget.id && !l.fecha_alta))}
           onCancel={() => { setShowAdd(false); setEditTarget(null); }}
           onSave={async (data) => {
             if (editTarget) await onUpdateJugador(editTarget.id, data);
@@ -6082,6 +6099,446 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
   );
 }
 
+// ---------------------------------------------------------------
+// Lesionados: ficha medica por lesion (no por jugador) -- zona marcada en un diagrama de cuerpo,
+// estudios (PDFs) y evolucion en el tiempo. Ver seccion "Lesionados" en CLAUDE.md.
+// ---------------------------------------------------------------
+
+function iniciales(nombre) {
+  return (nombre || "").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
+}
+
+function fmtFechaCorta(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function diasDesdeFecha(iso, hastaIso) {
+  if (!iso) return 0;
+  const a = new Date(iso + "T00:00:00");
+  const b = hastaIso ? new Date(hastaIso + "T00:00:00") : new Date();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+const CUERPO_VISTAS = ["frente", "espalda"];
+
+// Silueta esquematica (SVG, no imagen) con toggle frente/espalda -- tocar la silueta marca o
+// reubica un unico marcador (una lesion = una zona). "zona" tiene la forma {x, y, vista} con x/y
+// normalizados 0-1 relativos al viewBox, guardado tal cual en lesiones.ubicacion (jsonb).
+function CuerpoDiagram({ zona, onZonaChange, soloLectura }) {
+  const svgRef = useRef(null);
+  const vista = zona?.vista || "frente";
+
+  const setVista = (v) => {
+    if (soloLectura) return;
+    onZonaChange({ ...(zona || { x: 0.5, y: 0.5 }), vista: v });
+  };
+
+  const onClickCuerpo = (e) => {
+    if (soloLectura || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    onZonaChange({ x, y, vista });
+  };
+
+  return (
+    <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex flex-col items-center gap-2 w-[170px] flex-shrink-0">
+      <div className="inline-flex gap-0.5 bg-zinc-900 border border-zinc-800 rounded-full p-0.5">
+        {CUERPO_VISTAS.map((v) => (
+          <button key={v} type="button" onClick={() => setVista(v)}
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${vista === v ? "bg-brand-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+            {v === "frente" ? "Frente" : "Espalda"}
+          </button>
+        ))}
+      </div>
+      <div className="relative w-[130px]" onClick={onClickCuerpo} style={{ cursor: soloLectura ? "default" : "crosshair" }}>
+        <svg ref={svgRef} viewBox="0 0 240 560" xmlns="http://www.w3.org/2000/svg">
+          <g fill="#3f3f46" stroke="#52525b" strokeWidth="1.5">
+            <ellipse cx="120" cy="42" rx="27" ry="31" />
+            <rect x="107" y="70" width="26" height="16" rx="5" />
+            <path d="M75,88 C75,81 92,79 120,79 C148,79 165,81 165,88 L178,190 C180,206 168,216 150,219 L155,246 L85,246 L90,219 C72,216 60,206 62,190 Z" />
+            <rect x="30" y="94" width="27" height="146" rx="13" />
+            <ellipse cx="43.5" cy="248" rx="15" ry="17" />
+            <rect x="183" y="94" width="27" height="146" rx="13" />
+            <ellipse cx="196.5" cy="248" rx="15" ry="17" />
+            <rect x="86" y="246" width="33" height="172" rx="16" />
+            <rect x="121" y="246" width="33" height="172" rx="16" />
+            <ellipse cx="102" cy="426" rx="19" ry="11" />
+            <ellipse cx="138" cy="426" rx="19" ry="11" />
+          </g>
+          {vista === "espalda" && (
+            <g stroke="#52525b" strokeWidth="1.5" fill="none">
+              <path d="M120,90 L120,215" strokeDasharray="3 4" />
+              <path d="M92,110 Q120,100 148,110" />
+            </g>
+          )}
+        </svg>
+        {zona && zona.vista === vista && (
+          <div className="absolute pointer-events-none" style={{ left: `calc(${zona.x * 100}% - 8px)`, top: `calc(${zona.y * 100}% - 15px)` }}>
+            <svg viewBox="0 0 24 24" width="16" height="16" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,.6))" }}>
+              <path fill="#f87171" stroke="#0b0b0d" strokeWidth="1" d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" fill="#0b0b0d" />
+            </svg>
+          </div>
+        )}
+      </div>
+      {!soloLectura && <p className="text-[11px] text-zinc-500 text-center max-w-[26ch]">Tocá la silueta para marcar la zona afectada</p>}
+    </div>
+  );
+}
+
+// Timeline de novedades de la lesion, mas reciente primero. La nota se carga con RichTextEditor
+// (mismo editor que Entrenamientos) y se guarda como HTML sanitizado, igual que la descripcion de
+// un bloque de cancha.
+function EvolucionSection({ evolucion, onAddNota, soloLectura }) {
+  const [notaHtml, setNotaHtml] = useState("");
+  const [editorKey, setEditorKey] = useState(0);
+
+  const ordenado = (evolucion || []).slice().reverse();
+  const notaVacia = !htmlToPlainText(notaHtml).trim();
+
+  const agregar = () => {
+    if (notaVacia) return;
+    onAddNota({ fecha: new Date().toISOString().slice(0, 10), nota: sanitizeDescripcionHtml(notaHtml) });
+    setNotaHtml("");
+    setEditorKey((k) => k + 1);
+  };
+
+  return (
+    <div>
+      <div className="flex flex-col gap-3">
+        {ordenado.map((e, i) => (
+          <div key={i} className="flex gap-2.5">
+            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${i === 0 ? "bg-red-400" : "bg-brand-400"}`} />
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold text-zinc-500">{fmtFechaCorta(e.fecha)}</div>
+              <div className="text-sm text-zinc-300 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(e.nota)) }} />
+            </div>
+          </div>
+        ))}
+        {!ordenado.length && <p className="text-xs text-zinc-500">Todavía no hay novedades cargadas.</p>}
+      </div>
+      {!soloLectura && (
+        <div className="mt-3">
+          <RichTextEditor key={editorKey} initialValue={notaHtml} onChange={setNotaHtml} placeholder="Agregar novedad de la evolución…" />
+          <div className="flex justify-end mt-2">
+            <button onClick={agregar} disabled={notaVacia} className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded">
+              Agregar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Estudios (PDFs) de la lesion. Bucket privado ("estudios-medicos", ver schema_lesionados.sql) --
+// a diferencia de las fotos de perfil, esto es informacion medica real, asi que se sirve con URL
+// firmada en vez de la publica.
+function EstudiosSection({ lesion, onUpdateLesion, soloLectura }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+
+  const subir = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    setSubiendo(true);
+    const path = `${lesion.id}/${Date.now()}-${file.name}`;
+    const { error: errUpload } = await supabase.storage.from("estudios-medicos").upload(path, file, { cacheControl: "3600" });
+    setSubiendo(false);
+    if (errUpload) { setError(errUpload.message); return; }
+    const nuevo = { nombre: file.name, path, fecha: new Date().toISOString().slice(0, 10) };
+    onUpdateLesion(lesion.id, { estudios: [nuevo, ...(lesion.estudios || [])] });
+  };
+
+  const descargar = async (path) => {
+    setError("");
+    const { data, error: errSigned } = await supabase.storage.from("estudios-medicos").createSignedUrl(path, 60);
+    if (errSigned || !data?.signedUrl) { setError(errSigned?.message || "No se pudo generar el link de descarga."); return; }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div>
+      <div className="flex flex-col gap-1.5">
+        {(lesion.estudios || []).map((es, i) => (
+          <div key={i} className="flex items-center gap-2.5 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2">
+            <div className="w-7 h-7 rounded-md bg-red-500/10 text-red-400 flex items-center justify-center flex-shrink-0"><FileText size={14} /></div>
+            <span className="text-sm text-zinc-200 truncate">{es.nombre}</span>
+            <span className="text-[11px] text-zinc-500 ml-auto flex-shrink-0">{fmtFechaCorta(es.fecha)}</span>
+            <button onClick={() => descargar(es.path)} title="Descargar" className="text-zinc-500 hover:text-brand-400 flex-shrink-0"><Download size={14} /></button>
+          </div>
+        ))}
+        {!(lesion.estudios || []).length && <p className="text-xs text-zinc-500">Todavía no se subió ningún estudio.</p>}
+      </div>
+      {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
+      {!soloLectura && (
+        <>
+          <input ref={fileRef} type="file" accept="application/pdf" onChange={subir} className="hidden" />
+          <button onClick={() => fileRef.current?.click()} disabled={subiendo}
+            className="mt-2 w-full border border-dashed border-zinc-700 hover:border-brand-500 text-zinc-400 hover:text-brand-300 text-xs font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50">
+            <Upload size={13} /> {subiendo ? "Subiendo…" : "Subir PDF de estudio"}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Ficha completa de una lesion puntual: header (jugador + tipo + estado), zona, evolucion,
+// estudios y el boton de "Dar de alta". Una vez resuelta (fecha_alta cargada) queda de solo
+// lectura -- es historial, no se sigue editando.
+function FichaLesion({ lesion, jugador, onUpdateLesion, onDarDeAlta, onBack }) {
+  const resuelta = !!lesion.fecha_alta;
+  const dias = resuelta ? diasDesdeFecha(lesion.fecha_inicio, lesion.fecha_alta) : diasDesdeFecha(lesion.fecha_inicio);
+
+  return (
+    <div>
+      <button onClick={onBack} className="lg:hidden flex items-center gap-1 text-zinc-400 hover:text-zinc-200 text-sm font-semibold mb-3">
+        <ArrowLeft size={14} /> Volver a la lista
+      </button>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-zinc-800 flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex gap-3 items-start min-w-0">
+            <div className="w-11 h-11 rounded-full bg-brand-950 border border-brand-700 text-brand-300 flex items-center justify-center text-sm font-bold flex-shrink-0">
+              {iniciales(jugador?.nombre_apellido)}
+            </div>
+            <div className="min-w-0">
+              <div className="text-base font-bold text-zinc-100">{jugador?.nombre_apellido || "—"}</div>
+              <div className="text-xs text-zinc-500">#{jugador?.dorsal ?? "-"} · {jugador?.categoria_origen} · {jugador?.tira}</div>
+              <div className="text-[15px] font-semibold text-zinc-100 mt-1.5">{lesion.tipo_lesion}</div>
+              <div className="flex gap-2 flex-wrap text-xs text-zinc-500 mt-1">
+                <span>Inicio: {fmtFechaCorta(lesion.fecha_inicio)}</span>
+                {resuelta && <span>· Alta: {fmtFechaCorta(lesion.fecha_alta)}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${resuelta ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+              {resuelta ? `Resuelta · ${dias} días` : `Activa · día ${dias}`}
+            </span>
+            {!resuelta && (
+              <button onClick={() => onDarDeAlta(lesion)} className="inline-flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-3 py-1.5 rounded-lg">
+                <Check size={13} /> Dar de alta
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 flex flex-col gap-6">
+          <div>
+            <h3 className="text-[11px] font-bold tracking-wide uppercase text-zinc-500 mb-2.5">Zona afectada</h3>
+            <div className="flex flex-col sm:flex-row gap-3.5">
+              <CuerpoDiagram
+                zona={lesion.ubicacion}
+                soloLectura={resuelta}
+                onZonaChange={(zona) => onUpdateLesion(lesion.id, { ubicacion: zona })}
+              />
+              <div className="flex-1 flex flex-col gap-2 min-w-0">
+                <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-200">
+                  <MapPin size={15} className="text-red-400 flex-shrink-0" />
+                  <span>Vista: {lesion.ubicacion?.vista === "espalda" ? "espalda" : "frente"}</span>
+                </div>
+                {lesion.notas && <div className="text-sm text-zinc-400 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5">{lesion.notas}</div>}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-[11px] font-bold tracking-wide uppercase text-zinc-500 mb-2.5">Evolución</h3>
+            <EvolucionSection
+              evolucion={lesion.evolucion}
+              soloLectura={resuelta}
+              onAddNota={(entry) => onUpdateLesion(lesion.id, { evolucion: [...(lesion.evolucion || []), entry] })}
+            />
+          </div>
+
+          <div>
+            <h3 className="text-[11px] font-bold tracking-wide uppercase text-zinc-500 mb-2.5">Estudios</h3>
+            <EstudiosSection lesion={lesion} onUpdateLesion={onUpdateLesion} soloLectura={resuelta} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Alta de una lesion nueva: elegir jugador (de los que no tengan ya una activa) + tipo + fecha de
+// inicio. jugadorIdInicial llega cuando se navega desde Plantel (JugadorFormModal) con un
+// jugador puntual ya elegido.
+function NuevaLesionForm({ jugadores, categoria, tira, jugadorIdInicial, onCancel, onCreate }) {
+  const candidatos = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira) && j.disponibilidad !== "Lesionado");
+  const [jugadorId, setJugadorId] = useState(jugadorIdInicial || "");
+  const [tipo, setTipo] = useState("");
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [guardando, setGuardando] = useState(false);
+
+  const submit = async () => {
+    if (!jugadorId || !tipo.trim() || guardando) return;
+    setGuardando(true);
+    await onCreate({ jugador_id: jugadorId, tipo_lesion: tipo.trim(), fecha_inicio: fecha });
+    setGuardando(false);
+  };
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 max-w-md">
+      <h3 className="font-bold text-sm">Nueva ficha de lesión</h3>
+      <div>
+        <label className="text-xs text-zinc-500 block mb-1">Jugador</label>
+        <select value={jugadorId} onChange={(e) => setJugadorId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
+          <option value="">Elegir jugador…</option>
+          {candidatos.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs text-zinc-500 block mb-1">Tipo de lesión</label>
+        <input value={tipo} onChange={(e) => setTipo(e.target.value)} placeholder="Ej: Esguince de tobillo grado II" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+      </div>
+      <div>
+        <label className="text-xs text-zinc-500 block mb-1">Fecha de inicio</label>
+        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+      </div>
+      <div className="flex gap-2 mt-1">
+        <button onClick={submit} disabled={!jugadorId || !tipo.trim() || guardando} className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-1.5 rounded">
+          {guardando ? "Creando…" : "Crear ficha"}
+        </button>
+        <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDarDeAlta }) {
+  const { categoria, tira } = useTeam();
+  const location = useLocation();
+  const jugadorIdInicial = location.state?.jugadorId || null;
+
+  const [tab, setTab] = useState("activas");
+  const [busqueda, setBusqueda] = useState("");
+  const [seleccionId, setSeleccionId] = useState(null);
+  const [creando, setCreando] = useState(false);
+
+  const jugadoresById = Object.fromEntries(jugadores.map((j) => [j.id, j]));
+  const lesionesEquipo = lesiones.filter((l) => l.categoria === categoria && l.tira === tira);
+  const activas = lesionesEquipo.filter((l) => !l.fecha_alta);
+  const historial = lesionesEquipo.filter((l) => l.fecha_alta);
+
+  let items = tab === "activas" ? activas : historial;
+  if (busqueda.trim()) {
+    const q = busqueda.trim().toLowerCase();
+    items = items.filter((l) => {
+      const nombre = jugadoresById[l.jugador_id]?.nombre_apellido?.toLowerCase() || "";
+      return nombre.includes(q) || l.tipo_lesion.toLowerCase().includes(q);
+    });
+  }
+
+  // Si venimos desde Plantel con un jugador puntual: si ya tiene lesion activa, mostrarla; si
+  // no, abrir el alta ya con ese jugador elegido. Solo una vez (al llegar), no en cada render.
+  useEffect(() => {
+    if (!jugadorIdInicial) return;
+    const activa = lesiones.find((l) => l.jugador_id === jugadorIdInicial && !l.fecha_alta);
+    if (activa) { setSeleccionId(activa.id); setTab("activas"); }
+    else setCreando(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jugadorIdInicial]);
+
+  const seleccion = lesiones.find((l) => l.id === seleccionId) || null;
+
+  const crear = async (payload) => {
+    const nueva = await onAddLesion(payload);
+    setCreando(false);
+    if (nueva) { setSeleccionId(nueva.id); setTab("activas"); }
+  };
+
+  const darDeAlta = async (lesion) => {
+    await onDarDeAlta(lesion);
+    setTab("historial");
+  };
+
+  return (
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+      <div className="mb-4">
+        <h2 className="text-xl font-bold flex items-center gap-2"><HeartPulse size={20} className="text-red-400" /> Lesionados</h2>
+        <p className="text-xs text-zinc-500 mt-0.5">Ficha médica por lesión: zona, estudios y evolución — {categoria} · {tira}</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="inline-flex bg-zinc-900 border border-zinc-800 rounded-full p-0.5">
+          <button onClick={() => setTab("activas")} className={`text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 ${tab === "activas" ? "bg-brand-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+            Activas <span className="bg-red-500/15 text-red-400 text-[11px] font-bold rounded-full min-w-[18px] px-1 text-center">{activas.length}</span>
+          </button>
+          <button onClick={() => setTab("historial")} className={`text-xs font-semibold px-3 py-1.5 rounded-full ${tab === "historial" ? "bg-brand-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+            Historial
+          </button>
+        </div>
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar jugador…" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-2 py-1.5 text-sm text-zinc-100" />
+        </div>
+        <button onClick={() => { setCreando(true); setSeleccionId(null); }} className="ml-auto inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
+          <Plus size={14} /> Nueva ficha
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
+        <div className={`flex-col gap-2 ${(seleccion || creando) ? "hidden lg:flex" : "flex"}`}>
+          {!items.length && (
+            <div className="border border-dashed border-zinc-800 rounded-xl py-8 text-center text-xs text-zinc-500">
+              {tab === "activas" ? "No hay lesiones activas en este equipo." : "Sin lesiones resueltas todavía."}
+            </div>
+          )}
+          {items.map((l) => {
+            const jugador = jugadoresById[l.jugador_id];
+            const resuelta = !!l.fecha_alta;
+            const dias = resuelta ? diasDesdeFecha(l.fecha_inicio, l.fecha_alta) : diasDesdeFecha(l.fecha_inicio);
+            return (
+              <button key={l.id} onClick={() => { setSeleccionId(l.id); setCreando(false); }}
+                className={`relative overflow-hidden text-left bg-zinc-900 border rounded-xl p-3 pl-4 flex gap-3 items-start ${seleccionId === l.id ? "border-brand-500 bg-zinc-800/60" : "border-zinc-800 hover:border-zinc-700"}`}>
+                <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${resuelta ? "bg-zinc-600" : "bg-red-400"}`} />
+                <div className="w-9 h-9 rounded-full bg-brand-950 border border-brand-700 text-brand-300 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {iniciales(jugador?.nombre_apellido)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-zinc-100 truncate">{jugador?.nombre_apellido || "—"}</div>
+                  <div className="text-[11px] text-zinc-500">#{jugador?.dorsal ?? "-"} · {categoria} · {tira}</div>
+                  <div className="text-xs text-zinc-400 truncate mt-0.5">{l.tipo_lesion}</div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 mt-1.5">
+                    <span className={`font-bold px-1.5 rounded-full ${resuelta ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>
+                      {resuelta ? `${dias} días de baja` : `día ${dias}`}
+                    </span>
+                    <span>desde {fmtFechaCorta(l.fecha_inicio)}</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="min-w-0">
+          {creando && (
+            <NuevaLesionForm jugadores={jugadores} categoria={categoria} tira={tira} jugadorIdInicial={jugadorIdInicial} onCancel={() => setCreando(false)} onCreate={crear} />
+          )}
+          {!creando && seleccion && (
+            <FichaLesion lesion={seleccion} jugador={jugadoresById[seleccion.jugador_id]} onUpdateLesion={onUpdateLesion} onDarDeAlta={darDeAlta} onBack={() => setSeleccionId(null)} />
+          )}
+          {!creando && !seleccion && (
+            <div className="hidden lg:flex flex-col items-center justify-center gap-2 border border-dashed border-zinc-800 rounded-xl py-16 text-zinc-500 text-sm text-center">
+              <HeartPulse size={26} className="opacity-50" />
+              Elegí una lesión de la lista para ver su ficha completa
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { id: "inicio", label: "Inicio", icon: Home },
   { id: "calendario", label: "Calendario", icon: Calendar },
@@ -6091,6 +6548,7 @@ const NAV_ITEMS = [
   { id: "biblioteca", label: "Biblioteca", icon: Library },
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
+  { id: "lesionados", label: "Lesionados", icon: HeartPulse },
   { id: "configuracion", label: "Configuración", icon: Settings },
 ];
 
@@ -6390,6 +6848,51 @@ export default function App() {
     }));
   };
 
+  // Lesionados: una fila de "lesiones" por lesion (no por jugador), independiente de
+  // jugadores.disponibilidad/lesion_detalle/lesion_desde -- esos 3 campos siguen existiendo (los
+  // sigue leyendo el resto de la app: badges de Plantel, contador de Inicio, semaforo de Jugador
+  // 360) pero ahora se los sincroniza desde aca en vez de editarlos a mano. Ver schema_lesionados.sql.
+  const [lesiones, setLesiones] = useState([]);
+
+  useEffect(() => {
+    if (!session) { setLesiones([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("lesiones").select("*").order("fecha_inicio", { ascending: false });
+      if (cancelled) return;
+      if (!error) setLesiones(data);
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  const addLesion = async ({ jugador_id, tipo_lesion, fecha_inicio }) => {
+    const jugador = jugadores.find((j) => j.id === jugador_id);
+    const row = {
+      jugador_id, tipo_lesion, fecha_inicio,
+      categoria: jugador?.categoria_origen || null,
+      tira: jugador?.tira || null,
+    };
+    const { data, error } = await supabase.from("lesiones").insert(row).select().single();
+    if (error) { setErrorMsg(error.message); return null; }
+    setLesiones((prev) => [data, ...prev]);
+    await updateJugador(jugador_id, { disponibilidad: "Lesionado", lesion_detalle: tipo_lesion, lesion_desde: fecha_inicio });
+    return data;
+  };
+
+  const updateLesion = async (id, patch) => {
+    const { data, error } = await supabase.from("lesiones").update(patch).eq("id", id).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setLesiones((prev) => prev.map((l) => (l.id === id ? data : l)));
+  };
+
+  const darDeAltaLesion = async (lesion) => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase.from("lesiones").update({ fecha_alta: hoy }).eq("id", lesion.id).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setLesiones((prev) => prev.map((l) => (l.id === lesion.id ? data : l)));
+    await updateJugador(lesion.jugador_id, { disponibilidad: "Disponible", lesion_detalle: "", lesion_desde: null });
+  };
+
   // Vuelve a poner activo a un jugador dado de baja (usado desde el toggle "Ver dados de baja"
   // de PlantelView). jugadorTemporadaId es el id de la fila de jugador_temporada, no el del
   // jugador -- PlantelView lo trae directo de su propio fetch de dados de baja.
@@ -6585,7 +7088,7 @@ export default function App() {
               } />
               <Route path="/plantel" element={
                 <ProtectedRoute seccionId="plantel">
-                  <PlantelView jugadores={jugadores} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} onReactivarJugador={reactivarJugador} rol={rol} />
+                  <PlantelView jugadores={jugadores} lesiones={lesiones} onAddJugador={addJugador} onDeleteJugador={deleteJugador} onUpdateJugador={updateJugador} onImportJugadores={importJugadores} onReactivarJugador={reactivarJugador} rol={rol} />
                 </ProtectedRoute>
               } />
               <Route path="/jugador360" element={
@@ -6611,6 +7114,11 @@ export default function App() {
               <Route path="/estadisticas" element={
                 <ProtectedRoute seccionId="estadisticas">
                   <EstadisticasView jugadores={jugadores} equiposRivales={equiposRivales} soloLectura={soloLecturaGeneral} />
+                </ProtectedRoute>
+              } />
+              <Route path="/lesionados" element={
+                <ProtectedRoute seccionId="lesionados">
+                  <LesionadosView jugadores={jugadores} lesiones={lesiones} onAddLesion={addLesion} onUpdateLesion={updateLesion} onDarDeAlta={darDeAltaLesion} />
                 </ProtectedRoute>
               } />
               <Route path="/configuracion" element={
