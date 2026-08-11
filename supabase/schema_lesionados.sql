@@ -88,18 +88,35 @@ create policy "estudios_medicos_delete_staff" on storage.objects for delete to a
 -- pestaña nueva sin reingreso manual. Seguro de re-correr: no duplica si el jugador ya tiene una
 -- lesion activa (el indice unico de arriba lo impediria igual, pero el "not exists" evita el
 -- error en vez de dejarlo fallar).
+--
+-- categoria/tira salen de jugador_temporada -> temporadas (la temporada ACTIVA de ese jugador),
+-- no de jugadores.categoria_origen/tira -- esas son las columnas viejas, previas a la migracion
+-- de Temporadas, sin uso desde el frontend y casi siempre null en un jugador creado despues (ver
+-- seccion "Temporadas" en CLAUDE.md).
 -- ============================================================================
 
 insert into public.lesiones (jugador_id, categoria, tira, tipo_lesion, fecha_inicio, fecha_alta)
 select
   j.id,
-  j.categoria_origen,
-  j.tira,
+  t.categoria,
+  t.tira,
   coalesce(nullif(trim(j.lesion_detalle), ''), 'Lesión (sin detalle cargado)'),
   coalesce(j.lesion_desde, current_date),
   null
 from public.jugadores j
+join public.jugador_temporada jt on jt.jugador_id = j.id
+join public.temporadas t on t.id = jt.temporada_id and t.activa
 where j.disponibilidad = 'Lesionado'
   and not exists (select 1 from public.lesiones l where l.jugador_id = j.id and l.fecha_alta is null);
+
+-- Corrige filas que ya haya insertado una corrida anterior de este mismo backfill (con el bug de
+-- arriba) y hayan quedado con categoria/tira en null. Seguro de re-correr: no toca una fila que
+-- ya tenga categoria asignada.
+update public.lesiones l
+set categoria = t.categoria, tira = t.tira
+from public.jugador_temporada jt
+join public.temporadas t on t.id = jt.temporada_id and t.activa
+where jt.jugador_id = l.jugador_id
+  and l.categoria is null;
 
 notify pgrst, 'reload schema';
