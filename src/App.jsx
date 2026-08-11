@@ -6293,7 +6293,7 @@ function EstudiosSection({ lesion, onUpdateLesion, soloLectura }) {
 // Ficha completa de una lesion puntual: header (jugador + tipo + estado), zona, evolucion,
 // estudios y el boton de "Dar de alta". Una vez resuelta (fecha_alta cargada) queda de solo
 // lectura -- es historial, no se sigue editando.
-function FichaLesion({ lesion, jugador, onUpdateLesion, onDarDeAlta, onBack }) {
+function FichaLesion({ lesion, jugador, categoria, tira, onUpdateLesion, onDarDeAlta, onBack }) {
   const resuelta = !!lesion.fecha_alta;
   const dias = resuelta ? diasDesdeFecha(lesion.fecha_inicio, lesion.fecha_alta) : diasDesdeFecha(lesion.fecha_inicio);
 
@@ -6310,7 +6310,7 @@ function FichaLesion({ lesion, jugador, onUpdateLesion, onDarDeAlta, onBack }) {
             </div>
             <div className="min-w-0">
               <div className="text-base font-bold text-zinc-100">{jugador?.nombre_apellido || "—"}</div>
-              <div className="text-xs text-zinc-500">#{jugador?.dorsal ?? "-"} · {jugador?.categoria_origen} · {jugador?.tira}</div>
+              <div className="text-xs text-zinc-500">#{jugador ? (dorsalEnEquipo(jugador, categoria, tira) ?? "-") : "-"} · {categoria} · {tira}</div>
               <div className="text-[15px] font-semibold text-zinc-100 mt-1.5">{lesion.tipo_lesion}</div>
               <div className="flex gap-2 flex-wrap text-xs text-zinc-500 mt-1">
                 <span>Inicio: {fmtFechaCorta(lesion.fecha_inicio)}</span>
@@ -6425,7 +6425,15 @@ function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDa
   const [creando, setCreando] = useState(false);
 
   const jugadoresById = Object.fromEntries(jugadores.map((j) => [j.id, j]));
-  const lesionesEquipo = lesiones.filter((l) => l.categoria === categoria && l.tira === tira);
+  // Un jugador que juega en mas de un equipo (equipos_adicionales) tiene UNA sola ficha de
+  // lesion -- aparece en la lista de cada equipo en el que participa (mismo criterio que
+  // jugadorEnEquipo en el resto de la app), no solo en su categoria/tira de origen. La
+  // categoria/tira guardada en la fila de "lesiones" es solo la de origen al momento de crearla,
+  // asi que el filtro real se resuelve contra el jugador, no contra esa columna.
+  const lesionesEquipo = lesiones.filter((l) => {
+    const j = jugadoresById[l.jugador_id];
+    return j && jugadorEnEquipo(j, categoria, tira);
+  });
   const activas = lesionesEquipo.filter((l) => !l.fecha_alta);
   const historial = lesionesEquipo.filter((l) => l.fecha_alta);
 
@@ -6506,7 +6514,7 @@ function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDa
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-zinc-100 truncate">{jugador?.nombre_apellido || "—"}</div>
-                  <div className="text-[11px] text-zinc-500">#{jugador?.dorsal ?? "-"} · {categoria} · {tira}</div>
+                  <div className="text-[11px] text-zinc-500">#{jugador ? (dorsalEnEquipo(jugador, categoria, tira) ?? "-") : "-"} · {categoria} · {tira}</div>
                   <div className="text-xs text-zinc-400 truncate mt-0.5">{l.tipo_lesion}</div>
                   <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 mt-1.5">
                     <span className={`font-bold px-1.5 rounded-full ${resuelta ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>
@@ -6525,7 +6533,7 @@ function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDa
             <NuevaLesionForm jugadores={jugadores} categoria={categoria} tira={tira} jugadorIdInicial={jugadorIdInicial} onCancel={() => setCreando(false)} onCreate={crear} />
           )}
           {!creando && seleccion && (
-            <FichaLesion lesion={seleccion} jugador={jugadoresById[seleccion.jugador_id]} onUpdateLesion={onUpdateLesion} onDarDeAlta={darDeAlta} onBack={() => setSeleccionId(null)} />
+            <FichaLesion lesion={seleccion} jugador={jugadoresById[seleccion.jugador_id]} categoria={categoria} tira={tira} onUpdateLesion={onUpdateLesion} onDarDeAlta={darDeAlta} onBack={() => setSeleccionId(null)} />
           )}
           {!creando && !seleccion && (
             <div className="hidden lg:flex flex-col items-center justify-center gap-2 border border-dashed border-zinc-800 rounded-xl py-16 text-zinc-500 text-sm text-center">
