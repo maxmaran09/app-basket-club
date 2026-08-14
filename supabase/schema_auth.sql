@@ -75,17 +75,17 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Vista de solo lectura para que una cuenta de Jugador (compartida por categoria/tira) vea EN
--- SU CALENDARIO que hay entrenamiento tal dia, sin exponerle las columnas sensibles (bloques,
--- objetivoSemana) que viven en esas mismas filas de "eventos". No incluye eventos tipo
--- "individual": al ser un login compartido por todo el equipo (no una cuenta por jugador), no
--- hay forma de filtrar "es MI sesion 1 a 1" -- se opta por no mostrar individuales en absoluto
--- antes que mostrarle a todo el equipo la sesion privada de un companero. Se crea sin
--- "security_invoker" (igual que vista_promedios_jugador en schema_stats.sql), asi corre con los
--- privilegios de quien la creo y no la bloquea la policy restrictiva de "eventos" para el rol
--- jugador (ver mas abajo) — la vista es la unica puerta a esas fechas, y solo deja pasar 6
--- columnas inofensivas.
+-- SU CALENDARIO que hay entrenamiento tal dia (con el horario de cancha/fisico), sin exponerle
+-- las columnas realmente sensibles (bloques, objetivoSemana) que viven en esas mismas filas de
+-- "eventos". No incluye eventos tipo "individual": al ser un login compartido por todo el equipo
+-- (no una cuenta por jugador), no hay forma de filtrar "es MI sesion 1 a 1" -- se opta por no
+-- mostrar individuales en absoluto antes que mostrarle a todo el equipo la sesion privada de un
+-- companero. Se crea sin "security_invoker" (igual que vista_promedios_jugador en
+-- schema_stats.sql), asi corre con los privilegios de quien la creo y no la bloquea la policy
+-- restrictiva de "eventos" para el rol jugador (ver mas abajo) — la vista es la unica puerta a
+-- esas fechas, y solo deja pasar columnas inofensivas.
 create or replace view public.vista_calendario_jugador as
-select e.id, e.date, e.type, e.categoria, e.tira, e.title
+select e.id, e.date, e.type, e.categoria, e.tira, e.title, e."horarioBasquet", e."horarioFisico"
 from public.eventos e
 where e.type = 'entrenamiento'
   and e.categoria = public.mi_categoria()
