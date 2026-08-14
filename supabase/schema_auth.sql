@@ -223,12 +223,20 @@ create policy "notas_staff_delete_all" on public.notas_staff for delete to authe
 
 -- Estadisticas (partidos_stats, jugador_partido_stats, equipo_partido_stats, alias_*): PF
 -- tiene lectura (puede consultar partidos/promedios ya cargados) pero no escritura (no sube
--- PDFs ni edita nada); Jugador sigue sin ningun acceso (no es una de sus 2 secciones). Las
--- vistas agregadas (vista_promedios_jugador, vista_promedios_equipo, etc.) NO se tocan: siguen
--- sin RLS propia y bypasean estas policies igual que antes.
+-- PDFs ni edita nada). Jugador tiene lectura acotada de partidos_stats/equipo_partido_stats
+-- (scopeada a su propia categoria/tira via temporada_id) para el panel "Salud tactica del
+-- equipo" de Inicio -- jugador_partido_stats (box score individual) sigue sin ningun acceso, no
+-- hace falta para ese panel. Las vistas agregadas (vista_promedios_jugador, vista_promedios_equipo,
+-- etc.) NO se tocan: siguen sin RLS propia y bypasean estas policies igual que antes.
 drop policy if exists "partidos_stats_select_all" on public.partidos_stats;
 create policy "partidos_stats_select_all" on public.partidos_stats for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+  using (
+    public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico')
+    or (
+      public.mi_rol() = 'jugador'
+      and temporada_id in (select id from public.temporadas where categoria = public.mi_categoria() and tira = public.mi_tira())
+    )
+  );
 drop policy if exists "partidos_stats_insert_all" on public.partidos_stats;
 create policy "partidos_stats_insert_all" on public.partidos_stats for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));
@@ -254,7 +262,16 @@ create policy "jugador_partido_stats_delete_all" on public.jugador_partido_stats
 
 drop policy if exists "equipo_partido_stats_select_all" on public.equipo_partido_stats;
 create policy "equipo_partido_stats_select_all" on public.equipo_partido_stats for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+  using (
+    public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico')
+    or (
+      public.mi_rol() = 'jugador'
+      and partido_id in (
+        select id from public.partidos_stats
+        where temporada_id in (select id from public.temporadas where categoria = public.mi_categoria() and tira = public.mi_tira())
+      )
+    )
+  );
 drop policy if exists "equipo_partido_stats_insert_all" on public.equipo_partido_stats;
 create policy "equipo_partido_stats_insert_all" on public.equipo_partido_stats for insert to authenticated
   with check (public.mi_rol() in ('head_coach', 'asistente_tecnico'));

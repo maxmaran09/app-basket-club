@@ -22,7 +22,7 @@ export const SECCIONES_POR_ROL = {
   [ROLES.HEAD_COACH]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "biblioteca", "scouting", "estadisticas", "lesionados", "configuracion"],
   [ROLES.ASISTENTE_TECNICO]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "biblioteca", "scouting", "estadisticas", "lesionados", "configuracion"],
   [ROLES.PREPARADOR_FISICO]: ["inicio", "calendario", "plantel", "jugador360", "entrenamientos", "biblioteca", "scouting", "estadisticas", "lesionados", "configuracion"],
-  [ROLES.JUGADOR]: ["calendario", "scouting"],
+  [ROLES.JUGADOR]: ["inicio", "calendario", "scouting"],
 };
 
 export const puedeVerSeccion = (rol, seccionId) => (SECCIONES_POR_ROL[rol] || []).includes(seccionId);

@@ -6158,6 +6158,89 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
   );
 }
 
+// Version acotada de Inicio para el login de Jugador (cuenta compartida por categoria/tira): a
+// diferencia de InicioView no toca notas_staff/wellness_diario/asistencias/jugadores (RLS se las
+// niega, son datos de staff/medicos) -- solo la agenda de entrenamientos+partidos propios y la
+// salud tactica del equipo, ambas ya permitidas para este rol via RLS.
+function InicioJugadorView({ events, onSelectEvent }) {
+  const { categoria, tira, setCategoria, setTira, temporadaId, temporadaSeleccionada } = useTeam();
+  const hoy = todayKeyBA();
+  const [eventosPropios, setEventosPropios] = useState([]);
+
+  // Mismo criterio que CalendarView: un Jugador no elige categoria/tira, se resuelve por RPC
+  // contra su propio perfil, y las fechas de entrenamiento vienen de vista_calendario_jugador
+  // (RLS le niega "eventos" para ese tipo -- ver schema_auth.sql).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [{ data: cat }, { data: tir }, { data: propios }] = await Promise.all([
+        supabase.rpc("mi_categoria"),
+        supabase.rpc("mi_tira"),
+        supabase.from("vista_calendario_jugador").select("*"),
+      ]);
+      if (cancelled) return;
+      if (cat) setCategoria(cat);
+      if (tir) setTira(tir);
+      setEventosPropios(propios || []);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const en7dias = (() => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const agenda = [...events, ...eventosPropios]
+    .filter((e) => e.categoria === categoria && e.tira === tira && e.date >= hoy && e.date <= en7dias)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return (
+    <div className="max-w-3xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <Home size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Inicio</span>
+      </div>
+      <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3 text-zinc-400">
+          <Calendar size={16} />
+          <h3 className="text-xs font-bold uppercase tracking-widest">Próximos entrenamientos y partidos</h3>
+        </div>
+        {agenda.length === 0 ? (
+          <p className="text-sm text-zinc-500">No hay entrenamientos ni partidos programados para los próximos 7 días.</p>
+        ) : (
+          <div className="space-y-1">
+            {agenda.map((e) => {
+              const st = TIPO_ESTILO[e.type];
+              const clickable = e.type === "partido";
+              const horario = horarioResumen(e);
+              const row = (
+                <>
+                  <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
+                  <span className="text-xs text-zinc-500 w-16 shrink-0">{e.date}</span>
+                  <span className={`text-sm ${st.text} truncate flex-1`}>{e.title}</span>
+                  {horario && <span className="text-xs text-zinc-500 shrink-0">{horario}</span>}
+                </>
+              );
+              return clickable ? (
+                <button key={e.id} onClick={() => onSelectEvent(e)} className="w-full flex items-center gap-2 text-left hover:bg-zinc-800/60 rounded px-1.5 py-1">
+                  {row}
+                </button>
+              ) : (
+                <div key={e.id} className="flex items-center gap-2 px-1.5 py-1">{row}</div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <PanelRendimientoColectivo temporadaId={temporadaId} temporadaSeleccionada={temporadaSeleccionada} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------
 // Lesionados: ficha medica por lesion (no por jugador) -- zona marcada en un diagrama de cuerpo,
 // estudios (PDFs) y evolucion en el tiempo. Ver seccion "Lesionados" en CLAUDE.md.
@@ -7135,7 +7218,9 @@ export default function App() {
             <Routes>
               <Route path="/" element={
                 <ProtectedRoute seccionId="inicio">
-                  <InicioView events={events} jugadores={jugadores} equiposRivales={equiposRivales} onSelectEvent={setActive} rol={rol} />
+                  {rol === ROLES.JUGADOR
+                    ? <InicioJugadorView events={events} onSelectEvent={setActive} />
+                    : <InicioView events={events} jugadores={jugadores} equiposRivales={equiposRivales} onSelectEvent={setActive} rol={rol} />}
                 </ProtectedRoute>
               } />
               <Route path="/calendario" element={
