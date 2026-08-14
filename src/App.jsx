@@ -26,6 +26,27 @@ const TIPO_ESTILO = {
   especial: { bg: "bg-purple-500/15", text: "text-purple-300", dot: "bg-purple-400", label: "Evento" },
 };
 
+// Texto corto de horario para la lista de eventos del día en el Calendario -- cada tipo guarda
+// su horario en campos distintos (ver comentarios de columnas en supabase/schema.sql).
+function horarioResumen(e) {
+  if (e.type === "entrenamiento") {
+    const partes = [];
+    if (e.horarioBasquet) partes.push(`Cancha ${e.horarioBasquet}`);
+    if (e.horarioFisico) partes.push(`Físico ${e.horarioFisico}`);
+    return partes.join(" · ") || null;
+  }
+  if (e.type === "partido") {
+    const partes = [];
+    if (e.citacion) partes.push(`Citación ${e.citacion}`);
+    if (e.horario) partes.push(`Partido ${e.horario}`);
+    return partes.join(" · ") || null;
+  }
+  if (e.horaInicio || e.horaFin) {
+    return `${e.horaInicio || "—"}${e.horaFin ? ` a ${e.horaFin}` : ""} hs`;
+  }
+  return null;
+}
+
 const SISTEMAS = {
   transicion: ["Libre", "Alto", "Bajo", "Pantalón"],
   set: ["Camiseta", "Puño", "Fijo", "Uno", "Cuerno"],
@@ -2022,20 +2043,25 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
   );
 }
 
-function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent, onDuplicateEvent, rol }) {
+const TIPOS_SIN_FICHA_PROPIA = ["libre", "optativo", "especial"];
+
+function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDeleteEvent, onMoveEvent, onRenameEvent, onEditHorario, onDuplicateEvent, rol }) {
   const todayKey = todayKeyBA();
   const [todayYear, todayMonth] = todayKey.split("-").map(Number);
   const [month, setMonth] = useState(todayMonth - 1);
   const [year, setYear] = useState(todayYear);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento", rivalId: "" });
+  const [newEv, setNewEv] = useState({ title: "", type: "entrenamiento", rivalId: "", horaInicio: "", horaFin: "" });
   const { categoria, tira, setCategoria, setTira } = useTeam();
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveDate, setMoveDate] = useState("");
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [horarioTarget, setHorarioTarget] = useState(null);
+  const [horaInicioEdit, setHoraInicioEdit] = useState("");
+  const [horaFinEdit, setHoraFinEdit] = useState("");
   const [eventosPropios, setEventosPropios] = useState([]); // solo se llena para rol jugador (vista_calendario_jugador)
 
   const esJugador = rol === ROLES.JUGADOR;
@@ -2146,6 +2172,8 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
               const clickable = tiposClickeables.includes(e.type);
               const isMoving = moveTarget === e.id;
               const isRenaming = renameTarget === e.id;
+              const isEditingHorario = horarioTarget === e.id;
+              const resumenHorario = horarioResumen(e);
               return (
                 <div key={e.id} className="rounded-lg border border-zinc-800">
                   <div className="flex items-center gap-1 px-1">
@@ -2160,6 +2188,11 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                         <button onClick={() => { setRenameTarget(isRenaming ? null : e.id); setRenameValue(e.title); }} title="Editar nombre" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
                           <PenLine size={14} />
                         </button>
+                        {TIPOS_SIN_FICHA_PROPIA.includes(e.type) && (
+                          <button onClick={() => { setHorarioTarget(isEditingHorario ? null : e.id); setHoraInicioEdit(e.horaInicio || ""); setHoraFinEdit(e.horaFin || ""); }} title="Editar horario" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
+                            <Clock size={14} />
+                          </button>
+                        )}
                         <button onClick={() => { setMoveTarget(isMoving ? null : e.id); setMoveDate(e.date); }} title="Cambiar de día" className="text-zinc-500 hover:text-blue-400 p-1.5 shrink-0">
                           <CalendarClock size={14} />
                         </button>
@@ -2172,6 +2205,16 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       </>
                     )}
                   </div>
+                  {resumenHorario && <p className="px-3 pb-2 -mt-1 text-[11px] text-zinc-500">{resumenHorario}</p>}
+                  {isEditingHorario && (
+                    <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
+                      <input type="time" value={horaInicioEdit} onChange={(ev) => setHoraInicioEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <span className="text-zinc-500 text-xs">a</span>
+                      <input type="time" value={horaFinEdit} onChange={(ev) => setHoraFinEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <button onClick={() => { onEditHorario(e.id, { horaInicio: horaInicioEdit || null, horaFin: horaFinEdit || null }); setHorarioTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => setHorarioTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
+                    </div>
+                  )}
                   {isRenaming && (
                     <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
                       <input value={renameValue} onChange={(ev) => setRenameValue(ev.target.value)} className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
@@ -2203,6 +2246,18 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                   {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
                 </select>
               )}
+              {TIPOS_SIN_FICHA_PROPIA.includes(newEv.type) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-zinc-500 mb-1">Hora inicio</p>
+                    <input type="time" value={newEv.horaInicio} onChange={(e) => setNewEv({ ...newEv, horaInicio: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 mb-1">Hora fin</p>
+                    <input type="time" value={newEv.horaFin} onChange={(e) => setNewEv({ ...newEv, horaFin: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={() => {
@@ -2213,8 +2268,12 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       payload.rival_id = rivalEquipo.id;
                       payload.rival = rivalEquipo.nombre_club;
                     }
+                    if (TIPOS_SIN_FICHA_PROPIA.includes(newEv.type)) {
+                      if (newEv.horaInicio) payload.horaInicio = newEv.horaInicio;
+                      if (newEv.horaFin) payload.horaFin = newEv.horaFin;
+                    }
                     onAddEvent(payload);
-                    setNewEv({ title: "", type: "entrenamiento", rivalId: "" });
+                    setNewEv({ title: "", type: "entrenamiento", rivalId: "", horaInicio: "", horaFin: "" });
                     setShowAdd(false);
                   }}
                   className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded"
@@ -7089,6 +7148,7 @@ export default function App() {
                     onDeleteEvent={deleteEvent}
                     onMoveEvent={(id, date) => updateEvent(id, { date })}
                     onRenameEvent={(id, title) => updateEvent(id, { title })}
+                    onEditHorario={(id, patch) => updateEvent(id, patch)}
                     onDuplicateEvent={duplicateEvent}
                     rol={rol}
                   />

@@ -67,6 +67,10 @@ create table if not exists public.eventos (
 -- columna de planes individuales): estas lineas son seguras de correr siempre.
 alter table public.eventos add column if not exists "planesIndividuales" jsonb not null default '[]'::jsonb;
 alter table public.eventos add column if not exists "fotoFisicaUrl" text;
+-- Horario de inicio/fin para eventos sin ficha propia (libre/optativo/especial) -- entrenamiento
+-- ya tiene "horarioBasquet"/"horarioFisico" y partido ya tiene "horario"/"citacion" arriba.
+alter table public.eventos add column if not exists "horaInicio" text;
+alter table public.eventos add column if not exists "horaFin" text;
 alter table public.eventos drop constraint if exists eventos_type_check;
 alter table public.eventos add constraint eventos_type_check
   check (type in ('entrenamiento','partido','libre','optativo','especial','individual'));

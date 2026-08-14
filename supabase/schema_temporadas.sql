@@ -41,9 +41,16 @@ create index if not exists temporadas_categoria_tira_idx on public.temporadas (c
 
 alter table public.temporadas enable row level security;
 
+-- Jugador necesita leer su propia temporada (categoria/tira) para que
+-- vista_equipos_rivales_temporada (Scouting Hub + plan de juego dentro de una ficha de Partido,
+-- security_invoker = true) le devuelva categoria/tira/activa en el join en vez de null -- sin esto
+-- el left join a temporadas le quedaba bloqueado por RLS y la lista de rivales le llegaba vacia.
 drop policy if exists "temporadas_select_staff" on public.temporadas;
 create policy "temporadas_select_staff" on public.temporadas for select to authenticated
-  using (public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico'));
+  using (
+    public.mi_rol() in ('head_coach', 'asistente_tecnico', 'preparador_fisico')
+    or (public.mi_rol() = 'jugador' and categoria = public.mi_categoria() and tira = public.mi_tira())
+  );
 
 drop policy if exists "temporadas_insert_staff_completo" on public.temporadas;
 create policy "temporadas_insert_staff_completo" on public.temporadas for insert to authenticated
