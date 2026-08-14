@@ -2208,9 +2208,9 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                   {resumenHorario && <p className="px-3 pb-2 -mt-1 text-[11px] text-zinc-500">{resumenHorario}</p>}
                   {isEditingHorario && (
                     <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
-                      <input type="time" value={horaInicioEdit} onChange={(ev) => setHoraInicioEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <input type="time" lang="es-AR" value={horaInicioEdit} onChange={(ev) => setHoraInicioEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
                       <span className="text-zinc-500 text-xs">a</span>
-                      <input type="time" value={horaFinEdit} onChange={(ev) => setHoraFinEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
+                      <input type="time" lang="es-AR" value={horaFinEdit} onChange={(ev) => setHoraFinEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
                       <button onClick={() => { onEditHorario(e.id, { horaInicio: horaInicioEdit || null, horaFin: horaFinEdit || null }); setHorarioTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
                       <button onClick={() => setHorarioTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
@@ -2250,11 +2250,11 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-xs text-zinc-500 mb-1">Hora inicio</p>
-                    <input type="time" value={newEv.horaInicio} onChange={(e) => setNewEv({ ...newEv, horaInicio: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
+                    <input type="time" lang="es-AR" value={newEv.horaInicio} onChange={(e) => setNewEv({ ...newEv, horaInicio: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 mb-1">Hora fin</p>
-                    <input type="time" value={newEv.horaFin} onChange={(e) => setNewEv({ ...newEv, horaFin: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
+                    <input type="time" lang="es-AR" value={newEv.horaFin} onChange={(e) => setNewEv({ ...newEv, horaFin: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm" />
                   </div>
                 </div>
               )}
