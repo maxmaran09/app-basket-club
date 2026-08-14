@@ -5770,7 +5770,7 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
 // partidos_stats.temporada_id resuelto por esa Categoria/Tira); el Panel de Rendimiento
 // Colectivo tambien, via el mismo temporada_id.
 function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
-  const { categoria, tira, setCategoria, setTira, temporadaId, temporadaSeleccionada } = useTeam();
+  const { categoria, tira, setCategoria, setTira, temporadaId, temporadaSeleccionada, temporadas } = useTeam();
   const hoy = todayKeyBA();
 
   const [notas, setNotas] = useState([]);
@@ -5864,8 +5864,14 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
   const [tendencia, setTendencia] = useState([]);
   const [loadingStats, setLoadingStats] = useState(true);
 
+  // "Último partido"/"tendencia" buscan en TODAS las temporadas de este equipo (categoria+tira),
+  // no solo en la activa -- si el staff ya creó una temporada nueva pero todavía no cargó ningún
+  // partido ahí, el último partido real del equipo sigue siendo el de la temporada anterior, y
+  // no tiene que desaparecer del dashboard hasta que se cargue uno nuevo.
+  const idsTemporadasEquipo = temporadas.filter((t) => t.categoria === categoria && t.tira === tira).map((t) => t.id);
+
   useEffect(() => {
-    if (!temporadaId) {
+    if (idsTemporadasEquipo.length === 0) {
       setUltimoPartido(null);
       setLideres({ puntos: [], eficiencia: [], rebotes: [] });
       setTendencia([]);
@@ -5875,7 +5881,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
     let cancelled = false;
     (async () => {
       setLoadingStats(true);
-      const { data: ultimo } = await supabase.from("partidos_stats").select("*").eq("temporada_id", temporadaId).order("fecha", { ascending: false }).limit(1).maybeSingle();
+      const { data: ultimo } = await supabase.from("partidos_stats").select("*").in("temporada_id", idsTemporadasEquipo).order("fecha", { ascending: false }).limit(1).maybeSingle();
       if (cancelled) return;
       setUltimoPartido(ultimo);
 
@@ -5893,7 +5899,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
         setLideres({ puntos: [], eficiencia: [], rebotes: [] });
       }
 
-      const { data: ultimos3 } = await supabase.from("partidos_stats").select("*").eq("temporada_id", temporadaId).not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(3);
+      const { data: ultimos3 } = await supabase.from("partidos_stats").select("*").in("temporada_id", idsTemporadasEquipo).not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(3);
       if (!cancelled) {
         setTendencia(
           (ultimos3 || [])
@@ -5909,7 +5915,10 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
       setLoadingStats(false);
     })();
     return () => { cancelled = true; };
-  }, [temporadaId]);
+    // idsTemporadasEquipo se recalcula a partir de categoria/tira/temporadas -- no hace falta
+    // (ni conviene, cambia de referencia en cada render) listarlo aparte en las deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoria, tira, temporadas]);
 
   const lesionados = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira) && j.disponibilidad && j.disponibilidad !== "Disponible");
 
