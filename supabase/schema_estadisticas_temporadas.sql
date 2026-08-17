@@ -69,6 +69,10 @@ select
   round((sum(jps.t2a + 1.5 * jps.t3a) / nullif(sum(jps.t2i + jps.t3i), 0))::numeric, 3) as efg_pct_prom
 from public.jugador_partido_stats jps
 join public.partidos_stats ps on ps.id = jps.partido_id
+-- "Partido jugado" = jugo minutos, no solo aparecer en la planilla del PDF: la CABB lista el
+-- plantel completo del partido, DNP incluidos (0:00, resto de la fila en 0) -- sin este filtro
+-- esos partidos contaban como "jugados" e inflaban el PJ y diluian los promedios hacia abajo.
+where jps.minutos > 0
 group by
   coalesce(
     jps.jugador_id::text,
