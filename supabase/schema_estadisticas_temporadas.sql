@@ -25,6 +25,14 @@ create index if not exists partidos_stats_temporada_idx on public.partidos_stats
 -- (agregan temporada_id) -- "create or replace view" no permite eso en Postgres.
 -- ============================================================================
 
+-- Bug real (encontrado 2026-08-17): "jps.equipo" quedaba como columna de agrupacion propia
+-- ademas de entrar en el coalesce de fallback -- para un jugador YA vinculado (jugador_id o
+-- jugador_rival_id), esto partia sus partidos en un grupo por cada variante de texto que
+-- "equipo" haya traido de cada PDF (mayusculas/espacios/tildes distintos entre cargas), y Jugador
+-- 360/Estadisticas se quedaban con el ultimo grupo devuelto por Postgres nomas -- casi siempre de
+-- 1 solo partido -- en vez del acumulado real. "equipo" ahora SOLO entra en el group by dentro del
+-- fallback por nombre (para no mezclar a dos jugadores sin vincular que comparten nombre pero
+-- juegan en equipos distintos) -- mismo criterio que ya usaba vista_promedios_equipo mas abajo.
 drop view if exists public.vista_promedios_jugador;
 create view public.vista_promedios_jugador
 with (security_invoker = true) as
@@ -32,7 +40,7 @@ select
   max(jps.jugador_id::text)::uuid as jugador_id,
   max(jps.jugador_rival_id::text)::uuid as jugador_rival_id,
   max(jps.nombre_jugador) as nombre_jugador,
-  jps.equipo,
+  max(jps.equipo) as equipo,
   ps.temporada_id,
   count(*) as pj,
   round(avg(jps.minutos)::numeric, 1) as min_prom,
@@ -61,7 +69,13 @@ select
   round((sum(jps.t2a + 1.5 * jps.t3a) / nullif(sum(jps.t2i + jps.t3i), 0))::numeric, 3) as efg_pct_prom
 from public.jugador_partido_stats jps
 join public.partidos_stats ps on ps.id = jps.partido_id
-group by coalesce(jps.jugador_id::text, 'r:' || jps.jugador_rival_id::text, 'n:' || lower(trim(jps.nombre_jugador))), jps.equipo, ps.temporada_id;
+group by
+  coalesce(
+    jps.jugador_id::text,
+    'r:' || jps.jugador_rival_id::text,
+    'n:' || lower(trim(jps.nombre_jugador)) || '::' || lower(trim(jps.equipo))
+  ),
+  ps.temporada_id;
 
 drop view if exists public.vista_totales_equipo_partido;
 create view public.vista_totales_equipo_partido
