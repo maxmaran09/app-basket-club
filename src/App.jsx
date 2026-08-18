@@ -1976,7 +1976,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
         ) : (
           <select value={rivalId} onChange={(e) => cambiarRival(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100">
             <option value="">(sin asignar)</option>
-            {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
+            {equiposRivales.filter((r) => r.categoria === event.categoria && r.tira === event.tira).map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
           </select>
         )}
       </div>
@@ -2258,7 +2258,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
               {newEv.type === "partido" && (
                 <select value={newEv.rivalId} onChange={(e) => setNewEv({ ...newEv, rivalId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm">
                   <option value="">Rival (elegilo o cargalo en Scouting Hub)</option>
-                  {equiposRivales.map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
+                  {equiposRivales.filter((r) => r.categoria === categoria && r.tira === tira).map((r) => <option key={r.id} value={r.id}>{r.nombre_club}</option>)}
                 </select>
               )}
               {TIPOS_SIN_FICHA_PROPIA.includes(newEv.type) && (
