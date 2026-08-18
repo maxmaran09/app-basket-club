@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2, HeartPulse, FileText } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2, HeartPulse, FileText } from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
@@ -1204,6 +1204,15 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
     onChange(bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b)));
   };
 
+  const moveBloque = (bloqueId, direction) => {
+    const idx = bloques.findIndex((b) => b.id === bloqueId);
+    const nextIdx = idx + direction;
+    if (idx === -1 || nextIdx < 0 || nextIdx >= bloques.length) return;
+    const next = [...bloques];
+    [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+    onChange(next);
+  };
+
   const duplicateBloque = (bloqueId) => {
     const idx = bloques.findIndex((b) => b.id === bloqueId);
     if (idx === -1) return;
@@ -1229,7 +1238,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
   return (
     <Section icon={Clock} title="Bloque de cancha" accent="text-cyan-400">
       <div className="space-y-2">
-        {bloques.map((b) => {
+        {bloques.map((b, idx) => {
           const diagrams = b.diagrams || [];
           return (
             <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
@@ -1257,6 +1266,12 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                     </div>
                     {!soloLectura && (
                       <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => moveBloque(b.id, -1)} disabled={idx === 0} title="Mover arriba" className="text-zinc-500 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-zinc-500">
+                          <ChevronUp size={15} />
+                        </button>
+                        <button onClick={() => moveBloque(b.id, 1)} disabled={idx === bloques.length - 1} title="Mover abajo" className="text-zinc-500 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-zinc-500">
+                          <ChevronDown size={15} />
+                        </button>
                         <button onClick={() => startEditBloque(b)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
                           <PenLine size={15} />
                         </button>
