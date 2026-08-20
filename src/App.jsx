@@ -1947,19 +1947,25 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   // Icono de YouTube (rectangulo rojo + triangulo blanco, dibujado a mano -- jsPDF no trae iconos)
   // con el link real superpuesto (doc.link, no textWithLink, porque no hay texto debajo) -- abre
-  // el video en una pestaña nueva al tocarlo, igual que "Ver video" pero mas compacto.
+  // el video en una pestaña nueva al tocarlo. "top" es el borde superior del icono, no la linea
+  // base de texto -- para alinearlo con una linea de texto de tamaño "size" restarle a "y" algo
+  // como size*0.9 antes de llamarlo (ver uso en Plantel rival).
+  const iconoYoutubeW = 16, iconoYoutubeH = 12;
+  const dibujarIconoYoutube = (x, top, url) => {
+    doc.setFillColor(224, 32, 32);
+    doc.roundedRect(x, top, iconoYoutubeW, iconoYoutubeH, 2.2, 2.2, "F");
+    doc.setFillColor(255, 255, 255);
+    const cx = x + iconoYoutubeW / 2 + 0.5, cy = top + iconoYoutubeH / 2;
+    doc.triangle(cx - 2, cy - 3, cx - 2, cy + 3, cx + 3, cy, "F");
+    doc.link(x, top, iconoYoutubeW, iconoYoutubeH, { url });
+  };
+
+  // Version "de bloque" (icono solo, ocupando su propia linea) -- usada en Scouting colectivo.
   const addVideoLink = (url) => {
     if (!url) return;
-    const w = 18, h = 13;
-    ensureSpace(h + 8);
-    const top = y;
-    doc.setFillColor(224, 32, 32);
-    doc.roundedRect(marginX, top, w, h, 2.5, 2.5, "F");
-    doc.setFillColor(255, 255, 255);
-    const cx = marginX + w / 2 + 0.5, cy = top + h / 2;
-    doc.triangle(cx - 2.3, cy - 3.5, cx - 2.3, cy + 3.5, cx + 3.5, cy, "F");
-    doc.link(marginX, top, w, h, { url });
-    y = top + h + 8;
+    ensureSpace(iconoYoutubeH + 8);
+    dibujarIconoYoutube(marginX, y, url);
+    y += iconoYoutubeH + 8;
   };
 
   // Dibuja el contenido de un RichTextEditor (notas colectivas, objetivos, plan de ataque/defensa)
@@ -2001,13 +2007,23 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
           doc.setTextColor(...color);
           doc.text(prefijo, marginX, y);
         }
-        lineaActual.forEach((p) => {
-          doc.setFont("Inter", p.italic ? "italic" : p.bold ? "bold" : "normal");
+        // Agrupa palabras consecutivas del mismo estilo en un solo doc.text() -- dibujar palabra
+        // por palabra (con un cambio de fuente por cada una, incluso entre iguales) generaba un
+        // PDF con el contenido de texto muy fragmentado.
+        let i = 0;
+        while (i < lineaActual.length) {
+          const estilo = lineaActual[i];
+          let texto = "";
+          while (i < lineaActual.length && lineaActual[i].bold === estilo.bold && lineaActual[i].italic === estilo.italic) {
+            texto += lineaActual[i].text;
+            i++;
+          }
+          doc.setFont("Inter", estilo.italic ? "italic" : estilo.bold ? "bold" : "normal");
           doc.setFontSize(size);
           doc.setTextColor(...color);
-          doc.text(p.text, x, y);
-          x += doc.getTextWidth(p.text);
-        });
+          doc.text(texto, x, y);
+          x += doc.getTextWidth(texto);
+        }
         y += lineHeight;
         lineaActual = [];
         anchoLinea = 0;
@@ -2118,14 +2134,20 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   } else {
     jugadoresRivales.forEach((j) => {
       const encabezado = `#${j.dorsal ?? "-"}  ${j.nombre_apellido}${formatPosicion(j) ? `   ${formatPosicion(j)}` : ""}`;
-      addText(encabezado, { bold: true, size: 10, color: [24, 24, 27], gapAfter: 2 });
+      const watchUrl = youtubeWatchUrl(j.video_individual_url);
+      ensureSpace(14);
+      doc.setFont("Inter", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(24, 24, 27);
+      doc.text(encabezado, marginX, y);
+      if (watchUrl) dibujarIconoYoutube(marginX + doc.getTextWidth(encabezado) + 8, y - 9, watchUrl);
+      y += 14;
       const notas = [
         j.cualidades_ataque && `Ataque: ${j.cualidades_ataque}`,
         j.cualidades_defensa && `Defensa: ${j.cualidades_defensa}`,
         j.debilidades && `Debilidades: ${j.debilidades}`,
       ].filter(Boolean).join("   ");
       if (notas) addText(notas, { size: 9, color: [82, 82, 91], gapAfter: 2 });
-      addVideoLink(youtubeWatchUrl(j.video_individual_url));
       y += 6;
     });
   }
