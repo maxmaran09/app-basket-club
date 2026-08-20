@@ -1787,18 +1787,31 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
   );
 }
 
-// Convierte cualquier link de YouTube (watch?v=, youtu.be/, shorts/, embed/, live/, con
-// parámetros extra o barra final) en su URL embebible, extrayendo el ID de 11 caracteres con
-// una regex en vez de parsear a mano — más tolerante a formatos raros de link.
-// Devuelve null si no se pudo interpretar (para poder ofrecer un link normal como respaldo).
-function youtubeEmbedUrl(url) {
+// Extrae el ID de 11 caracteres de cualquier link de YouTube (watch?v=, youtu.be/, shorts/,
+// embed/, live/, con parámetros extra o barra final) con una regex en vez de parsear a mano —
+// más tolerante a formatos raros de link. Devuelve null si no se pudo interpretar.
+function youtubeVideoId(url) {
   if (!url) return null;
   try {
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/))([A-Za-z0-9_-]{11})/);
-    return match ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : null;
+    return match ? match[1] : null;
   } catch {
     return null;
   }
+}
+
+function youtubeEmbedUrl(url) {
+  const id = youtubeVideoId(url);
+  return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
+}
+
+// Para links "de verdad" (el <a href> del PDF exportado, no un iframe embebido) -- reconstruida
+// siempre desde el ID en vez de volcar el string tal cual lo pegó el staff, porque un link
+// pegado sin "https://" adelante (ej. copiado a mano de la barra de direcciones) queda como
+// relativo dentro de un <a href> y no lleva a ningún lado al tocarlo.
+function youtubeWatchUrl(url) {
+  const id = youtubeVideoId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
 }
 
 // Reproductor emergente: el video corre adentro de la app, sin redirigir a YouTube.
@@ -2132,7 +2145,11 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
         <p className="text-zinc-500">Sin notas colectivas cargadas.</p>
       )}
       {equipoRival?.video_colectivo_url && (
-        <p className="mt-1">Video: <a href={equipoRival.video_colectivo_url} className="text-blue-700 underline break-all">{equipoRival.video_colectivo_url}</a></p>
+        youtubeWatchUrl(equipoRival.video_colectivo_url) ? (
+          <p className="mt-1">Video: <a href={youtubeWatchUrl(equipoRival.video_colectivo_url)} className="text-blue-700 underline break-all">{youtubeWatchUrl(equipoRival.video_colectivo_url)}</a></p>
+        ) : (
+          <p className="mt-1 text-zinc-500">Video cargado con un link que no se pudo interpretar como YouTube.</p>
+        )
       )}
 
       <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plantel rival</h2>
@@ -2159,7 +2176,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
                   {[j.cualidades_ataque && `Ataque: ${j.cualidades_ataque}`, j.cualidades_defensa && `Defensa: ${j.cualidades_defensa}`, j.debilidades && `Debilidades: ${j.debilidades}`].filter(Boolean).join(" · ") || "—"}
                 </td>
                 <td className="py-1 text-xs">
-                  {j.video_individual_url ? <a href={j.video_individual_url} className="text-blue-700 underline break-all">Ver video</a> : "—"}
+                  {youtubeWatchUrl(j.video_individual_url) ? <a href={youtubeWatchUrl(j.video_individual_url)} className="text-blue-700 underline break-all">Ver video</a> : "—"}
                 </td>
               </tr>
             ))}
