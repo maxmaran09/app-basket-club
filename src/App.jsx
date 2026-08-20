@@ -1814,6 +1814,30 @@ function youtubeWatchUrl(url) {
   return id ? `https://www.youtube.com/watch?v=${id}` : null;
 }
 
+// Trae una imagen propia del sitio (ej. el escudo en /public) como data URL, para poder pasarsela
+// a doc.addImage -- jsPDF no puede tomar una URL directamente, necesita los bytes ya en el cliente.
+function cargarImagenComoDataUrl(src) {
+  return fetch(src)
+    .then((res) => res.blob())
+    .then((blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }));
+}
+
+// Ancho/alto reales de una imagen ya cargada como data URL, para poder mantener su proporcion al
+// dibujarla en el PDF en vez de forzarla a un cuadrado y que se vea deformada.
+function medirImagenDataUrl(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
 // Genera el PDF del Plan de juego con jsPDF (en vez de window.print()) -- el "Guardar como PDF"
 // del navegador depende de que camino de impresion use cada uno (el driver de Windows "Microsoft
 // Print to PDF", por ejemplo, no conserva links ni maneja bien los acentos), y eso lo hacia poco
@@ -1823,8 +1847,18 @@ function youtubeWatchUrl(url) {
 // "jsPDF" se importa dinamico (no al tope del archivo) para no sumarle ~130kb gzip al bundle
 // principal que se descarga siempre -- solo se baja la primera vez que alguien toca "Exportar PDF".
 async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
-  const { default: jsPDF } = await import("jspdf");
+  const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64 }] = await Promise.all([
+    import("jspdf"),
+    import("./pdfFonts.js"),
+  ]);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  // La fuente "helvetica" que trae jsPDF por defecto no soporta bien tildes/eñe (se veian como
+  // caracteres invalidos, y el ancho mal calculado de esos caracteres rompia el salto de linea de
+  // splitTextToSize) -- Inter si, es una fuente real embebida (ver src/pdfFonts.js).
+  doc.addFileToVFS("Inter-Regular.ttf", INTER_REGULAR_BASE64);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+  doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_BASE64);
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
   const marginX = 40;
   const marginBottom = 40;
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -1841,7 +1875,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   const addSectionTitle = (text) => {
     ensureSpace(28);
-    doc.setFont("helvetica", "bold");
+    doc.setFont("Inter", "bold");
     doc.setFontSize(11);
     doc.setTextColor(24, 24, 27);
     doc.text(text.toUpperCase(), marginX, y);
@@ -1853,7 +1887,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   const addText = (text, { bold = false, size = 10, color = [63, 63, 70], gapAfter = 8 } = {}) => {
     if (!text) return;
-    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFont("Inter", bold ? "bold" : "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
     const lineHeight = size * 1.35;
@@ -1868,31 +1902,56 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   const addLink = (label, url) => {
     if (!url) return;
     ensureSpace(16);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("Inter", "normal");
     doc.setFontSize(10);
     doc.setTextColor(29, 78, 216);
     doc.textWithLink(label, marginX, y, { url });
     y += 16;
   };
 
-  doc.setFont("helvetica", "bold");
+  // Escudo del club a la izquierda, titulo (con jornada/horario arriba y abajo) a la derecha, en
+  // el mismo bloque -- si falla el fetch (ej. sin conexion) se sigue sin logo, no es critico.
+  const headerTop = y;
+  const logoSize = 40;
+  let headerTextX = marginX;
+  try {
+    const logoDataUrl = await cargarImagenComoDataUrl("/escudo-hacoaj.png");
+    const dims = await medirImagenDataUrl(logoDataUrl);
+    const w = dims ? logoSize * (dims.w / dims.h) : logoSize;
+    doc.addImage(logoDataUrl, "PNG", marginX, headerTop, w, logoSize);
+    headerTextX = marginX + w + 12;
+  } catch {
+    // sin logo
+  }
+
+  doc.setFont("Inter", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(113, 113, 122);
+  doc.text(`${jornada || "Partido"} - ${condicion} - ${event.date}`, headerTextX, headerTop + 10);
+
+  doc.setFont("Inter", "bold");
   doc.setFontSize(16);
   doc.setTextColor(9, 9, 11);
-  doc.text(`Nautico Hacoaj vs ${equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}`, marginX, y);
-  y += 20;
-  addText(`${jornada || "Partido"} - ${condicion} - ${event.date}   Horario ${horario || "-"}   Citacion ${citacion || "-"}`, { size: 9, color: [113, 113, 122], gapAfter: 14 });
+  doc.text(`Náutico Hacoaj vs ${equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}`, headerTextX, headerTop + 26);
+
+  doc.setFont("Inter", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(113, 113, 122);
+  doc.text(`Horario ${horario || "-"}   Citación ${citacion || "-"}`, headerTextX, headerTop + 38);
+
+  y = headerTop + Math.max(logoSize, 42) + 12;
 
   addSectionTitle("Scouting colectivo");
   addText(htmlToPlainText(equipoRival?.notas_colectivas) || "Sin notas colectivas cargadas.");
   addLink("Ver video colectivo", youtubeWatchUrl(equipoRival?.video_colectivo_url));
   y += 6;
 
-  addSectionTitle("Estadisticas colectivas");
+  addSectionTitle("Estadísticas colectivas");
   const rc = await fetchRendimientoRival(equipoRival?.id, equipoRival?.temporada_id);
   if (!rc) {
     addText("Sin partidos de este rival cargados en esta temporada.");
   } else {
-    addText(`Record: ${rc.record.ganados} ganados - ${rc.record.perdidos} perdidos (${rc.pj} PJ en el torneo)`, { bold: true, gapAfter: 4 });
+    addText(`Récord: ${rc.record.ganados} ganados - ${rc.record.perdidos} perdidos (${rc.pj} PJ en el torneo)`, { bold: true, gapAfter: 4 });
     addText(`PTS Favor ${rc.pts.general.favor.toFixed(1)}   PTS Contra ${rc.pts.general.contra.toFixed(1)}`, { size: 9, gapAfter: 4 });
     addText(`eFG% ${rc.eficiencia.efgPct.toFixed(1)}%   Plays/partido ${rc.eficiencia.playProm.toFixed(1)}   PTS x Play ${rc.eficiencia.ppp.toFixed(2)}`, { size: 9, gapAfter: 4 });
     addText(rc.tiros.map((t) => `${t.l} ${t.pct.toFixed(1)}% (${t.made.toFixed(1)}/${t.att.toFixed(1)})`).join("   "), { size: 9, gapAfter: 4 });
@@ -1911,7 +1970,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   addSectionTitle("Plan de juego - ataque");
   addText(htmlToPlainText(planAtaque) || "Sin plan de ataque cargado.");
-  if (ataqueTags.length) addText(`Transicion: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  if (ataqueTags.length) addText(`Transición: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   if (setTags.length) addText(`Set ofensivo: ${setTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   (event.ataque?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
   y += 6;
