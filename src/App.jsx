@@ -1116,7 +1116,7 @@ function htmlToPlainText(html) {
 // cancha. "initialValue" solo se aplica al montar -- para resetear con contenido nuevo (otro
 // bloque, formulario limpio) el que lo usa tiene que cambiarle la "key" desde afuera, así React
 // lo remonta en vez de pisar lo que el usuario está escribiendo en cada tecla.
-function RichTextEditor({ initialValue, onChange, placeholder }) {
+function RichTextEditor({ initialValue, onChange, placeholder, onBlur }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -1164,6 +1164,7 @@ function RichTextEditor({ initialValue, onChange, placeholder }) {
         contentEditable
         onInput={emitChange}
         onPaste={handlePaste}
+        onBlur={onBlur}
         data-placeholder={placeholder}
         className="rte-content w-full bg-zinc-950 border border-zinc-700 rounded-b px-2 py-1.5 text-sm text-zinc-100 min-h-[70px]"
       />
@@ -1941,16 +1942,22 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   };
 
   return (
-    <div className="max-w-2xl mx-auto text-zinc-100">
+    <>
+    <div className="max-w-2xl mx-auto text-zinc-100 print:hidden">
       <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
-        {!soloLectura && (
-          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
-            <Trash2 size={13} /> Eliminar evento
+        <div className="flex items-center gap-3">
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-xs">
+            <FileText size={13} /> Exportar PDF
           </button>
-        )}
+          {!soloLectura && (
+            <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
+              <Trash2 size={13} /> Eliminar evento
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 text-brand-400 mb-1">
@@ -2046,7 +2053,17 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
       </Section>
 
       <Section icon={Swords} title="Plan de juego — ataque" accent="text-brand-400">
-        <textarea value={planAtaque} onChange={(e) => setPlanAtaque(e.target.value)} onBlur={() => onUpdate({ planAtaque })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
+        {soloLectura ? (
+          planAtaque ? (
+            <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planAtaque)) }} />
+          ) : (
+            <p className="text-sm text-zinc-600 mb-3">Sin plan de ataque cargado.</p>
+          )
+        ) : (
+          <div className="mb-3">
+            <RichTextEditor initialValue={planAtaque} onChange={setPlanAtaque} onBlur={() => onUpdate({ planAtaque })} placeholder="Plan de ataque" />
+          </div>
+        )}
         <TagPicker label="Transición" options={sistemas.transicion} selected={ataqueTags} onToggle={onToggleTransicion} soloLectura={soloLectura} />
         <TagPicker label="Set ofensivo" options={sistemas.set} selected={setTags} onToggle={onToggleSet} soloLectura={soloLectura} />
         {event.ataque?.claves?.length > 0 && (
@@ -2057,7 +2074,17 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
       </Section>
 
       <Section icon={Shield} title="Plan de juego — defensa" accent="text-brand-400">
-        <textarea value={planDefensa} onChange={(e) => setPlanDefensa(e.target.value)} onBlur={() => onUpdate({ planDefensa })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
+        {soloLectura ? (
+          planDefensa ? (
+            <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planDefensa)) }} />
+          ) : (
+            <p className="text-sm text-zinc-600 mb-3">Sin plan de defensa cargado.</p>
+          )
+        ) : (
+          <div className="mb-3">
+            <RichTextEditor initialValue={planDefensa} onChange={setPlanDefensa} onBlur={() => onUpdate({ planDefensa })} placeholder="Plan de defensa" />
+          </div>
+        )}
         <TagPicker label="Defensa de cortinas" options={sistemas.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
         {event.defensa?.claves?.length > 0 && (
           <ul className="space-y-1 mb-2 mt-2">
@@ -2082,6 +2109,94 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
         <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
       )}
     </div>
+
+    {/* Solo existe para imprimir/exportar a PDF (boton "Exportar PDF" de arriba, window.print())
+        -- oculto en pantalla, "print:block" lo muestra unicamente en la vista de impresion. Fondo
+        blanco/texto negro (no el tema oscuro de la app) para no gastar tinta, y los links de
+        YouTube van como <a href> de texto plano: al exportar a PDF desde el navegador (Guardar
+        como PDF) quedan clickeables en el archivo final. */}
+    <div className="print-doc hidden print:block bg-white text-black max-w-3xl mx-auto text-sm">
+      <div className="flex items-center gap-3 mb-3 pb-3 border-b-2 border-zinc-800">
+        <img src="/escudo-hacoaj.png" alt="" className="h-12 w-auto" />
+        <div>
+          <p className="text-xs uppercase tracking-widest text-zinc-500">{jornada || "Partido"} · {condicion} · {event.date}</p>
+          <h1 className="text-xl font-bold">Náutico Hacoaj vs {equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}</h1>
+          <p className="text-xs text-zinc-600">Horario {horario || "—"} · Citación {citacion || "—"}</p>
+        </div>
+      </div>
+
+      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Scouting colectivo</h2>
+      {equipoRival?.notas_colectivas ? (
+        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(equipoRival.notas_colectivas)) }} />
+      ) : (
+        <p className="text-zinc-500">Sin notas colectivas cargadas.</p>
+      )}
+      {equipoRival?.video_colectivo_url && (
+        <p className="mt-1">Video: <a href={equipoRival.video_colectivo_url} className="text-blue-700 underline break-all">{equipoRival.video_colectivo_url}</a></p>
+      )}
+
+      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plantel rival</h2>
+      {!equipoRival || jugadoresRivales.length === 0 ? (
+        <p className="text-zinc-500">Sin jugadores cargados.</p>
+      ) : (
+        <table className="w-full border-collapse mb-1">
+          <thead>
+            <tr className="text-left text-xs text-zinc-500 border-b border-zinc-300">
+              <th className="py-1 pr-2 font-medium">#</th>
+              <th className="py-1 pr-2 font-medium">Jugador</th>
+              <th className="py-1 pr-2 font-medium">Pos.</th>
+              <th className="py-1 pr-2 font-medium">Notas</th>
+              <th className="py-1 font-medium">Video</th>
+            </tr>
+          </thead>
+          <tbody>
+            {jugadoresRivales.map((j) => (
+              <tr key={j.id} className="border-b border-zinc-200 align-top">
+                <td className="py-1 pr-2">{j.dorsal ?? "-"}</td>
+                <td className="py-1 pr-2 font-medium">{j.nombre_apellido}</td>
+                <td className="py-1 pr-2">{formatPosicion(j)}</td>
+                <td className="py-1 pr-2 text-xs">
+                  {[j.cualidades_ataque && `Ataque: ${j.cualidades_ataque}`, j.cualidades_defensa && `Defensa: ${j.cualidades_defensa}`, j.debilidades && `Debilidades: ${j.debilidades}`].filter(Boolean).join(" · ") || "—"}
+                </td>
+                <td className="py-1 text-xs">
+                  {j.video_individual_url ? <a href={j.video_individual_url} className="text-blue-700 underline break-all">Ver video</a> : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plan de juego — ataque</h2>
+      {planAtaque ? (
+        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planAtaque)) }} />
+      ) : (
+        <p className="text-zinc-500">Sin plan de ataque cargado.</p>
+      )}
+      {ataqueTags.length > 0 && <p><span className="text-zinc-600">Transición:</span> {ataqueTags.join(", ")}</p>}
+      {setTags.length > 0 && <p><span className="text-zinc-600">Set ofensivo:</span> {setTags.join(", ")}</p>}
+      {event.ataque?.claves?.length > 0 && (
+        <ul className="list-disc pl-5 mt-1">
+          {event.ataque.claves.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      )}
+
+      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plan de juego — defensa</h2>
+      {planDefensa ? (
+        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planDefensa)) }} />
+      ) : (
+        <p className="text-zinc-500">Sin plan de defensa cargado.</p>
+      )}
+      {cortinaTags.length > 0 && <p><span className="text-zinc-600">Defensa de cortinas:</span> {cortinaTags.join(", ")}</p>}
+      {event.defensa?.claves?.length > 0 && (
+        <ul className="list-disc pl-5 mt-1">
+          {event.defensa.claves.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      )}
+      {event.defensa?.directos?.length > 0 && <p className="mt-1"><span className="text-zinc-600">Directos:</span> {event.defensa.directos.join(", ")}</p>}
+      {event.defensa?.indirectos?.length > 0 && <p><span className="text-zinc-600">Indirectos:</span> {event.defensa.indirectos.join(", ")}</p>}
+    </div>
+    </>
   );
 }
 
@@ -7306,9 +7421,9 @@ export default function App() {
   const soloLecturaGeneral = !esStaffCompleto(rol);
 
   return (
-    <div className="bg-zinc-950 min-h-screen font-sans md:flex">
+    <div className="bg-zinc-950 min-h-screen font-sans md:flex print:bg-white print:min-h-0">
       {/* Sidebar fija — solo escritorio, colapsable a solo íconos */}
-      <aside className={`hidden md:flex md:flex-col md:shrink-0 bg-zinc-900 border-r border-zinc-800 min-h-screen p-4 transition-all duration-200 ${sidebarCollapsed ? "md:w-[72px]" : "md:w-56"}`}>
+      <aside className={`hidden md:flex md:flex-col md:shrink-0 bg-zinc-900 border-r border-zinc-800 min-h-screen p-4 transition-all duration-200 print:hidden ${sidebarCollapsed ? "md:w-[72px]" : "md:w-56"}`}>
         <div className={`flex items-center gap-2 mb-8 px-1 ${sidebarCollapsed ? "justify-center" : ""}`}>
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-9 w-auto shrink-0" />
           {!sidebarCollapsed && (
@@ -7355,8 +7470,8 @@ export default function App() {
       </aside>
 
       {/* Contenido principal */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 pt-24 md:pt-6">
-        <div className="md:hidden flex items-center gap-2 mb-4">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 pt-24 md:pt-6 print:p-0">
+        <div className="md:hidden flex items-center gap-2 mb-4 print:hidden">
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
           <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
         </div>
@@ -7456,7 +7571,7 @@ export default function App() {
           vista al navegar, para que nunca quede fuera de pantalla sin avisar. */}
       <nav
         ref={mobileNavRef}
-        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900 border-b border-zinc-800 flex items-stretch overflow-x-auto"
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900 border-b border-zinc-800 flex items-stretch overflow-x-auto print:hidden"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {navItemsVisibles.map((item) => {
