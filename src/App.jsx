@@ -1822,7 +1822,7 @@ function youtubeWatchUrl(url) {
 // depender de que el usuario haya elegido bien el destino de impresion.
 // "jsPDF" se importa dinamico (no al tope del archivo) para no sumarle ~130kb gzip al bundle
 // principal que se descarga siempre -- solo se baja la primera vez que alguien toca "Exportar PDF".
-async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
+async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const marginX = 40;
@@ -1887,6 +1887,43 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   addLink("Ver video colectivo", youtubeWatchUrl(equipoRival?.video_colectivo_url));
   y += 6;
 
+  addSectionTitle("Estadisticas colectivas");
+  const rc = await fetchRendimientoRival(equipoRival?.id, equipoRival?.temporada_id);
+  if (!rc) {
+    addText("Sin partidos de este rival cargados en esta temporada.");
+  } else {
+    addText(`Record: ${rc.record.ganados} ganados - ${rc.record.perdidos} perdidos (${rc.pj} PJ en el torneo)`, { bold: true, gapAfter: 4 });
+    addText(`PTS Favor ${rc.pts.general.favor.toFixed(1)}   PTS Contra ${rc.pts.general.contra.toFixed(1)}`, { size: 9, gapAfter: 4 });
+    addText(`eFG% ${rc.eficiencia.efgPct.toFixed(1)}%   Plays/partido ${rc.eficiencia.playProm.toFixed(1)}   PTS x Play ${rc.eficiencia.ppp.toFixed(2)}`, { size: 9, gapAfter: 4 });
+    addText(rc.tiros.map((t) => `${t.l} ${t.pct.toFixed(1)}% (${t.made.toFixed(1)}/${t.att.toFixed(1)})`).join("   "), { size: 9, gapAfter: 4 });
+    addText(`RD ${rc.control.rd.toFixed(1)}   RO ${rc.control.ro.toFixed(1)}   RO cedidos ${rc.control.roRival.toFixed(1)}`, { size: 9, gapAfter: 4 });
+    addText(`AST ${rc.control.ast.toFixed(1)}   REC ${rc.control.rec.toFixed(1)}   PER ${rc.control.per.toFixed(1)}`, { size: 9 });
+  }
+  y += 6;
+
+  addSectionTitle("Objetivos de ataque");
+  addText(htmlToPlainText(objetivoAtaque) || "Sin objetivos de ataque cargados.");
+  y += 6;
+
+  addSectionTitle("Objetivos de defensa");
+  addText(htmlToPlainText(objetivoDefensa) || "Sin objetivos de defensa cargados.");
+  y += 6;
+
+  addSectionTitle("Plan de juego - ataque");
+  addText(htmlToPlainText(planAtaque) || "Sin plan de ataque cargado.");
+  if (ataqueTags.length) addText(`Transicion: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  if (setTags.length) addText(`Set ofensivo: ${setTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  (event.ataque?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
+  y += 6;
+
+  addSectionTitle("Plan de juego - defensa");
+  addText(htmlToPlainText(planDefensa) || "Sin plan de defensa cargado.");
+  if (cortinaTags.length) addText(`Defensa de cortinas: ${cortinaTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  (event.defensa?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
+  if (event.defensa?.directos?.length) addText(`Directos: ${event.defensa.directos.join(", ")}`, { size: 9, gapAfter: 2 });
+  if (event.defensa?.indirectos?.length) addText(`Indirectos: ${event.defensa.indirectos.join(", ")}`, { size: 9, gapAfter: 2 });
+  y += 6;
+
   addSectionTitle("Plantel rival");
   if (!equipoRival || jugadoresRivales.length === 0) {
     addText("Sin jugadores cargados.");
@@ -1905,20 +1942,6 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
       y += 6;
     });
   }
-
-  addSectionTitle("Plan de juego - ataque");
-  addText(htmlToPlainText(planAtaque) || "Sin plan de ataque cargado.");
-  if (ataqueTags.length) addText(`Transicion: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
-  if (setTags.length) addText(`Set ofensivo: ${setTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
-  (event.ataque?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
-  y += 6;
-
-  addSectionTitle("Plan de juego - defensa");
-  addText(htmlToPlainText(planDefensa) || "Sin plan de defensa cargado.");
-  if (cortinaTags.length) addText(`Defensa de cortinas: ${cortinaTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
-  (event.defensa?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
-  if (event.defensa?.directos?.length) addText(`Directos: ${event.defensa.directos.join(", ")}`, { size: 9, gapAfter: 2 });
-  if (event.defensa?.indirectos?.length) addText(`Indirectos: ${event.defensa.indirectos.join(", ")}`, { size: 9, gapAfter: 2 });
 
   const rivalNombre = (equipoRival?.nombre_club || event.rival || "rival").replace(/[\\/:*?"<>|]/g, "");
   doc.save(`Plan de juego - ${rivalNombre} - ${event.date}.pdf`);
@@ -2008,6 +2031,8 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const [ataqueTags, setAtaqueTags] = useState(event.ataque?.transicion || []);
   const [setTags, setSetTags] = useState(event.ataque?.set || []);
   const [cortinaTags, setCortinaTags] = useState(event.defensa?.cortinas || []);
+  const [objetivoAtaque, setObjetivoAtaque] = useState(event.ataque?.objetivo || "");
+  const [objetivoDefensa, setObjetivoDefensa] = useState(event.defensa?.objetivo || "");
   const [planAtaque, setPlanAtaque] = useState(event.planAtaque || "");
   const [planDefensa, setPlanDefensa] = useState(event.planDefensa || "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2050,25 +2075,34 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const onToggleTransicion = (v) => {
     const next = toggleList(ataqueTags, v);
     setAtaqueTags(next);
-    onUpdate({ ataque: { claves: event.ataque?.claves || [], transicion: next, set: setTags } });
+    onUpdate({ ataque: { claves: event.ataque?.claves || [], objetivo: objetivoAtaque, transicion: next, set: setTags } });
   };
   const onToggleSet = (v) => {
     const next = toggleList(setTags, v);
     setSetTags(next);
-    onUpdate({ ataque: { claves: event.ataque?.claves || [], transicion: ataqueTags, set: next } });
+    onUpdate({ ataque: { claves: event.ataque?.claves || [], objetivo: objetivoAtaque, transicion: ataqueTags, set: next } });
   };
   const onToggleCortina = (v) => {
     const next = toggleList(cortinaTags, v);
     setCortinaTags(next);
     onUpdate({
-      defensa: { claves: event.defensa?.claves || [], directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinas: next },
+      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinas: next },
+    });
+  };
+
+  const guardarObjetivoAtaque = () => {
+    onUpdate({ ataque: { claves: event.ataque?.claves || [], objetivo: objetivoAtaque, transicion: ataqueTags, set: setTags } });
+  };
+  const guardarObjetivoDefensa = () => {
+    onUpdate({
+      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinas: cortinaTags },
     });
   };
 
   const exportarPDF = async () => {
     setExportando(true);
     try {
-      await exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags });
+      await exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags });
     } finally {
       setExportando(false);
     }
@@ -2158,29 +2192,35 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
         )}
       </Section>
 
-      <Section icon={Users} title="Plantel rival" accent="text-brand-400">
+      <Section icon={BarChart3} title="Estadísticas colectivas" accent="text-brand-400">
         {!equipoRival ? (
-          <p className="text-sm text-zinc-500">—</p>
-        ) : loadingRival ? (
-          <p className="text-sm text-zinc-500">Cargando plantel…</p>
-        ) : jugadoresRivales.length === 0 ? (
-          <p className="text-sm text-zinc-500">Este rival todavía no tiene jugadores cargados en Scouting Hub.</p>
+          <p className="text-sm text-zinc-500">Asigná un rival arriba para ver sus estadísticas.</p>
         ) : (
-          <div className="space-y-2">
-            {jugadoresRivales.map((j) => (
-              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
-                  <span className="font-medium text-sm">{j.nombre_apellido}</span>
-                  <VideoLinkButton url={j.video_individual_url} size={13} />
-                  <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}{j.categoria ? ` · ${j.categoria}` : ""}</span>
-                </div>
-                {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
-                {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
-                {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
-              </div>
-            ))}
-          </div>
+          <EstadisticasColectivasRival equipoRivalId={equipoRival.id} temporadaId={equipoRival.temporada_id} />
+        )}
+      </Section>
+
+      <Section icon={Target} title="Objetivos de ataque" accent="text-brand-400">
+        {soloLectura ? (
+          objetivoAtaque ? (
+            <div className="text-sm text-zinc-300 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(objetivoAtaque)) }} />
+          ) : (
+            <p className="text-sm text-zinc-600">Sin objetivos de ataque cargados.</p>
+          )
+        ) : (
+          <RichTextEditor initialValue={objetivoAtaque} onChange={setObjetivoAtaque} onBlur={guardarObjetivoAtaque} placeholder="Objetivos de ataque" />
+        )}
+      </Section>
+
+      <Section icon={Target} title="Objetivos de defensa" accent="text-brand-400">
+        {soloLectura ? (
+          objetivoDefensa ? (
+            <div className="text-sm text-zinc-300 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(objetivoDefensa)) }} />
+          ) : (
+            <p className="text-sm text-zinc-600">Sin objetivos de defensa cargados.</p>
+          )
+        ) : (
+          <RichTextEditor initialValue={objetivoDefensa} onChange={setObjetivoDefensa} onBlur={guardarObjetivoDefensa} placeholder="Objetivos de defensa" />
         )}
       </Section>
 
@@ -2233,6 +2273,32 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
           <div className="mt-1">
             <p className="text-xs text-zinc-500 mb-1">Indirectos</p>
             <div className="flex flex-wrap">{event.defensa.indirectos.map((d, i) => <Chip key={i}>{d}</Chip>)}</div>
+          </div>
+        )}
+      </Section>
+
+      <Section icon={Users} title="Plantel rival" accent="text-brand-400">
+        {!equipoRival ? (
+          <p className="text-sm text-zinc-500">—</p>
+        ) : loadingRival ? (
+          <p className="text-sm text-zinc-500">Cargando plantel…</p>
+        ) : jugadoresRivales.length === 0 ? (
+          <p className="text-sm text-zinc-500">Este rival todavía no tiene jugadores cargados en Scouting Hub.</p>
+        ) : (
+          <div className="space-y-2">
+            {jugadoresRivales.map((j) => (
+              <div key={j.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-brand-300 font-mono text-xs">#{j.dorsal ?? "-"}</span>
+                  <span className="font-medium text-sm">{j.nombre_apellido}</span>
+                  <VideoLinkButton url={j.video_individual_url} size={13} />
+                  <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}{j.categoria ? ` · ${j.categoria}` : ""}</span>
+                </div>
+                {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
+                {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
+                {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
+              </div>
+            ))}
           </div>
         )}
       </Section>
@@ -5866,6 +5932,73 @@ function StatTile({ value, label, decimales = 0, suf = "", tone, className = "" 
 // que AnaliticaComparada360). Por cada partido con equipo_propio definido, la fila de
 // equipo_partido_stats cuya "condicion" coincide con equipo_propio es "nosotros"; la otra es el
 // rival de ese partido puntual (de ahi salen PTS Contra y RO Rival).
+// Metricas de "salud tactica" (record, PTS favor/contra, eficiencia, tiros, posesiones y
+// control) a partir de dos listas de filas de equipo_partido_stats con la misma forma --
+// "propias" es el lado cuyo rendimiento se esta midiendo, "rivales" el lado contrario en esos
+// mismos partidos (emparejados por partido_id). Reutilizada por PanelRendimientoColectivo (nuestro
+// equipo, ver Inicio) y por EstadisticasColectivasRival (un rival puntual, ver ficha de Partido) --
+// misma formula para las dos, nunca duplicada.
+function calcularRendimientoColectivo(propias, rivales) {
+  if (propias.length === 0) return false;
+
+  const rivalPorPartido = Object.fromEntries(rivales.map((f) => [f.partido_id, f]));
+  let ganados = 0, perdidos = 0;
+  for (const f of propias) {
+    const contraria = rivalPorPartido[f.partido_id];
+    if (!contraria) continue;
+    if ((Number(f.pts) || 0) > (Number(contraria.pts) || 0)) ganados++; else perdidos++;
+  }
+
+  const sum = (arr, k) => arr.reduce((s, f) => s + (Number(f[k]) || 0), 0);
+  const pj = propias.length;
+  const t2i = sum(propias, "t2i"), t3i = sum(propias, "t3i"), t1i = sum(propias, "t1i");
+  const t2a = sum(propias, "t2a"), t3a = sum(propias, "t3a"), t1a = sum(propias, "t1a");
+  const per = sum(propias, "per");
+  const play = t2i + t3i + 0.44 * t1i + per;
+  const pts = sum(propias, "pts");
+  const ast = sum(propias, "ast");
+  const rec = sum(propias, "rec");
+  const madeFg = t2a + t3a;
+
+  const promPtsDe = (idsCondicion) => {
+    const prop = propias.filter((f) => idsCondicion.has(f.partido_id));
+    const riv = rivales.filter((f) => idsCondicion.has(f.partido_id));
+    if (prop.length === 0) return null;
+    return { favor: sum(prop, "pts") / prop.length, contra: sum(riv, "pts") / prop.length };
+  };
+  const localIds = new Set(propias.filter((f) => f.condicion === "LOCAL").map((f) => f.partido_id));
+  const visitIds = new Set(propias.filter((f) => f.condicion === "VISITANTE").map((f) => f.partido_id));
+
+  return {
+    pj,
+    record: { ganados, perdidos },
+    pts: {
+      general: { favor: pts / pj, contra: sum(rivales, "pts") / pj },
+      local: promPtsDe(localIds),
+      visitante: promPtsDe(visitIds),
+    },
+    eficiencia: {
+      efgPct: (t2i + t3i) ? ((t2a + 1.5 * t3a) / (t2i + t3i)) * 100 : 0,
+      playProm: play / pj,
+      ppp: play ? pts / play : 0,
+    },
+    tiros: [
+      { l: "T2", made: t2a / pj, att: t2i / pj, pct: t2i ? (t2a / t2i) * 100 : 0 },
+      { l: "T3", made: t3a / pj, att: t3i / pj, pct: t3i ? (t3a / t3i) * 100 : 0 },
+      { l: "TL", made: t1a / pj, att: t1i / pj, pct: t1i ? (t1a / t1i) * 100 : 0 },
+    ],
+    control: {
+      rd: sum(propias, "rdef") / pj,
+      ro: sum(propias, "rof") / pj,
+      roRival: sum(rivales, "rof") / pj,
+      ast: ast / pj,
+      rec: rec / pj,
+      per: per / pj,
+      pctAst: madeFg ? (ast / madeFg) * 100 : 0,
+    },
+  };
+}
+
 function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
   const [rc, setRc] = useState(null); // null = cargando, false = sin datos
   const [splitOpen, setSplitOpen] = useState(false);
@@ -5889,66 +6022,7 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
       const propioPorPartido = Object.fromEntries(partidos.map((p) => [p.id, p.equipo_propio]));
       const propias = filas.filter((f) => f.condicion === propioPorPartido[f.partido_id]);
       const rivales = filas.filter((f) => f.condicion !== propioPorPartido[f.partido_id]);
-      if (propias.length === 0) { setRc(false); return; }
-
-      // Record ganados/perdidos: compara los PTS de "nosotros" contra el rival DENTRO del mismo
-      // partido (no vista_record_equipo, que agrupa por el texto libre "equipo" del PDF y se
-      // desarma si el nombre del club viene escrito distinto entre partidos -- acá se reutiliza
-      // el mismo equipo_propio ya resuelto por partido que usa el resto del panel).
-      let ganados = 0, perdidos = 0;
-      for (const p of partidos) {
-        const propiaRow = filas.find((f) => f.partido_id === p.id && f.condicion === p.equipo_propio);
-        const rivalRow = filas.find((f) => f.partido_id === p.id && f.condicion !== p.equipo_propio);
-        if (!propiaRow || !rivalRow) continue;
-        if ((Number(propiaRow.pts) || 0) > (Number(rivalRow.pts) || 0)) ganados++; else perdidos++;
-      }
-
-      const sum = (arr, k) => arr.reduce((s, f) => s + (Number(f[k]) || 0), 0);
-      const pj = propias.length;
-      const t2i = sum(propias, "t2i"), t3i = sum(propias, "t3i"), t1i = sum(propias, "t1i");
-      const t2a = sum(propias, "t2a"), t3a = sum(propias, "t3a"), t1a = sum(propias, "t1a");
-      const per = sum(propias, "per");
-      const play = t2i + t3i + 0.44 * t1i + per;
-      const pts = sum(propias, "pts");
-      const ast = sum(propias, "ast");
-      const madeFg = t2a + t3a;
-
-      const promPtsDe = (idsCondicion) => {
-        const prop = propias.filter((f) => idsCondicion.has(f.partido_id));
-        const riv = rivales.filter((f) => idsCondicion.has(f.partido_id));
-        if (prop.length === 0) return null;
-        return { favor: sum(prop, "pts") / prop.length, contra: sum(riv, "pts") / prop.length };
-      };
-      const localIds = new Set(partidos.filter((p) => p.equipo_propio === "LOCAL").map((p) => p.id));
-      const visitIds = new Set(partidos.filter((p) => p.equipo_propio === "VISITANTE").map((p) => p.id));
-
-      setRc({
-        pj,
-        record: { ganados, perdidos },
-        pts: {
-          general: { favor: pts / pj, contra: sum(rivales, "pts") / pj },
-          local: promPtsDe(localIds),
-          visitante: promPtsDe(visitIds),
-        },
-        eficiencia: {
-          efgPct: (t2i + t3i) ? ((t2a + 1.5 * t3a) / (t2i + t3i)) * 100 : 0,
-          playProm: play / pj,
-          ppp: play ? pts / play : 0,
-        },
-        tiros: [
-          { l: "T2", made: t2a / pj, att: t2i / pj, pct: t2i ? (t2a / t2i) * 100 : 0 },
-          { l: "T3", made: t3a / pj, att: t3i / pj, pct: t3i ? (t3a / t3i) * 100 : 0 },
-          { l: "TL", made: t1a / pj, att: t1i / pj, pct: t1i ? (t1a / t1i) * 100 : 0 },
-        ],
-        control: {
-          rd: sum(propias, "rdef") / pj,
-          ro: sum(propias, "rof") / pj,
-          roRival: sum(rivales, "rof") / pj,
-          ast: ast / pj,
-          per: per / pj,
-          pctAst: madeFg ? (ast / madeFg) * 100 : 0,
-        },
-      });
+      setRc(calcularRendimientoColectivo(propias, rivales));
     })();
     return () => { cancelled = true; };
   }, [temporadaId]);
@@ -6039,6 +6113,97 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
         </>
       )}
     </div>
+  );
+}
+
+// Trae y calcula el rendimiento colectivo de un rival puntual DENTRO de la temporada (torneo)
+// indicada -- "propias" son todas las filas de equipo_partido_stats con ese equipo_rival_id,
+// "rivales" es quien jugó enfrente en esos mismos partidos. Esto NO se limita a los partidos que
+// jugamos nosotros contra ese rival: cualquier PDF cargado de ese equipo en este torneo cuenta
+// (ej. un partido de San Andrés contra un tercer club, cargado solo para scoutearlo, sin marcar
+// "¿Cuál de los dos somos nosotros?" en Estadísticas) -- son los números reales del rival en el
+// torneo. Reutilizada por EstadisticasColectivasRival (pantalla) y exportarPlanDeJuegoPDF.
+async function fetchRendimientoRival(equipoRivalId, temporadaId) {
+  if (!equipoRivalId || !temporadaId) return false;
+  const { data: partidos, error: errP } = await supabase
+    .from("partidos_stats").select("id").eq("temporada_id", temporadaId);
+  if (errP || !partidos || partidos.length === 0) return false;
+
+  const { data: filas, error: errF } = await supabase
+    .from("equipo_partido_stats").select("*").in("partido_id", partidos.map((p) => p.id));
+  if (errF || !filas) return false;
+
+  const propias = filas.filter((f) => f.equipo_rival_id === equipoRivalId);
+  const partidoIds = new Set(propias.map((f) => f.partido_id));
+  const rivales = filas.filter((f) => partidoIds.has(f.partido_id) && f.equipo_rival_id !== equipoRivalId);
+  return calcularRendimientoColectivo(propias, rivales);
+}
+
+// Estadisticas colectivas de un rival puntual, dentro de la ficha de Partido (ver "Plan de
+// juego" en PartidoView). Mismas formulas que PanelRendimientoColectivo (calcularRendimientoColectivo),
+// sobre TODOS los partidos de este rival en el torneo (ver fetchRendimientoRival) -- no solo los
+// que jugamos nosotros contra él. Sin vistas SQL nuevas.
+function EstadisticasColectivasRival({ equipoRivalId, temporadaId }) {
+  const [rc, setRc] = useState(null); // null = cargando, false = sin datos
+
+  useEffect(() => {
+    let cancelled = false;
+    setRc(null);
+    fetchRendimientoRival(equipoRivalId, temporadaId).then((res) => { if (!cancelled) setRc(res); });
+    return () => { cancelled = true; };
+  }, [equipoRivalId, temporadaId]);
+
+  if (rc === null) return <p className="text-sm text-zinc-500">Cargando…</p>;
+  if (rc === false) return <p className="text-sm text-zinc-500">Todavía no hay partidos de este rival cargados en esta temporada.</p>;
+
+  return (
+    <>
+      <SeccionMini>Récord · {rc.pj} PJ</SeccionMini>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <StatTile value={rc.record.ganados} label="Ganados" tone="good" />
+        <StatTile value={rc.record.perdidos} label="Perdidos" tone="bad" />
+      </div>
+
+      <SeccionMini>Puntos por partido</SeccionMini>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <StatTile value={rc.pts.general.favor} label="PTS Favor" tone="good" decimales={1} />
+        <StatTile value={rc.pts.general.contra} label="PTS Contra" tone="bad" decimales={1} />
+      </div>
+
+      <SeccionMini>Eficiencia de ejecución</SeccionMini>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <StatTile value={rc.eficiencia.efgPct} label="eFG%" suf="%" decimales={1} />
+        <StatTile value={rc.eficiencia.playProm} label="Plays / partido" decimales={1} />
+        <StatTile value={rc.eficiencia.ppp} label="PTS x Play" decimales={2} />
+      </div>
+
+      <SeccionMini>Efectividad en tiros</SeccionMini>
+      <div className="grid sm:grid-cols-3 gap-2 mb-4">
+        {rc.tiros.map((t) => (
+          <div key={t.l} className="bg-zinc-950/40 border border-zinc-800 rounded-lg px-3 py-2 flex items-center gap-2 sm:flex-col sm:gap-1.5 sm:py-3 sm:text-center">
+            <span className="text-xs font-bold text-zinc-400 shrink-0 whitespace-nowrap sm:order-1 sm:text-[10px] sm:uppercase sm:tracking-wide">{t.l}</span>
+            <span className="text-base font-extrabold shrink-0 whitespace-nowrap sm:order-2 sm:text-xl">{t.pct.toFixed(1)}%</span>
+            <span className="flex-1 min-w-[16px] h-1.5 bg-zinc-800 rounded-full overflow-hidden sm:order-3 sm:w-full">
+              <span className="block h-full bg-gradient-to-r from-brand-500 to-brand-300 rounded-full" style={{ width: `${Math.min(100, t.pct)}%` }} />
+            </span>
+            <span className="text-xs text-zinc-500 shrink-0 whitespace-nowrap sm:order-4">{t.made.toFixed(1)}/{t.att.toFixed(1)}</span>
+          </div>
+        ))}
+      </div>
+
+      <SeccionMini>Posesiones y control</SeccionMini>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <StatTile value={rc.control.rd} label="RD" decimales={1} className="flex-1 min-w-[90px]" />
+        <StatTile value={rc.control.ro} label="RO" decimales={1} className="flex-1 min-w-[90px]" />
+        <StatTile value={rc.control.roRival} label="RO cedidos" tone="bad" decimales={1} className="flex-1 min-w-[90px]" />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <StatTile value={rc.control.ast} label="AST" tone="good" decimales={1} className="flex-1 min-w-[90px]" />
+        <StatTile value={rc.control.rec} label="REC" tone="good" decimales={1} className="flex-1 min-w-[90px]" />
+        <StatTile value={rc.control.per} label="PER" tone="bad" decimales={1} className="flex-1 min-w-[90px]" />
+      </div>
+      <p className="text-[11px] text-zinc-600 mt-3">Partidos de este rival en el torneo — no solo los que jugamos nosotros.</p>
+    </>
   );
 }
 
