@@ -1838,6 +1838,50 @@ function medirImagenDataUrl(dataUrl) {
   });
 }
 
+// Parsea el HTML sanitizado de un RichTextEditor (p/br/strong/b/em/i/ul/ol/li, ver
+// DESCRIPCION_SANITIZE_CONFIG) en bloques renderizables para el PDF -- doc.text() de jsPDF no
+// entiende HTML, asi que cada parrafo/item de lista se separa en "runs" (fragmentos de texto con
+// su propio negrita/cursiva) para poder dibujarlos a mano palabra por palabra en exportarPlanDeJuegoPDF.
+// Sin esto, htmlToPlainText aplanaba todo (parrafos, saltos de linea, listas, negrita) a una sola
+// linea de texto plano sin formato.
+function parsearBloquesRicos(html) {
+  const div = document.createElement("div");
+  div.innerHTML = sanitizeDescripcionHtml(descripcionToHtml(html));
+
+  const runsDeNodo = (nodo, bold, italic) => {
+    let runs = [];
+    nodo.childNodes.forEach((n) => {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (n.textContent) runs.push({ text: n.textContent, bold, italic });
+      } else if (n.nodeName === "BR") {
+        runs.push({ text: "", bold, italic, esSalto: true });
+      } else if (n.nodeName === "STRONG" || n.nodeName === "B") {
+        runs = runs.concat(runsDeNodo(n, true, italic));
+      } else if (n.nodeName === "EM" || n.nodeName === "I") {
+        runs = runs.concat(runsDeNodo(n, bold, true));
+      } else {
+        runs = runs.concat(runsDeNodo(n, bold, italic));
+      }
+    });
+    return runs;
+  };
+
+  const bloques = [];
+  div.childNodes.forEach((nodo) => {
+    if (nodo.nodeName === "P") {
+      bloques.push({ tipo: "p", runs: runsDeNodo(nodo, false, false) });
+    } else if (nodo.nodeName === "UL" || nodo.nodeName === "OL") {
+      const ordenada = nodo.nodeName === "OL";
+      Array.from(nodo.children).forEach((li, i) => {
+        bloques.push({ tipo: "li", numero: ordenada ? i + 1 : null, runs: runsDeNodo(li, false, false) });
+      });
+    } else if (nodo.nodeType === Node.TEXT_NODE && nodo.textContent.trim()) {
+      bloques.push({ tipo: "p", runs: [{ text: nodo.textContent, bold: false, italic: false }] });
+    }
+  });
+  return bloques;
+}
+
 // Genera el PDF del Plan de juego con jsPDF (en vez de window.print()) -- el "Guardar como PDF"
 // del navegador depende de que camino de impresion use cada uno (el driver de Windows "Microsoft
 // Print to PDF", por ejemplo, no conserva links ni maneja bien los acentos), y eso lo hacia poco
@@ -1847,7 +1891,7 @@ function medirImagenDataUrl(dataUrl) {
 // "jsPDF" se importa dinamico (no al tope del archivo) para no sumarle ~130kb gzip al bundle
 // principal que se descarga siempre -- solo se baja la primera vez que alguien toca "Exportar PDF".
 async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
-  const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64 }] = await Promise.all([
+  const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64, INTER_ITALIC_BASE64 }] = await Promise.all([
     import("jspdf"),
     import("./pdfFonts.js"),
   ]);
@@ -1859,6 +1903,8 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   doc.addFont("Inter-Regular.ttf", "Inter", "normal");
   doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_BASE64);
   doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+  doc.addFileToVFS("Inter-Italic.ttf", INTER_ITALIC_BASE64);
+  doc.addFont("Inter-Italic.ttf", "Inter", "italic");
   const marginX = 40;
   const marginBottom = 40;
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -1909,6 +1955,82 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
     y += 16;
   };
 
+  // Dibuja el contenido de un RichTextEditor (notas colectivas, objetivos, plan de ataque/defensa)
+  // respetando parrafos, listas y negrita/cursiva -- a diferencia de addText(htmlToPlainText(...)),
+  // que aplana todo eso a una sola linea de texto plano sin formato.
+  const addRichText = (html, { size = 10, color = [63, 63, 70], sinDatos = "" } = {}) => {
+    const bloques = parsearBloquesRicos(html);
+    if (bloques.length === 0) { if (sinDatos) addText(sinDatos, { size, color: [113, 113, 122] }); return; }
+
+    const lineHeight = size * 1.35;
+    const bulletIndent = 14;
+
+    bloques.forEach((bloque) => {
+      const indent = bloque.tipo === "li" ? bulletIndent : 0;
+      const prefijo = bloque.tipo === "li" ? (bloque.numero ? `${bloque.numero}.` : "•") : "";
+      const maxW = contentWidth - indent;
+
+      // Separa los runs en "palabras" (conservando negrita/cursiva de cada una) y saltos de linea
+      // explicitos (<br>), para poder ir armando lineas a mano respetando el ancho disponible.
+      const palabras = [];
+      bloque.runs.forEach((run) => {
+        if (run.esSalto) { palabras.push({ esSalto: true }); return; }
+        run.text.split(/(\s+)/).forEach((tok) => {
+          if (tok === "") return;
+          palabras.push({ text: tok, bold: run.bold, italic: run.italic });
+        });
+      });
+
+      let lineaActual = [];
+      let anchoLinea = 0;
+      let primeraLinea = true;
+
+      const flushLinea = () => {
+        ensureSpace(lineHeight);
+        let x = marginX + indent;
+        if (primeraLinea && prefijo) {
+          doc.setFont("Inter", "normal");
+          doc.setFontSize(size);
+          doc.setTextColor(...color);
+          doc.text(prefijo, marginX, y);
+        }
+        lineaActual.forEach((p) => {
+          doc.setFont("Inter", p.italic ? "italic" : p.bold ? "bold" : "normal");
+          doc.setFontSize(size);
+          doc.setTextColor(...color);
+          doc.text(p.text, x, y);
+          x += doc.getTextWidth(p.text);
+        });
+        y += lineHeight;
+        lineaActual = [];
+        anchoLinea = 0;
+        primeraLinea = false;
+      };
+
+      palabras.forEach((p) => {
+        if (p.esSalto) { flushLinea(); return; }
+        const esEspacio = /^\s+$/.test(p.text);
+        doc.setFont("Inter", p.italic ? "italic" : p.bold ? "bold" : "normal");
+        doc.setFontSize(size);
+        const w = doc.getTextWidth(p.text);
+        if (esEspacio) {
+          if (lineaActual.length > 0 && anchoLinea + w <= maxW) { lineaActual.push(p); anchoLinea += w; }
+          return;
+        }
+        if (anchoLinea + w > maxW && lineaActual.length > 0) flushLinea();
+        lineaActual.push(p);
+        anchoLinea += w;
+      });
+      // Si el ultimo token ya forzo un flush (ej. parrafo que termina en <br>), no volver a
+      // flushear una linea en blanco de mas -- solo si quedaron palabras sin volcar, o si el
+      // bloque nunca llego a flushear nada (parrafo vacio, que igual ocupa una linea en blanco).
+      if (lineaActual.length > 0 || primeraLinea) flushLinea();
+      y += 3; // espacio chico entre parrafos/items, ademas del gap general al terminar el bloque
+    });
+
+    y += 5;
+  };
+
   // Escudo del club a la izquierda, titulo (con jornada/horario arriba y abajo) a la derecha, en
   // el mismo bloque -- si falla el fetch (ej. sin conexion) se sigue sin logo, no es critico.
   const headerTop = y;
@@ -1942,7 +2064,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   y = headerTop + Math.max(logoSize, 42) + 12;
 
   addSectionTitle("Scouting colectivo");
-  addText(htmlToPlainText(equipoRival?.notas_colectivas) || "Sin notas colectivas cargadas.");
+  addRichText(equipoRival?.notas_colectivas, { sinDatos: "Sin notas colectivas cargadas." });
   addLink("Ver video colectivo", youtubeWatchUrl(equipoRival?.video_colectivo_url));
   y += 6;
 
@@ -1961,22 +2083,22 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   y += 6;
 
   addSectionTitle("Objetivos de ataque");
-  addText(htmlToPlainText(objetivoAtaque) || "Sin objetivos de ataque cargados.");
+  addRichText(objetivoAtaque, { sinDatos: "Sin objetivos de ataque cargados." });
   y += 6;
 
   addSectionTitle("Objetivos de defensa");
-  addText(htmlToPlainText(objetivoDefensa) || "Sin objetivos de defensa cargados.");
+  addRichText(objetivoDefensa, { sinDatos: "Sin objetivos de defensa cargados." });
   y += 6;
 
   addSectionTitle("Plan de juego - ataque");
-  addText(htmlToPlainText(planAtaque) || "Sin plan de ataque cargado.");
+  addRichText(planAtaque, { sinDatos: "Sin plan de ataque cargado." });
   if (ataqueTags.length) addText(`Transición: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   if (setTags.length) addText(`Set ofensivo: ${setTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   (event.ataque?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
   y += 6;
 
   addSectionTitle("Plan de juego - defensa");
-  addText(htmlToPlainText(planDefensa) || "Sin plan de defensa cargado.");
+  addRichText(planDefensa, { sinDatos: "Sin plan de defensa cargado." });
   if (cortinaTags.length) addText(`Defensa de cortinas: ${cortinaTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   (event.defensa?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
   if (event.defensa?.directos?.length) addText(`Directos: ${event.defensa.directos.join(", ")}`, { size: 9, gapAfter: 2 });
