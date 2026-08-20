@@ -1814,6 +1814,116 @@ function youtubeWatchUrl(url) {
   return id ? `https://www.youtube.com/watch?v=${id}` : null;
 }
 
+// Genera el PDF del Plan de juego con jsPDF (en vez de window.print()) -- el "Guardar como PDF"
+// del navegador depende de que camino de impresion use cada uno (el driver de Windows "Microsoft
+// Print to PDF", por ejemplo, no conserva links ni maneja bien los acentos), y eso lo hacia poco
+// confiable para mandarselo a los jugadores. Generando el PDF nosotros mismos, los links de
+// YouTube quedan como anotaciones reales (textWithLink) -- funcionan en cualquier lector, sin
+// depender de que el usuario haya elegido bien el destino de impresion.
+// "jsPDF" se importa dinamico (no al tope del archivo) para no sumarle ~130kb gzip al bundle
+// principal que se descarga siempre -- solo se baja la primera vez que alguien toca "Exportar PDF".
+async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
+  const { default: jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const marginX = 40;
+  const marginBottom = 40;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - marginX * 2;
+  let y = 50;
+
+  const ensureSpace = (needed) => {
+    if (y + needed > pageHeight - marginBottom) {
+      doc.addPage();
+      y = 50;
+    }
+  };
+
+  const addSectionTitle = (text) => {
+    ensureSpace(28);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(24, 24, 27);
+    doc.text(text.toUpperCase(), marginX, y);
+    y += 6;
+    doc.setDrawColor(210, 210, 214);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 14;
+  };
+
+  const addText = (text, { bold = false, size = 10, color = [63, 63, 70], gapAfter = 8 } = {}) => {
+    if (!text) return;
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    const lineHeight = size * 1.35;
+    doc.splitTextToSize(text, contentWidth).forEach((line) => {
+      ensureSpace(lineHeight);
+      doc.text(line, marginX, y);
+      y += lineHeight;
+    });
+    y += gapAfter;
+  };
+
+  const addLink = (label, url) => {
+    if (!url) return;
+    ensureSpace(16);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(29, 78, 216);
+    doc.textWithLink(label, marginX, y, { url });
+    y += 16;
+  };
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(9, 9, 11);
+  doc.text(`Nautico Hacoaj vs ${equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}`, marginX, y);
+  y += 20;
+  addText(`${jornada || "Partido"} - ${condicion} - ${event.date}   Horario ${horario || "-"}   Citacion ${citacion || "-"}`, { size: 9, color: [113, 113, 122], gapAfter: 14 });
+
+  addSectionTitle("Scouting colectivo");
+  addText(htmlToPlainText(equipoRival?.notas_colectivas) || "Sin notas colectivas cargadas.");
+  addLink("Ver video colectivo", youtubeWatchUrl(equipoRival?.video_colectivo_url));
+  y += 6;
+
+  addSectionTitle("Plantel rival");
+  if (!equipoRival || jugadoresRivales.length === 0) {
+    addText("Sin jugadores cargados.");
+  } else {
+    jugadoresRivales.forEach((j) => {
+      const encabezado = `#${j.dorsal ?? "-"}  ${j.nombre_apellido}${formatPosicion(j) ? `   ${formatPosicion(j)}` : ""}`;
+      addText(encabezado, { bold: true, size: 10, color: [24, 24, 27], gapAfter: 2 });
+      const notas = [
+        j.cualidades_ataque && `Ataque: ${j.cualidades_ataque}`,
+        j.cualidades_defensa && `Defensa: ${j.cualidades_defensa}`,
+        j.debilidades && `Debilidades: ${j.debilidades}`,
+      ].filter(Boolean).join("   ");
+      if (notas) addText(notas, { size: 9, color: [82, 82, 91], gapAfter: 2 });
+      const watchUrl = youtubeWatchUrl(j.video_individual_url);
+      if (watchUrl) addLink("Ver video", watchUrl);
+      y += 6;
+    });
+  }
+
+  addSectionTitle("Plan de juego - ataque");
+  addText(htmlToPlainText(planAtaque) || "Sin plan de ataque cargado.");
+  if (ataqueTags.length) addText(`Transicion: ${ataqueTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  if (setTags.length) addText(`Set ofensivo: ${setTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  (event.ataque?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
+  y += 6;
+
+  addSectionTitle("Plan de juego - defensa");
+  addText(htmlToPlainText(planDefensa) || "Sin plan de defensa cargado.");
+  if (cortinaTags.length) addText(`Defensa de cortinas: ${cortinaTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  (event.defensa?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
+  if (event.defensa?.directos?.length) addText(`Directos: ${event.defensa.directos.join(", ")}`, { size: 9, gapAfter: 2 });
+  if (event.defensa?.indirectos?.length) addText(`Indirectos: ${event.defensa.indirectos.join(", ")}`, { size: 9, gapAfter: 2 });
+
+  const rivalNombre = (equipoRival?.nombre_club || event.rival || "rival").replace(/[\\/:*?"<>|]/g, "");
+  doc.save(`Plan de juego - ${rivalNombre} - ${event.date}.pdf`);
+}
+
 // Reproductor emergente: el video corre adentro de la app, sin redirigir a YouTube.
 // Ventana grande para ver una foto (ej. la de Preparación física) tocando su miniatura.
 function FotoLightboxModal({ url, onClose }) {
@@ -1901,6 +2011,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const [planAtaque, setPlanAtaque] = useState(event.planAtaque || "");
   const [planDefensa, setPlanDefensa] = useState(event.planDefensa || "");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   const [editHeader, setEditHeader] = useState(false);
   const [jornada, setJornada] = useState(event.jornada || "");
@@ -1954,16 +2065,24 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
     });
   };
 
+  const exportarPDF = async () => {
+    setExportando(true);
+    try {
+      await exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags });
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
-    <>
-    <div className="max-w-2xl mx-auto text-zinc-100 print:hidden">
+    <div className="max-w-2xl mx-auto text-zinc-100">
       <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
         </button>
         <div className="flex items-center gap-3">
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-xs">
-            <FileText size={13} /> Exportar PDF
+          <button onClick={exportarPDF} disabled={exportando} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-xs disabled:opacity-60">
+            <FileText size={13} /> {exportando ? "Generando…" : "Exportar PDF"}
           </button>
           {!soloLectura && (
             <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 text-xs">
@@ -2122,98 +2241,6 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
         <ConfirmDeleteModal itemLabel={event.title} subject="evento" onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />
       )}
     </div>
-
-    {/* Solo existe para imprimir/exportar a PDF (boton "Exportar PDF" de arriba, window.print())
-        -- oculto en pantalla, "print:block" lo muestra unicamente en la vista de impresion. Fondo
-        blanco/texto negro (no el tema oscuro de la app) para no gastar tinta, y los links de
-        YouTube van como <a href> de texto plano: al exportar a PDF desde el navegador (Guardar
-        como PDF) quedan clickeables en el archivo final. */}
-    <div className="print-doc hidden print:block bg-white text-black max-w-3xl mx-auto text-sm">
-      <div className="flex items-center gap-3 mb-3 pb-3 border-b-2 border-zinc-800">
-        <img src="/escudo-hacoaj.png" alt="" className="h-12 w-auto" />
-        <div>
-          <p className="text-xs uppercase tracking-widest text-zinc-500">{jornada || "Partido"} · {condicion} · {event.date}</p>
-          <h1 className="text-xl font-bold">Náutico Hacoaj vs {equipoRival?.nombre_club || event.rival || "(sin rival asignado)"}</h1>
-          <p className="text-xs text-zinc-600">Horario {horario || "—"} · Citación {citacion || "—"}</p>
-        </div>
-      </div>
-
-      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Scouting colectivo</h2>
-      {equipoRival?.notas_colectivas ? (
-        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(equipoRival.notas_colectivas)) }} />
-      ) : (
-        <p className="text-zinc-500">Sin notas colectivas cargadas.</p>
-      )}
-      {equipoRival?.video_colectivo_url && (
-        youtubeWatchUrl(equipoRival.video_colectivo_url) ? (
-          <p className="mt-1">Video: <a href={youtubeWatchUrl(equipoRival.video_colectivo_url)} className="text-blue-700 underline break-all">{youtubeWatchUrl(equipoRival.video_colectivo_url)}</a></p>
-        ) : (
-          <p className="mt-1 text-zinc-500">Video cargado con un link que no se pudo interpretar como YouTube.</p>
-        )
-      )}
-
-      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plantel rival</h2>
-      {!equipoRival || jugadoresRivales.length === 0 ? (
-        <p className="text-zinc-500">Sin jugadores cargados.</p>
-      ) : (
-        <table className="w-full border-collapse mb-1">
-          <thead>
-            <tr className="text-left text-xs text-zinc-500 border-b border-zinc-300">
-              <th className="py-1 pr-2 font-medium">#</th>
-              <th className="py-1 pr-2 font-medium">Jugador</th>
-              <th className="py-1 pr-2 font-medium">Pos.</th>
-              <th className="py-1 pr-2 font-medium">Notas</th>
-              <th className="py-1 font-medium">Video</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jugadoresRivales.map((j) => (
-              <tr key={j.id} className="border-b border-zinc-200 align-top">
-                <td className="py-1 pr-2">{j.dorsal ?? "-"}</td>
-                <td className="py-1 pr-2 font-medium">{j.nombre_apellido}</td>
-                <td className="py-1 pr-2">{formatPosicion(j)}</td>
-                <td className="py-1 pr-2 text-xs">
-                  {[j.cualidades_ataque && `Ataque: ${j.cualidades_ataque}`, j.cualidades_defensa && `Defensa: ${j.cualidades_defensa}`, j.debilidades && `Debilidades: ${j.debilidades}`].filter(Boolean).join(" · ") || "—"}
-                </td>
-                <td className="py-1 text-xs">
-                  {youtubeWatchUrl(j.video_individual_url) ? <a href={youtubeWatchUrl(j.video_individual_url)} className="text-blue-700 underline break-all">Ver video</a> : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plan de juego — ataque</h2>
-      {planAtaque ? (
-        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planAtaque)) }} />
-      ) : (
-        <p className="text-zinc-500">Sin plan de ataque cargado.</p>
-      )}
-      {ataqueTags.length > 0 && <p><span className="text-zinc-600">Transición:</span> {ataqueTags.join(", ")}</p>}
-      {setTags.length > 0 && <p><span className="text-zinc-600">Set ofensivo:</span> {setTags.join(", ")}</p>}
-      {event.ataque?.claves?.length > 0 && (
-        <ul className="list-disc pl-5 mt-1">
-          {event.ataque.claves.map((c, i) => <li key={i}>{c}</li>)}
-        </ul>
-      )}
-
-      <h2 className="font-bold text-xs uppercase tracking-widest border-b border-zinc-300 pb-1 mb-2 mt-4">Plan de juego — defensa</h2>
-      {planDefensa ? (
-        <div className="desc-render mb-1" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planDefensa)) }} />
-      ) : (
-        <p className="text-zinc-500">Sin plan de defensa cargado.</p>
-      )}
-      {cortinaTags.length > 0 && <p><span className="text-zinc-600">Defensa de cortinas:</span> {cortinaTags.join(", ")}</p>}
-      {event.defensa?.claves?.length > 0 && (
-        <ul className="list-disc pl-5 mt-1">
-          {event.defensa.claves.map((c, i) => <li key={i}>{c}</li>)}
-        </ul>
-      )}
-      {event.defensa?.directos?.length > 0 && <p className="mt-1"><span className="text-zinc-600">Directos:</span> {event.defensa.directos.join(", ")}</p>}
-      {event.defensa?.indirectos?.length > 0 && <p><span className="text-zinc-600">Indirectos:</span> {event.defensa.indirectos.join(", ")}</p>}
-    </div>
-    </>
   );
 }
 
@@ -7438,9 +7465,9 @@ export default function App() {
   const soloLecturaGeneral = !esStaffCompleto(rol);
 
   return (
-    <div className="bg-zinc-950 min-h-screen font-sans md:flex print:bg-white print:min-h-0">
+    <div className="bg-zinc-950 min-h-screen font-sans md:flex">
       {/* Sidebar fija — solo escritorio, colapsable a solo íconos */}
-      <aside className={`hidden md:flex md:flex-col md:shrink-0 bg-zinc-900 border-r border-zinc-800 min-h-screen p-4 transition-all duration-200 print:hidden ${sidebarCollapsed ? "md:w-[72px]" : "md:w-56"}`}>
+      <aside className={`hidden md:flex md:flex-col md:shrink-0 bg-zinc-900 border-r border-zinc-800 min-h-screen p-4 transition-all duration-200 ${sidebarCollapsed ? "md:w-[72px]" : "md:w-56"}`}>
         <div className={`flex items-center gap-2 mb-8 px-1 ${sidebarCollapsed ? "justify-center" : ""}`}>
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-9 w-auto shrink-0" />
           {!sidebarCollapsed && (
@@ -7487,8 +7514,8 @@ export default function App() {
       </aside>
 
       {/* Contenido principal */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 pt-24 md:pt-6 print:p-0">
-        <div className="md:hidden flex items-center gap-2 mb-4 print:hidden">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 pt-24 md:pt-6">
+        <div className="md:hidden flex items-center gap-2 mb-4">
           <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-8 w-auto" />
           <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Náutico Hacoaj · Staff Básquet</span>
         </div>
@@ -7588,7 +7615,7 @@ export default function App() {
           vista al navegar, para que nunca quede fuera de pantalla sin avisar. */}
       <nav
         ref={mobileNavRef}
-        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900 border-b border-zinc-800 flex items-stretch overflow-x-auto print:hidden"
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900 border-b border-zinc-800 flex items-stretch overflow-x-auto"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {navItemsVisibles.map((item) => {

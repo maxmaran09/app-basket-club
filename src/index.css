@@ -78,16 +78,3 @@ input:focus, select:focus, textarea:focus, .rte-content:focus {
   content: attr(data-placeholder);
   color: #71717a;
 }
-
-/* Exportar PDF del Plan de juego (ver PartidoView/PlanDeJuegoImprimible en App.jsx): a
-   diferencia del resto de la app, ese bloque es fondo blanco/texto negro para no gastar tinta al
-   imprimir -- ".desc-render strong" de arriba asume fondo oscuro (casi blanco), así que acá se
-   pisa a un gris bien oscuro para que siga siendo legible sobre blanco. */
-@media print {
-  .print-doc .desc-render strong {
-    color: #18181b;
-  }
-  @page {
-    margin: 1.5cm;
-  }
-}
