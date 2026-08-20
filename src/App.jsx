@@ -1162,6 +1162,11 @@ function RichTextEditor({ initialValue, onChange, placeholder, onBlur }) {
       <div
         ref={ref}
         contentEditable
+        // Sin esto, Enter dentro de este contentEditable arma cada linea nueva con <div> (default
+        // del navegador) en vez de <p> -- <div> no esta en el allowlist del sanitizador, y al
+        // sacarlo quedaba contenido (incluida la negrita) suelto fuera de cualquier parrafo. Se
+        // reafirma en cada foco porque es una preferencia del documento, no de este editor puntual.
+        onFocus={() => document.execCommand("defaultParagraphSeparator", false, "p")}
         onInput={emitChange}
         onPaste={handlePaste}
         onBlur={onBlur}
@@ -1848,37 +1853,50 @@ function parsearBloquesRicos(html) {
   const div = document.createElement("div");
   div.innerHTML = sanitizeDescripcionHtml(descripcionToHtml(html));
 
-  const runsDeNodo = (nodo, bold, italic) => {
+  // Procesa UN nodo (no sus hermanos) y devuelve sus runs -- separado de runsDeHijos para poder
+  // reusarlo tanto al bajar por los hijos de un <p>/<li> como para un nodo suelto al tope (ver abajo).
+  const procesarNodo = (n, bold, italic) => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      return n.textContent ? [{ text: n.textContent, bold, italic }] : [];
+    }
+    if (n.nodeName === "BR") return [{ text: "", bold, italic, esSalto: true }];
+    if (n.nodeName === "STRONG" || n.nodeName === "B") return runsDeHijos(n, true, italic);
+    if (n.nodeName === "EM" || n.nodeName === "I") return runsDeHijos(n, bold, true);
+    return runsDeHijos(n, bold, italic);
+  };
+  const runsDeHijos = (nodo, bold, italic) => {
     let runs = [];
-    nodo.childNodes.forEach((n) => {
-      if (n.nodeType === Node.TEXT_NODE) {
-        if (n.textContent) runs.push({ text: n.textContent, bold, italic });
-      } else if (n.nodeName === "BR") {
-        runs.push({ text: "", bold, italic, esSalto: true });
-      } else if (n.nodeName === "STRONG" || n.nodeName === "B") {
-        runs = runs.concat(runsDeNodo(n, true, italic));
-      } else if (n.nodeName === "EM" || n.nodeName === "I") {
-        runs = runs.concat(runsDeNodo(n, bold, true));
-      } else {
-        runs = runs.concat(runsDeNodo(n, bold, italic));
-      }
-    });
+    nodo.childNodes.forEach((n) => { runs = runs.concat(procesarNodo(n, bold, italic)); });
     return runs;
   };
 
+  // Chrome (y otros) no siempre separan lineas con <p> dentro de un contentEditable -- el
+  // separador de parrafo por defecto en varios navegadores es <div>, que no esta en el allowlist
+  // del sanitizador. DOMPurify saca esos <div> (no estan permitidos) pero conserva su contenido
+  // como nodos sueltos al tope del HTML -- si un <strong>/<b> quedaba asi, antes se perdia en
+  // silencio (no matcheaba ninguna rama del loop de abajo). Ahora todo nodo suelto (texto o
+  // inline con formato) se acumula en un parrafo implicito, nunca se descarta.
   const bloques = [];
+  let sueltos = [];
+  const flushSueltos = () => {
+    if (sueltos.length > 0) { bloques.push({ tipo: "p", runs: sueltos }); sueltos = []; }
+  };
+
   div.childNodes.forEach((nodo) => {
     if (nodo.nodeName === "P") {
-      bloques.push({ tipo: "p", runs: runsDeNodo(nodo, false, false) });
+      flushSueltos();
+      bloques.push({ tipo: "p", runs: runsDeHijos(nodo, false, false) });
     } else if (nodo.nodeName === "UL" || nodo.nodeName === "OL") {
+      flushSueltos();
       const ordenada = nodo.nodeName === "OL";
       Array.from(nodo.children).forEach((li, i) => {
-        bloques.push({ tipo: "li", numero: ordenada ? i + 1 : null, runs: runsDeNodo(li, false, false) });
+        bloques.push({ tipo: "li", numero: ordenada ? i + 1 : null, runs: runsDeHijos(li, false, false) });
       });
-    } else if (nodo.nodeType === Node.TEXT_NODE && nodo.textContent.trim()) {
-      bloques.push({ tipo: "p", runs: [{ text: nodo.textContent, bold: false, italic: false }] });
+    } else {
+      sueltos = sueltos.concat(procesarNodo(nodo, false, false));
     }
   });
+  flushSueltos();
   return bloques;
 }
 
