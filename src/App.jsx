@@ -47,11 +47,20 @@ function horarioResumen(e) {
   return null;
 }
 
-const SISTEMAS = {
-  transicion: ["Libre", "Alto", "Bajo", "Pantalón"],
-  set: ["Camiseta", "Puño", "Fijo", "Uno", "Cuerno"],
-  cortinas: ["0", "1", "2", "0+Show", "Trap", "Switch", "Ice / Rojo"],
-};
+// Tipos de chip del catalogo editable "sistemas_juego" (ver schema_sistemas_juego.sql) --
+// Transicion/Set ofensivo/Defensa de cortinas del Plan de juego en Scouting Hub y ficha de
+// Partido. Ya no son un array fijo: el staff los administra desde SistemasJuegoModal.
+const TIPOS_SISTEMA = { transicion: "Transición", set: "Set ofensivo", cortinas: "Defensa de cortinas" };
+
+// Agrupa las filas planas de "sistemas_juego" en { transicion: [...nombres], set: [...], cortinas: [...] },
+// ordenadas por "orden" y de ahi por nombre.
+function agruparSistemas(sistemasJuego) {
+  const porTipo = { transicion: [], set: [], cortinas: [] };
+  [...sistemasJuego]
+    .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))
+    .forEach((s) => { if (porTipo[s.tipo]) porTipo[s.tipo].push(s.nombre); });
+  return porTipo;
+}
 
 const CARGAS_FISICAS = ["Baja", "Media", "Alta"];
 const LUGARES_FISICOS = ["Cancha", "Gimnasio de pesas", "Mixto"];
@@ -132,11 +141,14 @@ function Section({ icon: Icon, title, children, accent = "text-zinc-400" }) {
 
 function TagPicker({ label, options, selected, onToggle, tone = "brand", soloLectura = false }) {
   const activeCls = tone === "blue" ? "bg-sky-500/20 border-sky-500/50 text-sky-300" : "bg-brand-500/20 border-brand-500/50 text-brand-300";
+  // Si un chip ya elegido se borro despues del catalogo (ver SistemasJuegoModal), lo seguimos
+  // mostrando igual -- si no, un partido viejo perderia en silencio una tag que ya tenia marcada.
+  const todasLasOpciones = selected.some((s) => !options.includes(s)) ? [...options, ...selected.filter((s) => !options.includes(s))] : options;
   return (
     <div className="mb-3">
       <p className="text-xs text-zinc-500 mb-1">{label}</p>
       <div className="flex flex-wrap">
-        {options.map((op) => {
+        {todasLasOpciones.map((op) => {
           const active = selected.includes(op);
           return (
             <button key={op} disabled={soloLectura} onClick={() => onToggle(op)}
@@ -150,7 +162,7 @@ function TagPicker({ label, options, selected, onToggle, tone = "brand", soloLec
   );
 }
 
-function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", multiline = false, soloLectura = false }) {
+function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", multiline = false, richText = false, soloLectura = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -161,7 +173,9 @@ function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", m
     <Section icon={icon} title={label} accent={accent}>
       {editing ? (
         <div className="space-y-2">
-          {multiline ? (
+          {richText ? (
+            <RichTextEditor key={value} initialValue={draft} onChange={setDraft} placeholder={label} />
+          ) : multiline ? (
             <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
           ) : (
             <input value={draft} onChange={(e) => setDraft(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
@@ -173,7 +187,15 @@ function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", m
         </div>
       ) : (
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm text-zinc-300 flex-1">{value || <span className="text-zinc-600">Sin datos.</span>}</p>
+          {richText ? (
+            value ? (
+              <div className="text-sm text-zinc-300 flex-1 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(value)) }} />
+            ) : (
+              <p className="text-sm text-zinc-600 flex-1">Sin datos.</p>
+            )
+          ) : (
+            <p className="text-sm text-zinc-300 flex-1">{value || <span className="text-zinc-600">Sin datos.</span>}</p>
+          )}
           {!soloLectura && (
             <button onClick={startEdit} className="text-xs text-blue-400 hover:text-blue-300 shrink-0">Editar</button>
           )}
@@ -1853,8 +1875,9 @@ function VideoLinkButton({ url, size = 14, label }) {
   );
 }
 
-function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol }) {
+function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, onDelete, rol }) {
   const soloLectura = nivelBloque(rol, "partido", "todo") !== "rw";
+  const sistemas = agruparSistemas(sistemasJuego);
   const [rivalId, setRivalId] = useState(event.rival_id || "");
   const [jugadoresRivales, setJugadoresRivales] = useState([]);
   const [loadingRival, setLoadingRival] = useState(true);
@@ -1986,7 +2009,11 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
           <p className="text-sm text-zinc-500">Asigná un rival arriba para ver su scouting (se carga desde Scouting Hub).</p>
         ) : (
           <>
-            <p className="text-sm text-zinc-300 mb-3">{equipoRival.notas_colectivas || <span className="text-zinc-600">Sin notas colectivas cargadas todavía.</span>}</p>
+            {equipoRival.notas_colectivas ? (
+              <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(equipoRival.notas_colectivas)) }} />
+            ) : (
+              <p className="text-sm text-zinc-600 mb-3">Sin notas colectivas cargadas todavía.</p>
+            )}
             <VideoLinkButton url={equipoRival.video_colectivo_url} label="Ver Video de Partido" />
           </>
         )}
@@ -2020,8 +2047,8 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
 
       <Section icon={Swords} title="Plan de juego — ataque" accent="text-brand-400">
         <textarea value={planAtaque} onChange={(e) => setPlanAtaque(e.target.value)} onBlur={() => onUpdate({ planAtaque })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
-        <TagPicker label="Transición" options={SISTEMAS.transicion} selected={ataqueTags} onToggle={onToggleTransicion} soloLectura={soloLectura} />
-        <TagPicker label="Set ofensivo" options={SISTEMAS.set} selected={setTags} onToggle={onToggleSet} soloLectura={soloLectura} />
+        <TagPicker label="Transición" options={sistemas.transicion} selected={ataqueTags} onToggle={onToggleTransicion} soloLectura={soloLectura} />
+        <TagPicker label="Set ofensivo" options={sistemas.set} selected={setTags} onToggle={onToggleSet} soloLectura={soloLectura} />
         {event.ataque?.claves?.length > 0 && (
           <ul className="space-y-1 mt-2">
             {event.ataque.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-brand-400" />{c}</li>)}
@@ -2031,7 +2058,7 @@ function PartidoView({ event, equiposRivales, onBack, onUpdate, onDelete, rol })
 
       <Section icon={Shield} title="Plan de juego — defensa" accent="text-brand-400">
         <textarea value={planDefensa} onChange={(e) => setPlanDefensa(e.target.value)} onBlur={() => onUpdate({ planDefensa })} disabled={soloLectura} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 disabled:opacity-80" rows={3} />
-        <TagPicker label="Defensa de cortinas" options={SISTEMAS.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
+        <TagPicker label="Defensa de cortinas" options={sistemas.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
         {event.defensa?.claves?.length > 0 && (
           <ul className="space-y-1 mb-2 mt-2">
             {event.defensa.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-brand-400" />{c}</li>)}
@@ -4295,7 +4322,7 @@ function EquipoRivalFormModal({ equipo, defaultCategoria, defaultTira, onCancel,
             </select>
           </div>
           <input placeholder="Link del escudo (logo_url, opcional)" value={form.logo_url} onChange={(e) => set("logo_url", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          <textarea placeholder="Notas colectivas (fortalezas / debilidades del equipo)" value={form.notas_colectivas} onChange={(e) => set("notas_colectivas", e.target.value)} rows={3} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <RichTextEditor initialValue={form.notas_colectivas} onChange={(html) => set("notas_colectivas", html)} placeholder="Notas colectivas (fortalezas / debilidades del equipo)" />
           <div className="flex items-center gap-2">
             <Youtube size={14} className="text-zinc-500 shrink-0" />
             <input placeholder="Link de YouTube — video colectivo" value={form.video_colectivo_url} onChange={(e) => set("video_colectivo_url", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -4485,7 +4512,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         )}
       </div>
 
-      <EditableField label="Notas colectivas" icon={Shield} accent="text-brand-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} multiline soloLectura={soloLectura} />
+      <EditableField label="Notas colectivas" icon={Shield} accent="text-brand-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} richText soloLectura={soloLectura} />
 
       <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-brand-400">
         {promedioEquipo ? (
@@ -4569,9 +4596,66 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
   );
 }
 
-function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura, rol }) {
+// Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Defensa de cortinas) --
+// ver schema_sistemas_juego.sql. Solo lo abre quien puede escribir Scouting Hub (esStaffCompleto),
+// que ya filtra el boton que dispara este modal en ScoutingHubView.
+function SistemasJuegoModal({ sistemasJuego, onAdd, onDelete, onClose }) {
+  const sistemas = agruparSistemas(sistemasJuego);
+  const [nuevo, setNuevo] = useState({ transicion: "", set: "", cortinas: "" });
+
+  const agregar = (tipo) => {
+    const nombre = nuevo[tipo].trim();
+    if (!nombre) return;
+    onAdd(tipo, nombre);
+    setNuevo((prev) => ({ ...prev, [tipo]: "" }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-sm">Sistemas de juego</h3>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">Chips que aparecen en el Plan de juego de cada partido. Agregá o sacá los que use el club.</p>
+        <div className="space-y-5">
+          {Object.entries(TIPOS_SISTEMA).map(([tipo, label]) => (
+            <div key={tipo}>
+              <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">{label}</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {sistemas[tipo].length === 0 && <p className="text-xs text-zinc-600">Sin sistemas cargados.</p>}
+                {sistemas[tipo].map((nombre) => {
+                  const row = sistemasJuego.find((s) => s.tipo === tipo && s.nombre === nombre);
+                  return (
+                    <span key={nombre} className="flex items-center gap-1 pl-2 pr-1 py-1 rounded text-xs bg-zinc-800 border border-zinc-700 text-zinc-300">
+                      {nombre}
+                      <button onClick={() => row && onDelete(row.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 p-0.5"><X size={11} /></button>
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={nuevo[tipo]}
+                  onChange={(e) => setNuevo((prev) => ({ ...prev, [tipo]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregar(tipo); } }}
+                  placeholder={`Nuevo (${label.toLowerCase()})`}
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100"
+                />
+                <button onClick={() => agregar(tipo)} className="text-xs text-brand-400 hover:text-brand-300 px-2 shrink-0">Agregar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoutingHubView({ equiposRivales, sistemasJuego, onAddSistema, onDeleteSistema, onAddEquipo, onUpdateEquipo, onDeleteEquipo, soloLectura, rol }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showSistemas, setShowSistemas] = useState(false);
   const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const {
@@ -4664,12 +4748,26 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
       </div>
       <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <h1 className="text-2xl font-bold">Equipos rivales</h1>
-        {!soloLectura && esTemporadaActiva && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
-            <Plus size={15} /> Agregar equipo rival
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {esStaffCompleto(rol) && (
+            <button onClick={() => setShowSistemas(true)} className="text-xs text-zinc-400 hover:text-zinc-200">Sistemas de juego</button>
+          )}
+          {!soloLectura && esTemporadaActiva && (
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">
+              <Plus size={15} /> Agregar equipo rival
+            </button>
+          )}
+        </div>
       </div>
+
+      {showSistemas && (
+        <SistemasJuegoModal
+          sistemasJuego={sistemasJuego}
+          onAdd={onAddSistema}
+          onDelete={onDeleteSistema}
+          onClose={() => setShowSistemas(false)}
+        />
+      )}
 
       {esJugador ? (
         <p className="text-sm text-zinc-400 mb-4">{categoria} · {tira}</p>
@@ -4730,7 +4828,7 @@ function ScoutingHubView({ equiposRivales, onAddEquipo, onUpdateEquipo, onDelete
           <div key={eq.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-center gap-3">
             <button onClick={() => setSelectedId(eq.id)} className="flex-1 min-w-0 text-left">
               <p className="font-medium text-sm text-zinc-100 truncate">{eq.nombre_club}</p>
-              {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{eq.notas_colectivas}</p>}
+              {eq.notas_colectivas && <p className="text-xs text-zinc-500 line-clamp-1">{htmlToPlainText(eq.notas_colectivas)}</p>}
             </button>
             <VideoLinkButton url={eq.video_colectivo_url} size={14} />
             {!soloLectura && esTemporadaActiva && !verSinAsignar && (
@@ -6743,6 +6841,7 @@ export default function App() {
   const [jugadores, setJugadores] = useState([]);
   const [equiposRivales, setEquiposRivales] = useState([]);
   const [bibliotecaBloques, setBibliotecaBloques] = useState([]);
+  const [sistemasJuego, setSistemasJuego] = useState([]);
   const [active, setActive] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
@@ -6854,6 +6953,32 @@ export default function App() {
     const { error } = await supabase.from("biblioteca_bloques").delete().eq("id", id);
     if (error) { setErrorMsg(error.message); return; }
     setBibliotecaBloques((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  // Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Defensa de cortinas,
+  // ver schema_sistemas_juego.sql) -- global para todo el club, igual criterio que Biblioteca.
+  useEffect(() => {
+    if (!session) { setSistemasJuego([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("sistemas_juego").select("*").order("orden", { ascending: true });
+      if (cancelled) return;
+      if (!error) setSistemasJuego(data);
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  const addSistemaJuego = async (tipo, nombre) => {
+    const orden = Math.max(-1, ...sistemasJuego.filter((s) => s.tipo === tipo).map((s) => s.orden)) + 1;
+    const { data, error } = await supabase.from("sistemas_juego").insert({ tipo, nombre, orden }).select().single();
+    if (error) { setErrorMsg(error.message); return; }
+    setSistemasJuego((prev) => [...prev, data]);
+  };
+
+  const deleteSistemaJuego = async (id) => {
+    const { error } = await supabase.from("sistemas_juego").delete().eq("id", id);
+    if (error) { setErrorMsg(error.message); return; }
+    setSistemasJuego((prev) => prev.filter((s) => s.id !== id));
   };
 
   const addEvent = async (ev) => {
@@ -7292,7 +7417,7 @@ export default function App() {
               } />
               <Route path="/scouting" element={
                 <ProtectedRoute seccionId="scouting">
-                  <ScoutingHubView equiposRivales={equiposRivales} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} rol={rol} />
+                  <ScoutingHubView equiposRivales={equiposRivales} sistemasJuego={sistemasJuego} onAddSistema={addSistemaJuego} onDeleteSistema={deleteSistemaJuego} onAddEquipo={addEquipoRival} onUpdateEquipo={updateEquipoRival} onDeleteEquipo={deleteEquipoRival} soloLectura={soloLecturaGeneral} rol={rol} />
                 </ProtectedRoute>
               } />
               <Route path="/estadisticas" element={
@@ -7321,7 +7446,7 @@ export default function App() {
           <IndividualView event={active} jugadores={jugadores} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} bibliotecaBloques={bibliotecaBloques} onSaveBiblioteca={addBloqueBiblioteca} onDeleteBiblioteca={deleteBloqueBiblioteca} />
         )}
         {active?.type === "partido" && (
-          <PartidoView event={active} equiposRivales={equiposRivales} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
+          <PartidoView event={active} equiposRivales={equiposRivales} sistemasJuego={sistemasJuego} rol={rol} onBack={() => setActive(null)} onUpdate={(patch) => updateEvent(active.id, patch)} onDelete={() => { deleteEvent(active.id); setActive(null); }} />
         )}
       </main>
 
