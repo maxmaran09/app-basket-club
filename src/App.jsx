@@ -2161,13 +2161,20 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
         {cells.map((d, i) => {
           if (!d) return <div key={i} />;
           const evs = eventsFor(d);
+          const visibleEvs = evs.slice(0, 3);
+          const extra = evs.length - visibleEvs.length;
           const isToday = toKey(year, month, d) === todayKey;
           return (
             <button key={i} onClick={() => setSelectedDay(d)}
-              className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col ${selectedDay === d ? "border-brand-500/60 bg-brand-500/5" : "border-zinc-800 hover:border-zinc-700"} ${isToday ? "ring-1 ring-zinc-500" : ""}`}>
+              className={`min-h-[4.5rem] rounded-lg border p-1 text-left flex flex-col gap-0.5 ${selectedDay === d ? "border-brand-500/60 bg-brand-500/5" : "border-zinc-800 hover:border-zinc-700"} ${isToday ? "ring-1 ring-zinc-500" : ""}`}>
               <span className={`text-xs ${isToday ? "text-brand-300 font-bold" : "text-zinc-400"}`}>{d}</span>
-              <div className="flex flex-wrap gap-0.5 mt-auto">
-                {evs.slice(0, 3).map((e) => <span key={e.id} className={`w-1.5 h-1.5 rounded-full ${TIPO_ESTILO[e.type].dot}`} />)}
+              <div className="flex flex-col gap-0.5 min-w-0">
+                {visibleEvs.map((e) => (
+                  <span key={e.id} className={`text-[9px] leading-tight px-1 py-px rounded truncate ${TIPO_ESTILO[e.type].bg} ${TIPO_ESTILO[e.type].text}`}>
+                    {e.title}
+                  </span>
+                ))}
+                {extra > 0 && <span className="text-[9px] leading-tight text-zinc-500 px-1">+{extra} más</span>}
               </div>
             </button>
           );
