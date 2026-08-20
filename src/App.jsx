@@ -1945,14 +1945,21 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
     y += gapAfter;
   };
 
-  const addLink = (label, url) => {
+  // Icono de YouTube (rectangulo rojo + triangulo blanco, dibujado a mano -- jsPDF no trae iconos)
+  // con el link real superpuesto (doc.link, no textWithLink, porque no hay texto debajo) -- abre
+  // el video en una pestaña nueva al tocarlo, igual que "Ver video" pero mas compacto.
+  const addVideoLink = (url) => {
     if (!url) return;
-    ensureSpace(16);
-    doc.setFont("Inter", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(29, 78, 216);
-    doc.textWithLink(label, marginX, y, { url });
-    y += 16;
+    const w = 18, h = 13;
+    ensureSpace(h + 8);
+    const top = y;
+    doc.setFillColor(224, 32, 32);
+    doc.roundedRect(marginX, top, w, h, 2.5, 2.5, "F");
+    doc.setFillColor(255, 255, 255);
+    const cx = marginX + w / 2 + 0.5, cy = top + h / 2;
+    doc.triangle(cx - 2.3, cy - 3.5, cx - 2.3, cy + 3.5, cx + 3.5, cy, "F");
+    doc.link(marginX, top, w, h, { url });
+    y = top + h + 8;
   };
 
   // Dibuja el contenido de un RichTextEditor (notas colectivas, objetivos, plan de ataque/defensa)
@@ -2065,7 +2072,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   addSectionTitle("Scouting colectivo");
   addRichText(equipoRival?.notas_colectivas, { sinDatos: "Sin notas colectivas cargadas." });
-  addLink("Ver video colectivo", youtubeWatchUrl(equipoRival?.video_colectivo_url));
+  addVideoLink(youtubeWatchUrl(equipoRival?.video_colectivo_url));
   y += 6;
 
   addSectionTitle("Estadísticas colectivas");
@@ -2118,8 +2125,7 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
         j.debilidades && `Debilidades: ${j.debilidades}`,
       ].filter(Boolean).join("   ");
       if (notas) addText(notas, { size: 9, color: [82, 82, 91], gapAfter: 2 });
-      const watchUrl = youtubeWatchUrl(j.video_individual_url);
-      if (watchUrl) addLink("Ver video", watchUrl);
+      addVideoLink(youtubeWatchUrl(j.video_individual_url));
       y += 6;
     });
   }
