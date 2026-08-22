@@ -2150,6 +2150,16 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   if (!equipoRival || jugadoresRivales.length === 0) {
     addText("Sin jugadores cargados.");
   } else {
+    let promediosJugadoresRivales = {};
+    if (equipoRival.temporada_id) {
+      const { data: proms } = await supabase
+        .from("vista_promedios_jugador")
+        .select("*")
+        .in("jugador_rival_id", jugadoresRivales.map((j) => j.id))
+        .eq("temporada_id", equipoRival.temporada_id);
+      if (proms) promediosJugadoresRivales = Object.fromEntries(proms.map((p) => [p.jugador_rival_id, p]));
+    }
+
     jugadoresRivales.forEach((j) => {
       const encabezado = `#${j.dorsal ?? "-"}  ${j.nombre_apellido}${formatPosicion(j) ? `   ${formatPosicion(j)}` : ""}`;
       const watchUrl = youtubeWatchUrl(j.video_individual_url);
@@ -2166,6 +2176,12 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
         j.debilidades && `Debilidades: ${j.debilidades}`,
       ].filter(Boolean).join("   ");
       if (notas) addText(notas, { size: 9, color: [82, 82, 91], gapAfter: 2 });
+      const p = promediosJugadoresRivales[j.id];
+      if (p) {
+        const tirosTotal = (Number(p.t2i_prom) || 0) + (Number(p.t3i_prom) || 0) + (Number(p.t1i_prom) || 0);
+        addText(`PTS ${p.pts_prom}   Plays ${p.play_prom}   PTS/Play ${p.pplay_prom}   AST ${p.ast_prom}   RD ${p.rdef_prom}   RO ${p.rof_prom}   PER ${p.per_prom}`, { size: 8.5, color: [113, 113, 122], gapAfter: 1 });
+        addText(`Tiros ${tirosTotal.toFixed(1)}   T2 ${p.t2a_prom}/${p.t2i_prom}   T3 ${p.t3a_prom}/${p.t3i_prom}   T1 ${p.t1a_prom}/${p.t1i_prom}`, { size: 8.5, color: [113, 113, 122], gapAfter: 2 });
+      }
       y += 6;
     });
   }
@@ -2255,6 +2271,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const [rivalId, setRivalId] = useState(event.rival_id || "");
   const [jugadoresRivales, setJugadoresRivales] = useState([]);
   const [loadingRival, setLoadingRival] = useState(true);
+  const [promediosJugadoresRivales, setPromediosJugadoresRivales] = useState({});
   const [ataqueTags, setAtaqueTags] = useState(event.ataque?.transicion || []);
   const [setTags, setSetTags] = useState(event.ataque?.set || []);
   const [cortinaTags, setCortinaTags] = useState(event.defensa?.cortinas || []);
@@ -2279,7 +2296,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const equipoRival = equiposRivales.find((e) => e.id === rivalId) || null;
 
   useEffect(() => {
-    if (!rivalId) { setJugadoresRivales([]); setLoadingRival(false); return; }
+    if (!rivalId) { setJugadoresRivales([]); setPromediosJugadoresRivales({}); setLoadingRival(false); return; }
     let cancelled = false;
     setLoadingRival(true);
     (async () => {
@@ -2287,9 +2304,25 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
       if (cancelled) return;
       if (!error) setJugadoresRivales(data);
       setLoadingRival(false);
+
+      // Estadisticas por jugador rival (PTS, Plays, PTS x Play, tiros, rebotes, perdidas) --
+      // mismo patron que EquipoRivalFicha, sobre vista_promedios_jugador, sin vistas SQL nuevas.
+      if (!error && data.length > 0 && equipoRival?.temporada_id) {
+        const { data: proms, error: errProms } = await supabase
+          .from("vista_promedios_jugador")
+          .select("*")
+          .in("jugador_rival_id", data.map((j) => j.id))
+          .eq("temporada_id", equipoRival.temporada_id);
+        if (!cancelled && !errProms && proms) {
+          setPromediosJugadoresRivales(Object.fromEntries(proms.map((p) => [p.jugador_rival_id, p])));
+        }
+      } else if (!cancelled) {
+        setPromediosJugadoresRivales({});
+      }
     })();
     return () => { cancelled = true; };
-  }, [rivalId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rivalId, equipoRival?.temporada_id]);
 
   const toggleList = (list, val) => (list.includes(val) ? list.filter((x) => x !== val) : [...list, val]);
 
@@ -2524,6 +2557,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
                 {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
                 {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
                 {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
+                <PromedioJugadorAmplio p={promediosJugadoresRivales[j.id]} />
               </div>
             ))}
           </div>
@@ -4869,6 +4903,33 @@ function PromedioMiniStats({ p }) {
   );
 }
 
+// Version mas completa de PromedioMiniStats para el Plan de juego (Plantel rival dentro de la
+// ficha de Partido) -- separa RD/RO y suma Plays/PTS x Play (ya vienen calculados en
+// vista_promedios_jugador, sin cuentas nuevas en el cliente) + el desglose de tiro de 2/3/1.
+function PromedioJugadorAmplio({ p }) {
+  if (!p) return null;
+  const tirosTotal = (Number(p.t2i_prom) || 0) + (Number(p.t3i_prom) || 0) + (Number(p.t1i_prom) || 0);
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        <Chip tone="blue">{p.pts_prom} PTS</Chip>
+        <Chip tone="blue">{p.play_prom} Plays</Chip>
+        <Chip tone="blue">{p.pplay_prom} PTS/Play</Chip>
+        <Chip tone="blue">{p.ast_prom} AST</Chip>
+        <Chip tone="blue">{p.rdef_prom} RD</Chip>
+        <Chip tone="blue">{p.rof_prom} RO</Chip>
+        <Chip tone="blue">{p.per_prom} PER</Chip>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Chip tone="blue">{tirosTotal.toFixed(1)} Tiros</Chip>
+        <Chip tone="blue">{p.t2a_prom}/{p.t2i_prom} T2</Chip>
+        <Chip tone="blue">{p.t3a_prom}/{p.t3i_prom} T3</Chip>
+        <Chip tone="blue">{p.t1a_prom}/{p.t1i_prom} T1</Chip>
+      </div>
+    </div>
+  );
+}
+
 // Ficha completa de un equipo rival: notas/video colectivo editable + plantel de jugadores
 // rivales (propia tabla relacional, se reusa desde cualquier partido contra este equipo).
 function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
@@ -4881,7 +4942,6 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
   const [editJugador, setEditJugador] = useState(null);
   const [deleteJugador, setDeleteJugador] = useState(null);
   const [showEditEquipo, setShowEditEquipo] = useState(false);
-  const [promedioEquipo, setPromedioEquipo] = useState(null);
   const [promediosJugadores, setPromediosJugadores] = useState({});
 
   useEffect(() => {
@@ -4902,18 +4962,6 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
           setPromediosJugadores(Object.fromEntries(proms.map((p) => [p.jugador_rival_id, p])));
         }
       }
-    })();
-    return () => { cancelled = true; };
-  }, [equipo.id]);
-
-  // Promedios de ESTA temporada del rival, no de todos los partidos historicos que se le hayan
-  // cargado alguna vez.
-  useEffect(() => {
-    if (!equipo.temporada_id) { setPromedioEquipo(null); return; }
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase.from("vista_promedios_equipo").select("*").eq("equipo_rival_id", equipo.id).eq("temporada_id", equipo.temporada_id).maybeSingle();
-      if (!cancelled && !error) setPromedioEquipo(data);
     })();
     return () => { cancelled = true; };
   }, [equipo.id]);
@@ -4966,12 +5014,8 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
 
       <EditableField label="Notas colectivas" icon={Shield} accent="text-brand-400" value={notas} onSave={(v) => { setNotas(v); onUpdateEquipo({ notas_colectivas: v }); }} richText soloLectura={soloLectura} />
 
-      <Section icon={BarChart3} title="Promedios (Estadísticas)" accent="text-brand-400">
-        {promedioEquipo ? (
-          <PromedioMiniStats p={promedioEquipo} />
-        ) : (
-          <p className="text-sm text-zinc-500">Todavía no hay partidos de este equipo vinculados en Estadísticas.</p>
-        )}
+      <Section icon={BarChart3} title="Estadísticas colectivas" accent="text-brand-400">
+        <EstadisticasColectivasRival equipoRivalId={equipo.id} temporadaId={equipo.temporada_id} />
       </Section>
 
       <Section icon={Youtube} title="Video colectivo" accent="text-brand-400">
