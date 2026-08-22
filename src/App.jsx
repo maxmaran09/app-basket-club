@@ -2178,9 +2178,9 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
       if (notas) addText(notas, { size: 9, color: [82, 82, 91], gapAfter: 2 });
       const p = promediosJugadoresRivales[j.id];
       if (p) {
-        const tirosTotal = (Number(p.t2i_prom) || 0) + (Number(p.t3i_prom) || 0) + (Number(p.t1i_prom) || 0);
+        const pct = (a, i) => (i ? Math.round((a / i) * 100) : 0);
         addText(`PTS ${p.pts_prom}   Plays ${p.play_prom}   PTS/Play ${p.pplay_prom}   AST ${p.ast_prom}   RD ${p.rdef_prom}   RO ${p.rof_prom}   PER ${p.per_prom}`, { size: 8.5, color: [113, 113, 122], gapAfter: 1 });
-        addText(`Tiros ${tirosTotal.toFixed(1)}   T2 ${p.t2a_prom}/${p.t2i_prom}   T3 ${p.t3a_prom}/${p.t3i_prom}   T1 ${p.t1a_prom}/${p.t1i_prom}`, { size: 8.5, color: [113, 113, 122], gapAfter: 2 });
+        addText(`T2 ${p.t2a_prom}/${p.t2i_prom} (${pct(p.t2a_prom, p.t2i_prom)}%)   T3 ${p.t3a_prom}/${p.t3i_prom} (${pct(p.t3a_prom, p.t3i_prom)}%)   T1 ${p.t1a_prom}/${p.t1i_prom} (${pct(p.t1a_prom, p.t1i_prom)}%)`, { size: 8.5, color: [113, 113, 122], gapAfter: 2 });
       }
       y += 6;
     });
@@ -4903,12 +4903,13 @@ function PromedioMiniStats({ p }) {
   );
 }
 
-// Version mas completa de PromedioMiniStats para el Plan de juego (Plantel rival dentro de la
-// ficha de Partido) -- separa RD/RO y suma Plays/PTS x Play (ya vienen calculados en
-// vista_promedios_jugador, sin cuentas nuevas en el cliente) + el desglose de tiro de 2/3/1.
+// Version mas completa de PromedioMiniStats, usada tanto en Scouting Hub (ficha de equipo rival)
+// como en el Plan de juego (Plantel rival dentro de la ficha de Partido) -- separa RD/RO y suma
+// Plays/PTS x Play (ya vienen calculados en vista_promedios_jugador, sin cuentas nuevas en el
+// cliente) + el desglose de tiro de 2/3/1 con su % de efectividad.
 function PromedioJugadorAmplio({ p }) {
   if (!p) return null;
-  const tirosTotal = (Number(p.t2i_prom) || 0) + (Number(p.t3i_prom) || 0) + (Number(p.t1i_prom) || 0);
+  const pct = (a, i) => (i ? Math.round((a / i) * 100) : 0);
   return (
     <div className="mt-1.5 space-y-1.5">
       <div className="flex flex-wrap gap-1.5">
@@ -4921,10 +4922,9 @@ function PromedioJugadorAmplio({ p }) {
         <Chip tone="blue">{p.per_prom} PER</Chip>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        <Chip tone="blue">{tirosTotal.toFixed(1)} Tiros</Chip>
-        <Chip tone="blue">{p.t2a_prom}/{p.t2i_prom} T2</Chip>
-        <Chip tone="blue">{p.t3a_prom}/{p.t3i_prom} T3</Chip>
-        <Chip tone="blue">{p.t1a_prom}/{p.t1i_prom} T1</Chip>
+        <Chip tone="blue">T2 {p.t2a_prom}/{p.t2i_prom} ({pct(p.t2a_prom, p.t2i_prom)}%)</Chip>
+        <Chip tone="blue">T3 {p.t3a_prom}/{p.t3i_prom} ({pct(p.t3a_prom, p.t3i_prom)}%)</Chip>
+        <Chip tone="blue">T1 {p.t1a_prom}/{p.t1i_prom} ({pct(p.t1a_prom, p.t1i_prom)}%)</Chip>
       </div>
     </div>
   );
@@ -5048,7 +5048,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
                 {j.cualidades_ataque && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Ataque:</span> {j.cualidades_ataque}</p>}
                 {j.cualidades_defensa && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Defensa:</span> {j.cualidades_defensa}</p>}
                 {j.debilidades && <p className="text-sm text-zinc-400"><span className="text-zinc-500">Debilidades:</span> {j.debilidades}</p>}
-                <PromedioMiniStats p={promediosJugadores[j.id]} />
+                <PromedioJugadorAmplio p={promediosJugadores[j.id]} />
               </div>
             ))}
           </div>
