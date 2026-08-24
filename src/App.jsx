@@ -6596,11 +6596,15 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
     let cancelled = false;
     (async () => {
       setLoadingStats(true);
-      const { data: ultimo } = await supabase.from("partidos_stats").select("*").in("temporada_id", idsTemporadasEquipo).order("fecha", { ascending: false }).limit(1).maybeSingle();
+      // Mismo filtro que "ultimos3" mas abajo -- sin esto, un partido cargado solo para scoutear
+      // un rival (sin marcar "¿Cual de los dos somos nosotros?" en Estadisticas) podia ser el mas
+      // reciente por fecha y tapar el ultimo partido de verdad de este equipo, que si tiene el
+      // lado propio definido.
+      const { data: ultimo } = await supabase.from("partidos_stats").select("*").in("temporada_id", idsTemporadasEquipo).not("equipo_propio", "is", null).order("fecha", { ascending: false }).limit(1).maybeSingle();
       if (cancelled) return;
       setUltimoPartido(ultimo);
 
-      if (ultimo?.equipo_propio) {
+      if (ultimo) {
         const ladoPropio = ultimo.equipo_propio === "VISITANTE" ? ultimo.equipo_visitante : ultimo.equipo_local;
         const { data: filas } = await supabase.from("jugador_partido_stats").select("*").eq("partido_id", ultimo.id).eq("equipo", ladoPropio);
         if (!cancelled && filas) {
@@ -6813,9 +6817,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
           {loadingStats ? (
             <p className="text-sm text-zinc-500">Cargando…</p>
           ) : !ultimoPartido ? (
-            <p className="text-sm text-zinc-500">Todavía no hay partidos cargados en Estadísticas.</p>
-          ) : !ultimoPartido.equipo_propio ? (
-            <p className="text-sm text-amber-400">Este partido no tiene definido qué lado somos nosotros — corregilo en Estadísticas para ver los líderes.</p>
+            <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido en esta temporada.</p>
           ) : (
             <div className="grid grid-cols-3 gap-2">
               <PodioMini titulo="Puntos" filas={lideres.puntos} campo="pts" />
