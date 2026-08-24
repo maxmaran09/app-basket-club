@@ -48,14 +48,15 @@ function horarioResumen(e) {
 }
 
 // Tipos de chip del catalogo editable "sistemas_juego" (ver schema_sistemas_juego.sql) --
-// Transicion/Set ofensivo/Defensa de cortinas del Plan de juego en Scouting Hub y ficha de
-// Partido. Ya no son un array fijo: el staff los administra desde SistemasJuegoModal.
-const TIPOS_SISTEMA = { transicion: "Transición", set: "Set ofensivo", cortinas: "Defensa de cortinas" };
+// Transicion/Set ofensivo/Defensa de cortinas (directas e indirectas, por separado) del Plan de
+// juego en Scouting Hub y ficha de Partido. Ya no son un array fijo: el staff los administra
+// desde SistemasJuegoModal.
+const TIPOS_SISTEMA = { transicion: "Transición", set: "Set ofensivo", cortinas_directas: "Cortinas directas", cortinas_indirectas: "Cortinas indirectas" };
 
-// Agrupa las filas planas de "sistemas_juego" en { transicion: [...nombres], set: [...], cortinas: [...] },
+// Agrupa las filas planas de "sistemas_juego" en { transicion: [...nombres], set: [...], ... },
 // ordenadas por "orden" y de ahi por nombre.
 function agruparSistemas(sistemasJuego) {
-  const porTipo = { transicion: [], set: [], cortinas: [] };
+  const porTipo = { transicion: [], set: [], cortinas_directas: [], cortinas_indirectas: [] };
   [...sistemasJuego]
     .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))
     .forEach((s) => { if (porTipo[s.tipo]) porTipo[s.tipo].push(s.nombre); });
@@ -1908,7 +1909,7 @@ function parsearBloquesRicos(html) {
 // depender de que el usuario haya elegido bien el destino de impresion.
 // "jsPDF" se importa dinamico (no al tope del archivo) para no sumarle ~130kb gzip al bundle
 // principal que se descarga siempre -- solo se baja la primera vez que alguien toca "Exportar PDF".
-async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags }) {
+async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaDirectasTags, cortinaIndirectasTags }) {
   const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64, INTER_ITALIC_BASE64 }] = await Promise.all([
     import("jspdf"),
     import("./pdfFonts.js"),
@@ -2140,7 +2141,8 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
 
   addSectionTitle("Plan de juego - defensa");
   addRichText(planDefensa, { sinDatos: "Sin plan de defensa cargado." });
-  if (cortinaTags.length) addText(`Defensa de cortinas: ${cortinaTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  if (cortinaDirectasTags.length) addText(`Cortinas directas: ${cortinaDirectasTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
+  if (cortinaIndirectasTags.length) addText(`Cortinas indirectas: ${cortinaIndirectasTags.join(", ")}`, { bold: true, size: 9, gapAfter: 2 });
   (event.defensa?.claves || []).forEach((c) => addText(`-  ${c}`, { size: 9, gapAfter: 2 }));
   if (event.defensa?.directos?.length) addText(`Directos: ${event.defensa.directos.join(", ")}`, { size: 9, gapAfter: 2 });
   if (event.defensa?.indirectos?.length) addText(`Indirectos: ${event.defensa.indirectos.join(", ")}`, { size: 9, gapAfter: 2 });
@@ -2274,7 +2276,10 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   const [promediosJugadoresRivales, setPromediosJugadoresRivales] = useState({});
   const [ataqueTags, setAtaqueTags] = useState(event.ataque?.transicion || []);
   const [setTags, setSetTags] = useState(event.ataque?.set || []);
-  const [cortinaTags, setCortinaTags] = useState(event.defensa?.cortinas || []);
+  // "cortinasDirectas" cae al viejo "cortinas" (antes de separarlas en directas/indirectas) para
+  // no perder lo ya tildado en un partido cargado antes de este cambio.
+  const [cortinaDirectasTags, setCortinaDirectasTags] = useState(event.defensa?.cortinasDirectas ?? event.defensa?.cortinas ?? []);
+  const [cortinaIndirectasTags, setCortinaIndirectasTags] = useState(event.defensa?.cortinasIndirectas || []);
   const [objetivoAtaque, setObjetivoAtaque] = useState(event.ataque?.objetivo || "");
   const [objetivoDefensa, setObjetivoDefensa] = useState(event.defensa?.objetivo || "");
   const [planAtaque, setPlanAtaque] = useState(event.planAtaque || "");
@@ -2342,11 +2347,18 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
     setSetTags(next);
     onUpdate({ ataque: { claves: event.ataque?.claves || [], objetivo: objetivoAtaque, transicion: ataqueTags, set: next } });
   };
-  const onToggleCortina = (v) => {
-    const next = toggleList(cortinaTags, v);
-    setCortinaTags(next);
+  const onToggleCortinaDirecta = (v) => {
+    const next = toggleList(cortinaDirectasTags, v);
+    setCortinaDirectasTags(next);
     onUpdate({
-      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinas: next },
+      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinasDirectas: next, cortinasIndirectas: cortinaIndirectasTags },
+    });
+  };
+  const onToggleCortinaIndirecta = (v) => {
+    const next = toggleList(cortinaIndirectasTags, v);
+    setCortinaIndirectasTags(next);
+    onUpdate({
+      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinasDirectas: cortinaDirectasTags, cortinasIndirectas: next },
     });
   };
 
@@ -2355,14 +2367,14 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
   };
   const guardarObjetivoDefensa = () => {
     onUpdate({
-      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinas: cortinaTags },
+      defensa: { claves: event.defensa?.claves || [], objetivo: objetivoDefensa, directos: event.defensa?.directos || [], indirectos: event.defensa?.indirectos || [], cortinasDirectas: cortinaDirectasTags, cortinasIndirectas: cortinaIndirectasTags },
     });
   };
 
   const exportarPDF = async () => {
     setExportando(true);
     try {
-      await exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaTags });
+      await exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jornada, condicion, horario, citacion, objetivoAtaque, objetivoDefensa, planAtaque, planDefensa, ataqueTags, setTags, cortinaDirectasTags, cortinaIndirectasTags });
     } finally {
       setExportando(false);
     }
@@ -2517,7 +2529,8 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
             <RichTextEditor initialValue={planDefensa} onChange={setPlanDefensa} onBlur={() => onUpdate({ planDefensa })} placeholder="Plan de defensa" />
           </div>
         )}
-        <TagPicker label="Defensa de cortinas" options={sistemas.cortinas} selected={cortinaTags} onToggle={onToggleCortina} soloLectura={soloLectura} />
+        <TagPicker label="Cortinas directas" options={sistemas.cortinas_directas} selected={cortinaDirectasTags} onToggle={onToggleCortinaDirecta} soloLectura={soloLectura} />
+        <TagPicker label="Cortinas indirectas" options={sistemas.cortinas_indirectas} selected={cortinaIndirectasTags} onToggle={onToggleCortinaIndirecta} soloLectura={soloLectura} />
         {event.defensa?.claves?.length > 0 && (
           <ul className="space-y-1 mb-2 mt-2">
             {event.defensa.claves.map((c, i) => <li key={i} className="text-sm text-zinc-400 flex gap-2"><Tag size={13} className="mt-1 shrink-0 text-brand-400" />{c}</li>)}
@@ -5092,12 +5105,12 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
   );
 }
 
-// Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Defensa de cortinas) --
-// ver schema_sistemas_juego.sql. Solo lo abre quien puede escribir Scouting Hub (esStaffCompleto),
-// que ya filtra el boton que dispara este modal en ScoutingHubView.
+// Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Cortinas directas/Cortinas
+// indirectas) -- ver schema_sistemas_juego.sql. Solo lo abre quien puede escribir Scouting Hub
+// (esStaffCompleto), que ya filtra el boton que dispara este modal en ScoutingHubView.
 function SistemasJuegoModal({ sistemasJuego, onAdd, onDelete, onClose }) {
   const sistemas = agruparSistemas(sistemasJuego);
-  const [nuevo, setNuevo] = useState({ transicion: "", set: "", cortinas: "" });
+  const [nuevo, setNuevo] = useState({ transicion: "", set: "", cortinas_directas: "", cortinas_indirectas: "" });
 
   const agregar = (tipo) => {
     const nombre = nuevo[tipo].trim();
@@ -7552,8 +7565,8 @@ export default function App() {
     setBibliotecaBloques((prev) => prev.filter((b) => b.id !== id));
   };
 
-  // Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Defensa de cortinas,
-  // ver schema_sistemas_juego.sql) -- global para todo el club, igual criterio que Biblioteca.
+  // Catalogo editable de chips del Plan de juego (Transición/Set ofensivo/Cortinas directas e
+  // indirectas, ver schema_sistemas_juego.sql) -- global para todo el club, igual criterio que Biblioteca.
   useEffect(() => {
     if (!session) { setSistemasJuego([]); return; }
     let cancelled = false;
