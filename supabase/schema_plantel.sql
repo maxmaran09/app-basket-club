@@ -18,8 +18,8 @@ create table if not exists public.jugadores (
   nombre_apellido text not null,
   posicion text check (posicion in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
   posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot')),
-  altura numeric(3,2),
-  peso integer,
+  altura numeric(4,2),
+  peso numeric(5,1),
   fecha_nacimiento date,
   categoria_origen text,
   tira text,
@@ -27,7 +27,7 @@ create table if not exists public.jugadores (
 
   -- Array JSONB vacio por defecto: ademas de testeos de los preparadores fisicos, la app
   -- registra aca cada actualizacion de altura/peso con su fecha (ej:
-  -- [{"fecha":"2026-08-01","altura":1.95,"peso":80}, {"fecha":"2026-08-01","test":"salto","valor":42}])
+  -- [{"fecha":"2026-08-01","altura":1.95,"peso":80.4}, {"fecha":"2026-08-01","test":"salto","valor":42}])
   -- sin que haga falta tocar el esquema de la tabla.
   evaluaciones_pfs jsonb not null default '[]'::jsonb,
 
@@ -43,6 +43,20 @@ alter table public.jugadores add column if not exists fecha_nacimiento date;
 alter table public.jugadores drop column if exists edad;
 alter table public.jugadores add column if not exists equipos_adicionales jsonb not null default '[]'::jsonb;
 alter table public.jugadores add column if not exists posicion_secundaria text check (posicion_secundaria in ('Base','Escolta','Alero','Ala-Pivot','Pivot'));
+
+-- "peso" era entero (no dejaba cargar decimales, ej. 85.4kg) y "altura" numeric(3,2) -- con 1 solo
+-- digito antes de la coma permitido, un typo cargando la altura en cm en vez de en metros (ej.
+-- "185" en vez de "1.85") tiraba "numeric field overflow" crudo de Postgres en vez de un error
+-- entendible. "using ...::numeric(...)" convierte los datos ya cargados sin perderlos.
+-- Postgres no deja cambiar el tipo de una columna mientras una vista dependa de ella
+-- ("vista_plantel_temporada" lee jugadores.peso/altura) -- hay que sacarla del medio antes del
+-- alter y volver a crearla despues. IMPORTANTE: despues de correr este script, volve a correr
+-- supabase/schema_temporadas.sql completo (ahi vive la definicion real de esa vista) para
+-- recrearla -- si no, Plantel/Jugador 360/Scouting se quedan sin datos hasta que lo hagas.
+drop view if exists public.vista_plantel_temporada;
+
+alter table public.jugadores alter column peso type numeric(5,1) using peso::numeric(5,1);
+alter table public.jugadores alter column altura type numeric(4,2) using altura::numeric(4,2);
 
 -- DNI: identificador real de la persona para trazabilidad y vinculo con bases externas. NO
 -- reemplaza a "id" (uuid) como primary key -- ese sigue siendo la clave estable que ya usan

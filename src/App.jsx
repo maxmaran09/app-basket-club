@@ -2884,6 +2884,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
   const [fotoUrl, setFotoUrl] = useState(jugador?.foto_url || "");
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [errorFoto, setErrorFoto] = useState("");
+  const [errorMedidas, setErrorMedidas] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -2915,6 +2916,18 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
 
   const submit = async () => {
     if (!form.nombre_apellido) return;
+    setErrorMedidas("");
+    // La altura va en metros -- un tipeo cargandola en cm (ej. "185") antes tiraba un error crudo
+    // de Postgres ("numeric field overflow") en vez de esto. Mismo rango que ya validaba el
+    // importador CSV (0 < altura < 10).
+    if (form.altura && (Number(form.altura) <= 0 || Number(form.altura) >= 10)) {
+      setErrorMedidas("Altura inválida: cargala en metros, ej. 1.85 (no en cm).");
+      return;
+    }
+    if (form.peso && Number(form.peso) <= 0) {
+      setErrorMedidas("Peso inválido.");
+      return;
+    }
     setSaving(true);
     await onSave({
       dorsal: form.dorsal ? Number(form.dorsal) : null,
@@ -2979,8 +2992,9 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
               </div>
               <div className="flex gap-2">
                 <input placeholder="Altura (m)" type="number" step="0.01" value={form.altura} onChange={(e) => set("altura", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                <input placeholder="Peso (kg)" type="number" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <input placeholder="Peso (kg)" type="number" step="0.1" value={form.peso} onChange={(e) => set("peso", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
+              {errorMedidas && <p className="text-xs text-red-400">{errorMedidas}</p>}
               <div>
                 <p className="text-xs text-zinc-500 mb-1">Fecha de nacimiento</p>
                 <input type="date" value={form.fecha_nacimiento} onChange={(e) => set("fecha_nacimiento", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
@@ -3300,8 +3314,20 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
   const [altura, setAltura] = useState(jugador.altura ?? "");
   const [peso, setPeso] = useState(jugador.peso ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const submit = async () => {
+    setError("");
+    // Mismo rango que ya validaba el importador CSV (0 < altura < 10, en metros) -- sin esto, un
+    // tipeo cargando la altura en cm (ej. "185") tiraba "numeric field overflow" crudo de Postgres.
+    if (altura !== "" && (Number(altura) <= 0 || Number(altura) >= 10)) {
+      setError("Altura inválida: cargala en metros, ej. 1.85 (no en cm).");
+      return;
+    }
+    if (peso !== "" && Number(peso) <= 0) {
+      setError("Peso inválido.");
+      return;
+    }
     setSaving(true);
     const entry = { fecha };
     if (altura !== "") entry.altura = Number(altura);
@@ -3326,8 +3352,9 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
           </div>
           <div className="flex gap-2">
             <input placeholder="Altura (m)" type="number" step="0.01" value={altura} onChange={(e) => setAltura(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Peso (kg)" type="number" value={peso} onChange={(e) => setPeso(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input placeholder="Peso (kg)" type="number" step="0.1" value={peso} onChange={(e) => setPeso(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
           </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="flex gap-2 mt-3">
           <button disabled={saving} onClick={submit} className="bg-sky-600 hover:bg-sky-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>

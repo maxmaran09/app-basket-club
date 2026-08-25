@@ -169,11 +169,7 @@ function validarFila(raw, numeroFila, categoriaDefault, tiraDefault, temporadas,
   if (pesoRaw) {
     const n = Number(pesoRaw.replace(",", "."));
     if (Number.isNaN(n) || n <= 0) errores.push(`peso "${pesoRaw}" inválido`);
-    else {
-      const entero = Math.round(n);
-      if (entero !== n) warnings.push(`peso redondeado de ${n} a ${entero} kg (la columna es entera)`);
-      data.peso = entero;
-    }
+    data.peso = !Number.isNaN(n) ? Math.round(n * 10) / 10 : null;
   } else data.peso = null;
 
   const fechaMedicionRaw = (raw.fecha_medicion || "").trim();
