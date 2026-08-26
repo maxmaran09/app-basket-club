@@ -5668,14 +5668,20 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
 
   const propioPorPartido = Object.fromEntries(historial.map((p) => [p.id, p.equipo_propio]));
 
-  // Que lado (LOCAL/VISITANTE) ocupa el equipo elegido en un partido puntual -- para el propio,
-  // el ya resuelto "equipo_propio"; para un rival, se busca su fila en equipo_partido_stats (un
-  // mismo rival puede aparecer en un partido nuestro o en uno cargado solo para scoutearlo).
-  const ladoDelEquipo = (partidoIdX) => {
-    if (equipo === "propio") return propioPorPartido[partidoIdX] || null;
-    const fila = (eqData || []).find((f) => f.partido_id === partidoIdX && f.equipo_rival_id === equipo);
-    return fila ? fila.condicion : null;
+  // Fila de equipo_partido_stats del equipo elegido en un partido puntual -- para el propio, el
+  // lado que ya resolvio "equipo_propio"; para un rival, se busca por equipo_rival_id (un mismo
+  // rival puede aparecer en un partido nuestro o en uno cargado solo para scoutearlo, y un
+  // partido rival-vs-rival tiene DOS equipos cargados a la vez -- por eso hace falta esta fila
+  // puntual, no alcanza con saber que el rival "participo" del partido).
+  const filaEquipoEnPartido = (partidoIdX) => {
+    if (equipo === "propio") {
+      const lado = propioPorPartido[partidoIdX];
+      if (!lado) return null;
+      return (eqData || []).find((f) => f.partido_id === partidoIdX && f.condicion === lado) || null;
+    }
+    return (eqData || []).find((f) => f.partido_id === partidoIdX && f.equipo_rival_id === equipo) || null;
   };
+  const ladoDelEquipo = (partidoIdX) => filaEquipoEnPartido(partidoIdX)?.condicion || null;
 
   const equiposDisponibles = [
     { value: "propio", label: "Náutico Hacoaj" },
@@ -5700,8 +5706,16 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
     : view === "visita" ? partidosDelEquipo.filter((p) => ladoDelEquipo(p.id) === "VISITANTE").map((p) => p.id)
     : partidosSeleccionados.filter((id) => partidosDelEquipo.some((p) => p.id === id));
 
+  // No alcanza con "el partido es relevante" -- un partido rival-vs-rival tiene jugadores de DOS
+  // equipos distintos cargados a la vez, asi que ademas hay que quedarse solo con las filas cuyo
+  // texto de equipo (tal cual vino del PDF) coincide con el lado que ocupa el equipo elegido en
+  // ESE partido puntual.
   const filas = jugData === null ? null : agruparJugadoresDeEquipo(
-    (jugData || []).filter((f) => idsRelevantes.includes(f.partido_id)),
+    (jugData || []).filter((f) => {
+      if (!idsRelevantes.includes(f.partido_id)) return false;
+      const filaEq = filaEquipoEnPartido(f.partido_id);
+      return !!filaEq && f.equipo === filaEq.equipo;
+    }),
     equipo === "propio"
   );
 
