@@ -5530,6 +5530,227 @@ function AsignarMatrizPartido({ partido, temporadas, defaultTemporadaId, onAsign
   );
 }
 
+// Columnas de la tabla de EstadisticasPlantelModal, en el mismo orden que se muestran y se
+// exportan a CSV.
+const COLUMNAS_STATS_PLANTEL = [
+  { k: "nombre", l: "Nombre" },
+  { k: "pj", l: "PJ" },
+  { k: "min", l: "Min" },
+  { k: "pts", l: "PTS" },
+  { k: "t2a", l: "T2A" }, { k: "t2i", l: "T2I" }, { k: "t2pct", l: "%T2", pct: true },
+  { k: "t3a", l: "T3A" }, { k: "t3i", l: "T3I" }, { k: "t3pct", l: "%T3", pct: true },
+  { k: "t1a", l: "T1A" }, { k: "t1i", l: "T1I" }, { k: "t1pct", l: "%T1", pct: true },
+  { k: "rd", l: "RD" }, { k: "ro", l: "RO" }, { k: "rt", l: "RT" },
+  { k: "as", l: "AS" },
+  { k: "rec", l: "REC" },
+  { k: "per", l: "PÉR" },
+  { k: "play", l: "Play" },
+  { k: "pplay", l: "PPLAY", dec: 2 },
+  { k: "tovpct", l: "TOV%", pct: true },
+  { k: "efgpct", l: "eFG%", pct: true },
+];
+
+function formatCeldaStats(fila, col) {
+  const v = fila[col.k];
+  if (col.k === "nombre") return v;
+  if (v === null || v === undefined) return "—";
+  if (col.pct) return `${Math.round(v)}%`;
+  if (col.dec) return v.toFixed(col.dec);
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+// A partir de un grupo de filas ya sumadas (t2a/t2i/.../minutos/pj totales, no promediados),
+// deriva pts/rt/play/pplay/tov%/eFG%/%tiro desde los totales -- no desde promedios ya
+// redondeados, mismo criterio que calcularRendimientoColectivo (evita arrastrar el error de
+// redondeo de un componente a otro).
+function derivarFilaJugador(g) {
+  const pj = g.pj || 1;
+  const prom = (x) => Math.round((x / pj) * 10) / 10;
+  const play = g.t2i + g.t3i + 0.44 * g.t1i + g.per;
+  const ptsTotal = g.t2a * 2 + g.t3a * 3 + g.t1a;
+  const pct = (a, i) => (i > 0 ? Math.round((a / i) * 100) : 0);
+  return {
+    nombre: g.nombre, pj: g.pj, min: prom(g.minutos),
+    t2a: prom(g.t2a), t2i: prom(g.t2i), t3a: prom(g.t3a), t3i: prom(g.t3i), t1a: prom(g.t1a), t1i: prom(g.t1i),
+    rd: prom(g.rdef), ro: prom(g.rof), rt: prom(g.rdef + g.rof), as: prom(g.ast), rec: prom(g.rec), per: prom(g.per),
+    pts: prom(ptsTotal), play: prom(play),
+    pplay: play > 0 ? ptsTotal / play : 0,
+    tovpct: play > 0 ? (g.per / play) * 100 : 0,
+    efgpct: (g.t2i + g.t3i) > 0 ? ((g.t2a + 1.5 * g.t3a) / (g.t2i + g.t3i)) * 100 : 0,
+    t2pct: pct(g.t2a, g.t2i), t3pct: pct(g.t3a, g.t3i), t1pct: pct(g.t1a, g.t1i),
+  };
+}
+
+// Agrupa filas sueltas de jugador_partido_stats (uno o varios partidos) por jugador propio ya
+// vinculado -- "jugado" = jugo minutos, no solo aparecer en la planilla del PDF (mismo criterio
+// que vista_promedios_jugador, la CABB lista el plantel completo incluidos los DNP).
+function agruparJugadoresPropios(filas) {
+  const porJugador = {};
+  filas.forEach((f) => {
+    if (!f.jugador_id) return;
+    if (!(Number(f.minutos) > 0)) return;
+    const key = f.jugador_id;
+    if (!porJugador[key]) {
+      porJugador[key] = { nombre: f.nombre_jugador, pj: 0, minutos: 0, t2a: 0, t2i: 0, t3a: 0, t3i: 0, t1a: 0, t1i: 0, rdef: 0, rof: 0, ast: 0, rec: 0, per: 0 };
+    }
+    const g = porJugador[key];
+    g.pj += 1;
+    ["minutos", "t2a", "t2i", "t3a", "t3i", "t1a", "t1i", "rdef", "rof", "ast", "rec", "per"].forEach((c) => { g[c] += Number(f[c]) || 0; });
+  });
+  return Object.values(porJugador).map(derivarFilaJugador).sort((a, b) => b.pts - a.pts);
+}
+
+// Fila de equipo con la misma forma que una fila de jugador, a partir de calcularRendimientoColectivo
+// (mismo calculo que ya usan Inicio y Estadisticas colectivas del rival -- ver esa funcion).
+function filaEquipoDesdeRc(rc) {
+  if (!rc) return null;
+  const [t2, t3, t1] = rc.tiros;
+  return {
+    nombre: "EQUIPO", pj: rc.pj, min: null,
+    t2a: t2.made, t2i: t2.att, t2pct: Math.round(t2.pct),
+    t3a: t3.made, t3i: t3.att, t3pct: Math.round(t3.pct),
+    t1a: t1.made, t1i: t1.att, t1pct: Math.round(t1.pct),
+    rd: rc.control.rd, ro: rc.control.ro, rt: rc.control.rd + rc.control.ro,
+    as: rc.control.ast, rec: rc.control.rec, per: rc.control.per,
+    pts: rc.pts.general.favor, play: rc.eficiencia.playProm, pplay: rc.eficiencia.ppp,
+    tovpct: rc.eficiencia.playProm > 0 ? (rc.control.per / rc.eficiencia.playProm) * 100 : 0,
+    efgpct: rc.eficiencia.efgPct,
+  };
+}
+
+// Estadisticas del plantel propio en tabla, con selector Promedio / un partido puntual / ultimos
+// 3 -- "historial" (prop) ya trae todos los partidos_stats de la temporada activa, cargados por
+// EstadisticasView, asi que no hace falta un fetch aparte para saber que partidos existen.
+function EstadisticasPlantelModal({ historial, onClose }) {
+  const [view, setView] = useState("promedio");
+  const [rivalPartidoId, setRivalPartidoId] = useState("");
+  const [filas, setFilas] = useState(null); // null = cargando
+  const [filaEquipo, setFilaEquipo] = useState(null);
+
+  const partidosPropios = [...historial].filter((p) => p.equipo_propio).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const ultimos3 = partidosPropios.slice(0, 3);
+
+  useEffect(() => {
+    if (partidosPropios.length > 0 && !rivalPartidoId) setRivalPartidoId(partidosPropios[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidosPropios.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const idsPropios = view === "promedio" ? partidosPropios.map((p) => p.id)
+        : view === "ultimos3" ? ultimos3.map((p) => p.id)
+        : rivalPartidoId ? [rivalPartidoId] : [];
+
+      if (idsPropios.length === 0) { setFilas([]); setFilaEquipo(null); return; }
+      setFilas(null);
+
+      const [{ data: jugData }, { data: eqData }] = await Promise.all([
+        supabase.from("jugador_partido_stats").select("*").in("partido_id", idsPropios),
+        supabase.from("equipo_partido_stats").select("*").in("partido_id", idsPropios),
+      ]);
+      if (cancelled) return;
+
+      setFilas(agruparJugadoresPropios(jugData || []));
+
+      const propioPorPartido = Object.fromEntries(partidosPropios.map((p) => [p.id, p.equipo_propio]));
+      const propias = (eqData || []).filter((f) => f.condicion === propioPorPartido[f.partido_id]);
+      const rivales = (eqData || []).filter((f) => f.condicion !== propioPorPartido[f.partido_id]);
+      setFilaEquipo(filaEquipoDesdeRc(calcularRendimientoColectivo(propias, rivales)));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, rivalPartidoId]);
+
+  const rivalSeleccionado = partidosPropios.find((p) => p.id === rivalPartidoId);
+  const nombreRival = rivalSeleccionado ? (rivalSeleccionado.equipo_propio === "LOCAL" ? rivalSeleccionado.equipo_visitante : rivalSeleccionado.equipo_local) : "";
+
+  const exportarCSV = () => {
+    if (!filas) return;
+    const headers = COLUMNAS_STATS_PLANTEL.map((c) => c.l);
+    const cuerpo = filas.map((j) => COLUMNAS_STATS_PLANTEL.map((c) => formatCeldaStats(j, c)));
+    if (filaEquipo) cuerpo.push(COLUMNAS_STATS_PLANTEL.map((c) => formatCeldaStats(filaEquipo, c)));
+    const sufijo = view === "promedio" ? "Promedio" : view === "ultimos3" ? "Ultimos 3 partidos" : `vs ${nombreRival || "rival"}`;
+    descargarCSV(`Estadisticas plantel - ${sufijo}.csv`, [headers, ...cuerpo]);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-6xl max-h-[88vh] flex flex-col text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b border-zinc-800 flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-brand-400">
+              <BarChart3 size={18} />
+              <h2 className="text-sm font-bold text-zinc-100">Estadísticas del plantel</h2>
+            </div>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1">
+              {[["promedio", "Promedio"], ["rival", "Vs. un rival"], ["ultimos3", "Últimos 3 partidos"]].map(([k, l]) => (
+                <button key={k} onClick={() => setView(k)} className={`text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap ${view === k ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {view === "rival" && (
+              <select value={rivalPartidoId} onChange={(e) => setRivalPartidoId(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+                {partidosPropios.length === 0 && <option value="">Sin partidos cargados</option>}
+                {partidosPropios.map((p) => (
+                  <option key={p.id} value={p.id}>{(p.equipo_propio === "LOCAL" ? p.equipo_visitante : p.equipo_local) || "(sin rival)"} — {p.fecha}</option>
+                ))}
+              </select>
+            )}
+            <button onClick={exportarCSV} disabled={!filas || filas.length === 0} className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40 border border-zinc-700 rounded px-2.5 py-1.5">
+              <Download size={13} /> Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-auto flex-1 min-h-0">
+          {filas === null ? (
+            <p className="text-sm text-zinc-500 p-4">Cargando…</p>
+          ) : filas.length === 0 && !filaEquipo ? (
+            <p className="text-sm text-zinc-500 p-4">Sin datos para esta vista.</p>
+          ) : (
+            <table className="border-collapse text-xs w-max min-w-full">
+              <thead>
+                <tr>
+                  {COLUMNAS_STATS_PLANTEL.map((c) => (
+                    <th key={c.k} className={`sticky top-0 z-10 bg-zinc-950 text-zinc-500 font-bold uppercase tracking-wide text-[10px] py-2 px-2.5 border-b border-zinc-800 whitespace-nowrap ${c.k === "nombre" ? "text-left sticky left-0 z-20 min-w-[170px]" : "text-right"}`}>
+                      {c.l}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((j, i) => (
+                  <tr key={i} className="group hover:bg-zinc-800/40">
+                    {COLUMNAS_STATS_PLANTEL.map((c) => (
+                      <td key={c.k} className={`py-1.5 px-2.5 border-b border-zinc-800/70 whitespace-nowrap ${c.k === "nombre" ? "text-left sticky left-0 bg-zinc-900 group-hover:bg-zinc-800 font-medium text-zinc-100" : "text-right text-zinc-300"}`}>
+                        {formatCeldaStats(j, c)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {filaEquipo && (
+                  <tr>
+                    {COLUMNAS_STATS_PLANTEL.map((c) => (
+                      <td key={c.k} className={`py-1.5 px-2.5 border-t border-brand-700/50 font-bold whitespace-nowrap bg-brand-950/60 ${c.k === "nombre" ? "text-left sticky left-0 bg-brand-950 text-brand-300" : "text-right text-brand-300"}`}>
+                        {formatCeldaStats(filaEquipo, c)}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
@@ -5544,6 +5765,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
     setTemporadaId, refrescarTemporadas,
   } = useTeam();
   const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
+  const [showStatsPlantel, setShowStatsPlantel] = useState(false);
   const [verSinAsignar, setVerSinAsignar] = useState(false);
   const [sinAsignar, setSinAsignar] = useState([]);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
@@ -5963,7 +6185,12 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         <BarChart3 size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Estadísticas</span>
       </div>
-      <h1 className="text-2xl font-bold mb-3">Cargar partido (PDF de la CABB)</h1>
+      <div className="flex items-center justify-between flex-wrap gap-y-1 mb-3">
+        <h1 className="text-2xl font-bold">Cargar partido (PDF de la CABB)</h1>
+        <button onClick={() => setShowStatsPlantel(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
+          <Users size={15} /> Estadísticas del plantel
+        </button>
+      </div>
 
       {verSinAsignar ? (
         <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
@@ -6198,6 +6425,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
             setShowNuevaTemporada(false);
           }}
         />
+      )}
+
+      {showStatsPlantel && (
+        <EstadisticasPlantelModal historial={historial} onClose={() => setShowStatsPlantel(false)} />
       )}
     </div>
   );
