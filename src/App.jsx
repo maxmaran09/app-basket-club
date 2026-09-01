@@ -7807,6 +7807,21 @@ const INFORMES_SERIES = [
 ];
 const INFORMES_ESTADO_COLOR = { Presente: "#0ca30c", Tarde: "#fab219", Ausente: "#d03b3b" };
 
+// Metricas de rendimiento en cancha -- una sola linea por vez (nunca dos metricas de escala
+// distinta en el mismo eje, ej. Puntos junto con eFG%), salvo el caso especial de "Puntos" en
+// vista equipo, que muestra Favor/Contra juntas porque comparten unidad (son ambas puntos).
+const INFORMES_METRICAS = [
+  { key: "pts", label: "Puntos" },
+  { key: "efg", label: "eFG%" },
+  { key: "rt", label: "Rebotes totales" },
+  { key: "ast", label: "Asistencias" },
+  { key: "rec", label: "Recuperos" },
+  { key: "per", label: "Pérdidas" },
+];
+const METRICA_CAMPO = { pts: "pts", efg: "efg_pct", rt: "rtot", ast: "ast", rec: "rec", per: "per" };
+const RENDIMIENTO_COLOR = "#3987e5";
+const RENDIMIENTO_COLOR_CONTRA = "#d03b3b";
+
 function addDiasISO(iso, n) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + n);
@@ -8021,8 +8036,279 @@ function AsistenciaSemanasChart({ semanas }) {
   );
 }
 
+// Linea de rendimiento partido a partido -- eje X por partido (no por fecha continua, los
+// partidos no son todos los dias), con eje Y adaptado al rango real de la metrica elegida en
+// vez de una escala fija (Puntos y eFG% no comparten escala -- ver INFORMES_METRICAS). Si la
+// metrica es "Puntos" en vista equipo, dibuja Favor/Contra como dos lineas (mismo eje, misma
+// unidad, es el unico caso donde dos series conviven en este grafico).
+function RendimientoChart({ data, colorPrincipal, labelPrincipal, colorSecundario, labelSecundario }) {
+  const svgRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const W = 1000, H = 260, padL = 30, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const tieneContra = data.some((d) => d.valueContra != null);
+  const maxVal = Math.max(1, ...data.map((d) => Math.max(d.value, tieneContra ? (d.valueContra || 0) : 0)));
+  const yMax = Math.ceil((maxVal * 1.15) / 5) * 5 || 5;
+  const x = (i) => (data.length <= 1 ? padL + plotW / 2 : padL + (i / (data.length - 1)) * plotW);
+  const y = (v) => padT + (1 - v / yMax) * plotH;
+  const step = Math.max(1, Math.ceil(data.length / 8));
+
+  function onMove(e) {
+    if (!data.length) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    let i = Math.round(((relX - padL) / plotW) * (data.length - 1));
+    setHoverIdx(Math.max(0, Math.min(data.length - 1, i)));
+  }
+
+  if (!data.length) return <p className="text-sm text-zinc-500 py-14 text-center">Sin partidos con datos en este rango.</p>;
+
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(yMax * f));
+
+  return (
+    <div className="relative">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+        {ticks.map((v) => (
+          <g key={v}>
+            <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="#27272a" strokeWidth="1" />
+            <text x={2} y={y(v) + 3} fontSize="9" fill="#71717a">{v}</text>
+          </g>
+        ))}
+        {data.map((d, i) => ((i % step === 0 || i === data.length - 1) ? (
+          <text key={d.fecha + i} x={x(i)} y={H - 6} fontSize="9" fill="#71717a" textAnchor={i === data.length - 1 ? "end" : "middle"}>
+            {fmtFechaCorta(d.fecha)}
+          </text>
+        ) : null))}
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="#3f3f46" strokeWidth="1" />
+        <polyline points={data.map((d, i) => `${x(i)},${y(d.value)}`).join(" ")} fill="none" stroke={colorPrincipal} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={x(data.length - 1)} cy={y(data[data.length - 1].value)} r="4" fill={colorPrincipal} stroke="#18181b" strokeWidth="2" />
+        {tieneContra && (
+          <>
+            <polyline points={data.map((d, i) => `${x(i)},${y(d.valueContra || 0)}`).join(" ")} fill="none" stroke={colorSecundario} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={x(data.length - 1)} cy={y(data[data.length - 1].valueContra || 0)} r="4" fill={colorSecundario} stroke="#18181b" strokeWidth="2" />
+          </>
+        )}
+        {hoverIdx != null && (
+          <g>
+            <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={padT} y2={H - padB} stroke="#71717a" strokeWidth="1" />
+            <circle cx={x(hoverIdx)} cy={y(data[hoverIdx].value)} r="4" fill={colorPrincipal} stroke="#18181b" strokeWidth="2" />
+            {tieneContra && <circle cx={x(hoverIdx)} cy={y(data[hoverIdx].valueContra || 0)} r="4" fill={colorSecundario} stroke="#18181b" strokeWidth="2" />}
+          </g>
+        )}
+      </svg>
+      {hoverIdx != null && (
+        <div
+          className="absolute pointer-events-none bg-black border border-zinc-700 rounded-lg px-2.5 py-2 text-xs shadow-xl z-10 min-w-[150px]"
+          style={{ left: `${(x(hoverIdx) / W) * 100}%`, top: `${(y(data[hoverIdx].value) / H) * 100}%`, transform: "translate(-50%,-116%)" }}
+        >
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wide mb-1">vs {data[hoverIdx].rival} · {fmtFechaLarga(data[hoverIdx].fecha)}</div>
+          <div className="flex items-center gap-1.5 py-0.5">
+            <span className="w-2.5 h-0.5 rounded-full shrink-0" style={{ background: colorPrincipal }} />
+            <span className="text-zinc-400 flex-1">{labelPrincipal}</span>
+            <span className="text-zinc-100 font-bold tabular-nums">{data[hoverIdx].value.toFixed(1)}</span>
+          </div>
+          {tieneContra && (
+            <div className="flex items-center gap-1.5 py-0.5">
+              <span className="w-2.5 h-0.5 rounded-full shrink-0" style={{ background: colorSecundario }} />
+              <span className="text-zinc-400 flex-1">{labelSecundario}</span>
+              <span className="text-zinc-100 font-bold tabular-nums">{(data[hoverIdx].valueContra || 0).toFixed(1)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Genera el PDF de "Informes" -- mismo criterio que exportarPlanDeJuegoPDF (jsPDF + Inter
+// embebida, importados dinamico para no sumarle peso al bundle principal). A diferencia de esa
+// exportacion (todo texto), acá los graficos de linea/barras se redibujan a mano con las
+// primitivas de jsPDF (doc.line/doc.rect) sobre los mismos datos que ya se ven en pantalla --
+// mas simples que la version interactiva (sin toggles ni hover, una sola vez), pero vectoriales
+// de verdad, no una captura de pantalla.
+async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur, wellTiles, asistTiles, scope, semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles, rendCur, metricaLabel, tieneContra }) {
+  const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64, INTER_ITALIC_BASE64 }] = await Promise.all([
+    import("jspdf"),
+    import("./pdfFonts.js"),
+  ]);
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  doc.addFileToVFS("Inter-Regular.ttf", INTER_REGULAR_BASE64);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+  doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_BASE64);
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+  doc.addFileToVFS("Inter-Italic.ttf", INTER_ITALIC_BASE64);
+  doc.addFont("Inter-Italic.ttf", "Inter", "italic");
+
+  const marginX = 40, marginBottom = 40;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - marginX * 2;
+  let y = 50;
+
+  const ensureSpace = (needed) => { if (y + needed > pageHeight - marginBottom) { doc.addPage(); y = 50; } };
+
+  const addSectionTitle = (text) => {
+    ensureSpace(28);
+    doc.setFont("Inter", "bold"); doc.setFontSize(11); doc.setTextColor(24, 24, 27);
+    doc.text(text.toUpperCase(), marginX, y);
+    y += 6;
+    doc.setDrawColor(210, 210, 214);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 14;
+  };
+
+  const addText = (text, { bold = false, size = 10, color = [63, 63, 70], gapAfter = 8 } = {}) => {
+    if (!text) return;
+    doc.setFont("Inter", bold ? "bold" : "normal"); doc.setFontSize(size); doc.setTextColor(...color);
+    const lineHeight = size * 1.35;
+    doc.splitTextToSize(text, contentWidth).forEach((line) => { ensureSpace(lineHeight); doc.text(line, marginX, y); y += lineHeight; });
+    y += gapAfter;
+  };
+
+  // Tarjetas (label + valor) en fila, redibujadas como texto simple -- mismo dato que las
+  // TileInforme de la pantalla, sin los colores de delta (en escala de grises alcanza en PDF).
+  const addTiles = (tiles) => {
+    const cols = tiles.length;
+    const colW = contentWidth / cols;
+    ensureSpace(40);
+    const startY = y;
+    tiles.forEach((t, i) => {
+      const x = marginX + i * colW;
+      doc.setFont("Inter", "normal"); doc.setFontSize(8); doc.setTextColor(113, 113, 122);
+      doc.text(t.label, x, startY);
+      doc.setFont("Inter", "bold"); doc.setFontSize(15); doc.setTextColor(9, 9, 11);
+      doc.text(t.valor, x, startY + 18);
+      if (t.nota) { doc.setFont("Inter", "normal"); doc.setFontSize(8); doc.setTextColor(113, 113, 122); doc.text(t.nota, x, startY + 30); }
+    });
+    y = startY + 44;
+  };
+
+  // Grafico de linea (una o dos series, mismo eje) dibujado a mano -- sin hover ni leyenda de
+  // toggle (no aplican en un PDF estatico), solo la forma general de la tendencia + min/max.
+  const addLineChart = (data, { color = [57, 135, 229], dataContra = null, colorContra = [208, 59, 59], height = 90, yMin = null, yMax = null, fmtY = (v) => v.toFixed(1) } = {}) => {
+    if (!data.length) { addText("Sin datos en este rango.", { color: [113, 113, 122] }); return; }
+    ensureSpace(height + 34);
+    const chartY = y + 8, chartH = height, chartW = contentWidth;
+    const todos = dataContra ? data.concat(dataContra) : data;
+    const max = yMax != null ? yMax : Math.max(...todos) * 1.1;
+    const min = yMin != null ? yMin : 0;
+    const px = (i) => marginX + (data.length <= 1 ? chartW / 2 : (i / (data.length - 1)) * chartW);
+    const py = (v) => chartY + chartH - ((v - min) / (max - min || 1)) * chartH;
+
+    doc.setDrawColor(225, 224, 217); doc.setLineWidth(0.5);
+    doc.line(marginX, chartY, marginX + chartW, chartY);
+    doc.line(marginX, chartY + chartH, marginX + chartW, chartY + chartH);
+    doc.setFont("Inter", "normal"); doc.setFontSize(7); doc.setTextColor(113, 113, 122);
+    doc.text(fmtY(max), marginX, chartY - 3);
+    doc.text(fmtY(min), marginX, chartY + chartH + 9);
+
+    const drawSerie = (serie, colorArr) => {
+      doc.setDrawColor(...colorArr); doc.setLineWidth(1.6);
+      for (let i = 0; i < serie.length - 1; i++) doc.line(px(i), py(serie[i]), px(i + 1), py(serie[i + 1]));
+      doc.setFillColor(...colorArr);
+      doc.circle(px(serie.length - 1), py(serie[serie.length - 1]), 1.8, "F");
+    };
+    drawSerie(data, color);
+    if (dataContra) drawSerie(dataContra, colorContra);
+
+    y = chartY + chartH + 26;
+  };
+
+  // Barras apiladas Presente/Tarde/Ausente por semana -- mismos colores de estado que la pantalla.
+  const addBarChart = (semanas) => {
+    if (!semanas.length) { addText("Sin semanas completas en este rango.", { color: [113, 113, 122] }); return; }
+    ensureSpace(110);
+    const chartY = y + 6, chartH = 80, chartW = contentWidth;
+    const max = Math.max(1, ...semanas.map((s) => s.presente + s.tarde + s.ausente));
+    const n = semanas.length;
+    const bandW = chartW / n;
+    const barW = Math.min(20, bandW * 0.5);
+    doc.setDrawColor(225, 224, 217); doc.setLineWidth(0.5);
+    doc.line(marginX, chartY + chartH, marginX + chartW, chartY + chartH);
+    const colores = { presente: [12, 163, 12], tarde: [250, 178, 25], ausente: [208, 59, 59] };
+    semanas.forEach((s, i) => {
+      const cx = marginX + bandW * i + bandW / 2;
+      let cursor = 0;
+      [["presente", s.presente], ["tarde", s.tarde], ["ausente", s.ausente]].forEach(([k, v]) => {
+        if (v <= 0) return;
+        const h = (v / max) * chartH;
+        doc.setFillColor(...colores[k]);
+        doc.rect(cx - barW / 2, chartY + chartH - cursor - h, barW, h, "F");
+        cursor += h;
+      });
+    });
+    y = chartY + chartH + 26;
+  };
+
+  // Fila de referencias de color (cuadradito + texto) -- solo hace falta cuando un grafico tiene
+  // mas de una serie (el caso de Puntos Favor/Contra en equipo), para no dejar dos lineas de
+  // color sin decir cual es cual en un PDF estatico sin leyenda interactiva.
+  const addSwatchLegend = (items) => {
+    ensureSpace(14);
+    let x = marginX;
+    items.forEach((it) => {
+      doc.setFillColor(...it.color);
+      doc.rect(x, y - 7, 7, 7, "F");
+      doc.setFont("Inter", "normal"); doc.setFontSize(8); doc.setTextColor(82, 82, 91);
+      doc.text(it.label, x + 11, y - 1);
+      x += 11 + doc.getTextWidth(it.label) + 16;
+    });
+    y += 10;
+  };
+
+  // ---------- header ----------
+  const headerTop = y;
+  const logoSize = 36;
+  let headerTextX = marginX;
+  try {
+    const logoDataUrl = await cargarImagenComoDataUrl("/escudo-hacoaj.png");
+    const dims = await medirImagenDataUrl(logoDataUrl);
+    const w = dims ? logoSize * (dims.w / dims.h) : logoSize;
+    doc.addImage(logoDataUrl, "PNG", marginX, headerTop, w, logoSize);
+    headerTextX = marginX + w + 12;
+  } catch { /* sin logo */ }
+
+  doc.setFont("Inter", "normal"); doc.setFontSize(9); doc.setTextColor(113, 113, 122);
+  doc.text(`${categoria} · ${tira} — ${scopeLabel}`, headerTextX, headerTop + 10);
+  doc.setFont("Inter", "bold"); doc.setFontSize(16); doc.setTextColor(9, 9, 11);
+  doc.text("Informe — Wellness, asistencia y rendimiento", headerTextX, headerTop + 26);
+  doc.setFont("Inter", "normal"); doc.setFontSize(9); doc.setTextColor(113, 113, 122);
+  doc.text(`Período: ${rango.label} (${rango.desde} a ${rango.hasta})`, headerTextX, headerTop + 38);
+  y = headerTop + Math.max(logoSize, 42) + 14;
+
+  addSectionTitle("Wellness en el tiempo");
+  addTiles(wellTiles);
+  addLineChart(wellCur.map((d) => d.prom), { yMin: 0, yMax: 10 });
+
+  addSectionTitle("Asistencia en el tiempo");
+  addTiles(asistTiles);
+  if (scope === "equipo") {
+    if (semanasEquipo.length) addSwatchLegend([{ label: "Presente", color: [12, 163, 12] }, { label: "Tarde", color: [250, 178, 25] }, { label: "Ausente", color: [208, 59, 59] }]);
+    addBarChart(semanasEquipo);
+    if (rankingAsistencia.length) {
+      addText("Menor asistencia en el período:", { bold: true, gapAfter: 4 });
+      rankingAsistencia.forEach((r) => addText(`${r.nombre} — ${Math.round(r.pct)}%`, { size: 9, gapAfter: 3 }));
+      y += 6;
+    }
+  } else if (sesionesJugador.length) {
+    addText(sesionesJugador.map((s) => `${fmtFechaCorta(s.fecha)} (${s.estado})`).join("   "), { size: 9 });
+  } else {
+    addText("Sin sesiones registradas en este rango.", { color: [113, 113, 122] });
+  }
+
+  addSectionTitle(`Rendimiento en cancha — ${metricaLabel}`);
+  addTiles(rendTiles);
+  if (tieneContra) addSwatchLegend([{ label: "PTS Favor", color: [57, 135, 229] }, { label: "PTS Contra", color: [208, 59, 59] }]);
+  addLineChart(rendCur.map((d) => d.value), { dataContra: tieneContra ? rendCur.map((d) => d.valueContra || 0) : null });
+
+  doc.setFont("Inter", "normal"); doc.setFontSize(7.5); doc.setTextColor(161, 161, 170);
+  doc.text(`Generado el ${new Date().toLocaleDateString("es-AR")}`, marginX, pageHeight - 20);
+
+  doc.save(`Informe - ${categoria} ${tira} - ${rango.desde} a ${rango.hasta}.pdf`);
+}
+
 function InformesView({ jugadores }) {
-  const { categoria, tira, setCategoria, setTira } = useTeam();
+  const { categoria, tira, setCategoria, setTira, temporadas } = useTeam();
   const hoy = new Date().toISOString().slice(0, 10);
 
   const [scope, setScope] = useState("equipo"); // "equipo" | "jugador"
@@ -8037,6 +8323,9 @@ function InformesView({ jugadores }) {
   const [wellnessOn, setWellnessOn] = useState({ prom: true, sueno: false, fatiga: false, dolor: false, estres: false });
   const [wellnessTabla, setWellnessTabla] = useState(false);
   const [asistTabla, setAsistTabla] = useState(false);
+  const [metrica, setMetrica] = useState("pts");
+  const [exportando, setExportando] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const roster = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
 
@@ -8093,6 +8382,86 @@ function InformesView({ jugadores }) {
   }, [categoria, tira, rango.desde, rango.hasta, jugadores]);
 
   const cargando = wellRows === null || eventosRows === null || asisRows === null;
+
+  // ---------- rendimiento en cancha: partidos_stats no tiene categoria/tira propias (se
+  // reemplazaron por temporada_id en la migracion de Temporadas) -- hay que resolver primero
+  // que temporadas pertenecen a este equipo, mismo criterio que "ultimo partido/tendencia" en
+  // Inicio, para no perder partidos de una temporada vieja si el rango cruza el cambio.
+  const [partidosRows, setPartidosRows] = useState(null);
+  const [jugPartidoRows, setJugPartidoRows] = useState(null);
+  const [eqPartidoRows, setEqPartidoRows] = useState(null);
+  const idsTemporadasEquipo = temporadas.filter((t) => t.categoria === categoria && t.tira === tira).map((t) => t.id);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setPartidosRows(null); setJugPartidoRows(null); setEqPartidoRows(null);
+      if (!idsTemporadasEquipo.length) { setPartidosRows([]); setJugPartidoRows([]); setEqPartidoRows([]); return; }
+      const desde = prevRango.desde, hasta = rango.hasta;
+      const { data: partidos } = await supabase.from("partidos_stats").select("id, fecha, equipo_local, equipo_visitante, equipo_propio")
+        .in("temporada_id", idsTemporadasEquipo).gte("fecha", desde).lte("fecha", hasta).order("fecha", { ascending: true });
+      if (cancelled) return;
+      if (!partidos || !partidos.length) { setPartidosRows([]); setJugPartidoRows([]); setEqPartidoRows([]); return; }
+      const ids = partidos.map((p) => p.id);
+      const [{ data: jp }, { data: ep }] = await Promise.all([
+        supabase.from("jugador_partido_stats").select("partido_id, jugador_id, minutos, pts, rtot, ast, rec, per, efg_pct").in("partido_id", ids),
+        supabase.from("equipo_partido_stats").select("partido_id, condicion, pts, rtot, ast, rec, per, efg_pct").in("partido_id", ids),
+      ]);
+      if (cancelled) return;
+      setPartidosRows(partidos);
+      setJugPartidoRows(jp || []);
+      setEqPartidoRows(ep || []);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoria, tira, rango.desde, rango.hasta, temporadas]);
+
+  const cargandoRendimiento = partidosRows === null || jugPartidoRows === null || eqPartidoRows === null;
+
+  const partidosCur = (partidosRows || []).filter((p) => p.fecha >= rango.desde && p.fecha <= rango.hasta);
+  const partidosPrev = (partidosRows || []).filter((p) => p.fecha >= prevRango.desde && p.fecha <= prevRango.hasta);
+
+  function nombreRival(p) {
+    if (p.equipo_propio === "LOCAL") return p.equipo_visitante;
+    if (p.equipo_propio === "VISITANTE") return p.equipo_local;
+    return "Rival";
+  }
+
+  // Un partido puntual puede no tener fila para este jugador (no jugo/DNP) o, en vista equipo,
+  // no tener "equipo_propio" definido (partido rival-vs-rival cargado solo para scoutear) -- en
+  // ambos casos se lo salta, no se inventa un cero.
+  function serieRendimiento(lista) {
+    const campo = METRICA_CAMPO[metrica];
+    if (scope === "jugador") {
+      if (!playerId) return [];
+      return lista.map((p) => {
+        const fila = (jugPartidoRows || []).find((j) => j.partido_id === p.id && j.jugador_id === playerId && Number(j.minutos) > 0);
+        if (!fila) return null;
+        return { fecha: p.fecha, rival: nombreRival(p), value: Number(fila[campo]) || 0 };
+      }).filter(Boolean);
+    }
+    return lista.map((p) => {
+      if (!p.equipo_propio) return null;
+      const propia = (eqPartidoRows || []).find((e) => e.partido_id === p.id && e.condicion === p.equipo_propio);
+      if (!propia) return null;
+      const item = { fecha: p.fecha, rival: nombreRival(p), value: Number(propia[campo]) || 0 };
+      if (metrica === "pts") {
+        const rivalFila = (eqPartidoRows || []).find((e) => e.partido_id === p.id && e.condicion !== p.equipo_propio);
+        item.valueContra = rivalFila ? Number(rivalFila.pts) || 0 : null;
+      }
+      return item;
+    }).filter(Boolean);
+  }
+
+  const rendCur = serieRendimiento(partidosCur);
+  const rendPrev = serieRendimiento(partidosPrev);
+  const rendCurAvg = rendCur.length ? rendCur.reduce((s, d) => s + d.value, 0) / rendCur.length : 0;
+  const rendPrevAvg = rendPrev.length ? rendPrev.reduce((s, d) => s + d.value, 0) / rendPrev.length : 0;
+  const rendContraCurAvg = rendCur.length && rendCur[0].valueContra != null ? rendCur.reduce((s, d) => s + (d.valueContra || 0), 0) / rendCur.length : null;
+  const metricaInfo = INFORMES_METRICAS.find((m) => m.key === metrica);
+  const destacadoPartido = rendCur.length
+    ? (metrica === "per" ? rendCur.reduce((m, d) => (d.value < m.value ? d : m)) : rendCur.reduce((m, d) => (d.value > m.value ? d : m)))
+    : null;
 
   // ---------- wellness: agregado por fecha, cur vs periodo anterior ----------
   const filtroJugador = scope === "jugador" ? playerId : null;
@@ -8185,14 +8554,60 @@ function InformesView({ jugadores }) {
 
   const jugadorSeleccionado = roster.find((j) => j.id === playerId) || null;
 
+  const handleExportar = async () => {
+    setExportando(true);
+    setExportError("");
+    try {
+      const scopeLabel = scope === "equipo" ? "Equipo" : (jugadorSeleccionado?.nombre_apellido || "Jugador puntual");
+      const wellTiles = [
+        { label: "Promedio del período", valor: wellCur.length ? promCurAvg.toFixed(1) : "—", nota: scope === "equipo" ? "Promedio del plantel" : jugadorSeleccionado?.nombre_apellido || "" },
+        { label: "Días en alerta (<6)", valor: String(alertaCur), nota: `vs. ${alertaPrev} en el período anterior` },
+        { label: "Día más bajo del período", valor: peorDia ? peorDia.prom.toFixed(1) : "—", nota: peorDia ? fmtFechaLarga(peorDia.fecha) : "" },
+      ];
+      const asistTiles = [
+        { label: "% asistencia del período", valor: asistCur.total ? `${Math.round(asistCur.pct)}%` : "—", nota: asistCur.total === 1 ? "1 sesión registrada" : `${asistCur.total} sesiones registradas` },
+        scope === "equipo"
+          ? { label: "Ausencias totales", valor: String(asistCur.ausentes), nota: `vs. ${asistPrev.ausentes} antes` }
+          : { label: "Ausencias", valor: String(asistCur.ausentes), nota: `de ${asistCur.total} sesiones` },
+        scope === "equipo"
+          ? { label: "Menor asistencia", valor: rankingAsistencia[0]?.nombre || "—", nota: rankingAsistencia[0] ? `${Math.round(rankingAsistencia[0].pct)}% en el período` : "" }
+          : { label: "Racha actual", valor: rachaActual === 1 ? "1 sesión" : `${rachaActual} sesiones`, nota: rachaActual > 0 ? "presente sin faltar" : "última sesión no fue presente" },
+      ];
+      const rendTiles = [
+        { label: "Promedio del período", valor: rendCur.length ? `${rendCurAvg.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—", nota: scope === "equipo" ? "Promedio del equipo" : jugadorSeleccionado?.nombre_apellido || "" },
+        metrica === "pts" && scope === "equipo"
+          ? { label: "Puntos en contra (promedio)", valor: rendContraCurAvg != null ? rendContraCurAvg.toFixed(1) : "—", nota: "Promedio del rival" }
+          : { label: "Partidos con datos", valor: String(rendCur.length), nota: `de ${partidosCur.length} en el período` },
+        { label: metrica === "per" ? "Menos pérdidas" : "Mejor partido", valor: destacadoPartido ? `${destacadoPartido.value.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—", nota: destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : "" },
+      ];
+
+      await exportarInformePDF({
+        categoria, tira, scopeLabel, rango, wellCur, wellTiles, asistTiles, scope,
+        semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles, rendCur,
+        metricaLabel: metrica === "pts" && scope === "equipo" ? "Puntos (Favor/Contra)" : metricaInfo.label,
+        tieneContra: metrica === "pts" && scope === "equipo",
+      });
+    } catch (err) {
+      setExportError("No se pudo generar el PDF. Probá de nuevo.");
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto text-zinc-100">
-      <div className="flex items-center gap-2 mb-1 text-zinc-400">
-        <LineChart size={18} />
-        <span className="text-xs font-bold uppercase tracking-widest">Informes</span>
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <div className="flex items-center gap-2 text-zinc-400">
+          <LineChart size={18} />
+          <span className="text-xs font-bold uppercase tracking-widest">Informes</span>
+        </div>
+        <button onClick={handleExportar} disabled={exportando || cargando} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-xs disabled:opacity-60">
+          <FileText size={13} /> {exportando ? "Generando…" : "Exportar PDF"}
+        </button>
       </div>
       <h1 className="text-2xl font-bold mb-1">Wellness y asistencia en el tiempo</h1>
       <p className="text-sm text-zinc-500 mb-4">Tendencias del equipo o de un jugador puntual, para cualquier rango de fechas.</p>
+      {exportError && <p className="text-xs text-red-400 -mt-3 mb-4">{exportError}</p>}
 
       <div className="flex flex-wrap items-center gap-2 mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-2">
         <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
@@ -8418,6 +8833,63 @@ function InformesView({ jugadores }) {
                 </div>
               </div>
             )}
+          </>
+        )}
+      </div>
+
+      {/* ---------------- RENDIMIENTO EN CANCHA ---------------- */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: RENDIMIENTO_COLOR }} /> Rendimiento en cancha
+          </h2>
+          <span className="text-xs text-zinc-500">{rango.label}</span>
+        </div>
+
+        {cargandoRendimiento ? (
+          <p className="text-sm text-zinc-500">Cargando…</p>
+        ) : !idsTemporadasEquipo.length ? (
+          <p className="text-sm text-zinc-500">Sin temporadas cargadas para {categoria} · {tira}.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+              <TileInforme
+                label="Promedio del período"
+                valor={rendCur.length ? `${rendCurAvg.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—"}
+                delta={rendCur.length && rendPrev.length ? rendCurAvg - rendPrevAvg : null}
+                positivoEsBueno={metrica !== "per"}
+                nota={scope === "equipo" ? "Promedio del equipo" : jugadorSeleccionado?.nombre_apellido}
+              />
+              {metrica === "pts" && scope === "equipo" ? (
+                <TileInforme label="Puntos en contra (promedio)" valor={rendContraCurAvg != null ? rendContraCurAvg.toFixed(1) : "—"} nota="Promedio del rival" />
+              ) : (
+                <TileInforme label="Partidos con datos" valor={String(rendCur.length)} nota={`de ${partidosCur.length} en el período`} />
+              )}
+              <TileInforme
+                label={metrica === "per" ? "Menos pérdidas" : "Mejor partido"}
+                valor={destacadoPartido ? `${destacadoPartido.value.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—"}
+                nota={destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : ""}
+              />
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <div className="flex flex-wrap gap-1">
+                  {INFORMES_METRICAS.map((m) => (
+                    <button key={m.key} onClick={() => setMetrica(m.key)} className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg ${metrica === m.key ? "bg-brand-500 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {metrica === "pts" && scope === "equipo" && (
+                <div className="flex gap-3 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR }} /> PTS Favor</div>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR_CONTRA }} /> PTS Contra</div>
+                </div>
+              )}
+              <RendimientoChart data={rendCur} colorPrincipal={RENDIMIENTO_COLOR} labelPrincipal={metrica === "pts" && scope === "equipo" ? "PTS Favor" : metricaInfo.label} colorSecundario={RENDIMIENTO_COLOR_CONTRA} labelSecundario="PTS Contra" />
+            </div>
           </>
         )}
       </div>
