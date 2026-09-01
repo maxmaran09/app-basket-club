@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2, HeartPulse, FileText } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Plus, Users, Shield, Swords, Dumbbell, Trophy, Clock, MapPin, ArrowLeft, Tag, Youtube, PenLine, Eraser, Trash2, CalendarClock, MessageSquare, BarChart3, Upload, Download, Copy, Home, LogOut, Target, Search, Camera, UserCircle2, GitCompare, Settings, KeyRound, Move, UserPlus, ShieldPlus, UserCog, CircleDot, MoveRight, Shuffle, CornerUpRight, Minus, Check, Maximize2, Minimize2, AlertTriangle, Library, BookmarkPlus, Activity, Bold, Italic, List, ListOrdered, Undo2, Redo2, HeartPulse, FileText, LineChart } from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "./supabaseClient";
 import { parseCabbPdf, computeAdvancedStats, round3, normalizeName, detectarEquipoPropio } from "./pdfStats";
@@ -7790,6 +7790,641 @@ function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDa
   );
 }
 
+// ============================================================
+// INFORMES -- tendencias de wellness y asistencia en el tiempo (equipo o jugador puntual).
+// Reusa wellness_diario/eventos/asistencias tal cual ya las leen Inicio y Entrenamientos --
+// ningun dato ni tabla nueva, solo una forma distinta (por rango de fechas) de mirar lo mismo.
+// ============================================================
+
+// Colores fijos por serie (nunca ciclados, misma identidad siempre) -- Promedio/Sueño/Fatiga/
+// Dolor/Estrés en ese orden, y estado de asistencia con semantica fija (verde/ambar/rojo).
+const INFORMES_SERIES = [
+  { key: "prom", label: "Promedio", color: "#3987e5" },
+  { key: "sueno", label: "Sueño", color: "#d95926" },
+  { key: "fatiga", label: "Fatiga", color: "#199e70" },
+  { key: "dolor", label: "Dolor muscular", color: "#c98500" },
+  { key: "estres", label: "Estrés", color: "#d55181" },
+];
+const INFORMES_ESTADO_COLOR = { Presente: "#0ca30c", Tarde: "#fab219", Ausente: "#d03b3b" };
+
+function addDiasISO(iso, n) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function rangoAnteriorISO(desde, hasta) {
+  const dias = diasDesdeFecha(desde, hasta) + 1;
+  const prevHasta = addDiasISO(desde, -1);
+  const prevDesde = addDiasISO(prevHasta, -(dias - 1));
+  return { desde: prevDesde, hasta: prevHasta };
+}
+function inicioSemanaISO(iso) {
+  const d = new Date(iso + "T00:00:00");
+  const dia = d.getDay();
+  const diff = (dia === 0 ? -6 : 1) - dia; // semana arranca lunes
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+function fmtFechaLarga(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
+}
+
+// Agrupa filas sueltas de wellness_diario por fecha -- si es la vista de equipo, cada fecha
+// promedia entre todos los jugadores que reportaron ese dia; si ya viene filtrado a un solo
+// jugador, es directamente su valor de ese dia (o el promedio si por algun motivo tiene mas
+// de una fila el mismo dia, ej. reporto para dos equipos).
+function promedioWellnessPorFecha(filas) {
+  const porFecha = {};
+  filas.forEach((r) => {
+    if (!porFecha[r.fecha]) porFecha[r.fecha] = { fecha: r.fecha, sueno: 0, fatiga: 0, dolor: 0, estres: 0, prom: 0, n: 0 };
+    const m = porFecha[r.fecha];
+    m.sueno += r.sueno; m.fatiga += r.fatiga; m.dolor += r.dolor_muscular; m.estres += r.estres; m.prom += Number(r.promedio_wellness); m.n += 1;
+  });
+  return Object.values(porFecha)
+    .map((m) => ({ fecha: m.fecha, sueno: m.sueno / m.n, fatiga: m.fatiga / m.n, dolor: m.dolor / m.n, estres: m.estres / m.n, prom: m.prom / m.n }))
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+}
+
+function statsAsistencia(eventoIds, asisRows, jugadorId) {
+  const ids = new Set(eventoIds);
+  const filas = asisRows.filter((a) => ids.has(a.entrenamiento_id) && (!jugadorId || a.jugador_id === jugadorId));
+  const total = filas.length;
+  const presentes = filas.filter((a) => a.estado === "Presente").length;
+  const ausentes = filas.filter((a) => a.estado === "Ausente").length;
+  const tarde = filas.filter((a) => a.estado === "Tarde").length;
+  return { total, presentes, ausentes, tarde, pct: total ? (presentes / total) * 100 : 0 };
+}
+
+// Tarjeta con valor + variacion contra el periodo anterior (mismo largo de dias, inmediatamente
+// antes del rango elegido) -- "positivoEsBueno" decide si un delta positivo se pinta de verde o
+// de rojo (mas wellness = mejor, mas ausencias = peor).
+function TileInforme({ label, valor, delta, deltaSufijo, positivoEsBueno, nota }) {
+  const mostrarDelta = delta != null && Math.abs(delta) >= 0.05;
+  const subeEsVerde = delta > 0 ? positivoEsBueno : !positivoEsBueno;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5">
+      <p className="text-[11px] font-semibold text-zinc-500 mb-2">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-bold text-zinc-100">{valor}</span>
+        {delta != null && (
+          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${!mostrarDelta ? "text-zinc-500 bg-zinc-800" : subeEsVerde ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>
+            {!mostrarDelta ? "→ 0" : `${delta > 0 ? "↑ +" : "↓ "}${Math.abs(delta) < 10 ? delta.toFixed(1) : Math.round(delta)}${deltaSufijo || ""}`}
+          </span>
+        )}
+      </div>
+      {nota && <p className="text-[11px] text-zinc-500 mt-1.5">{nota}</p>}
+    </div>
+  );
+}
+
+// Grafico de lineas de wellness -- SVG a mano (mismo criterio que CuerpoDiagram/diagramas de
+// cancha, sin libreria de graficos), con hover por fecha mostrando todas las series activas.
+function WellnessChart({ data, series }) {
+  const svgRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const W = 1000, H = 260, padL = 26, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const x = (i) => (data.length <= 1 ? padL + plotW / 2 : padL + (i / (data.length - 1)) * plotW);
+  const y = (v) => padT + (1 - v / 10) * plotH;
+  const step = Math.max(1, Math.ceil(data.length / 7));
+
+  function onMove(e) {
+    if (!data.length) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    let i = Math.round(((relX - padL) / plotW) * (data.length - 1));
+    setHoverIdx(Math.max(0, Math.min(data.length - 1, i)));
+  }
+
+  if (!data.length) return <p className="text-sm text-zinc-500 py-14 text-center">Sin datos de wellness en este rango.</p>;
+
+  return (
+    <div className="relative">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+        {[0, 2, 4, 6, 8, 10].map((v) => (
+          <g key={v}>
+            <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="#27272a" strokeWidth="1" />
+            <text x={2} y={y(v) + 3} fontSize="9" fill="#71717a">{v}</text>
+          </g>
+        ))}
+        {data.map((d, i) => ((i % step === 0 || i === data.length - 1) ? (
+          <text key={d.fecha} x={x(i)} y={H - 6} fontSize="9" fill="#71717a" textAnchor={i === data.length - 1 ? "end" : "middle"}>
+            {fmtFechaCorta(d.fecha)}
+          </text>
+        ) : null))}
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="#3f3f46" strokeWidth="1" />
+        {series.map((s) => (
+          <g key={s.key}>
+            <polyline points={data.map((d, i) => `${x(i)},${y(d[s.key])}`).join(" ")} fill="none" stroke={s.color} strokeWidth={s.key === "prom" ? 2.6 : 2} strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={x(data.length - 1)} cy={y(data[data.length - 1][s.key])} r="4" fill={s.color} stroke="#18181b" strokeWidth="2" />
+          </g>
+        ))}
+        {hoverIdx != null && (
+          <g>
+            <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={padT} y2={H - padB} stroke="#71717a" strokeWidth="1" />
+            {series.map((s) => (
+              <circle key={s.key} cx={x(hoverIdx)} cy={y(data[hoverIdx][s.key])} r="4" fill={s.color} stroke="#18181b" strokeWidth="2" />
+            ))}
+          </g>
+        )}
+      </svg>
+      {hoverIdx != null && (
+        <div
+          className="absolute pointer-events-none bg-black border border-zinc-700 rounded-lg px-2.5 py-2 text-xs shadow-xl z-10 min-w-[130px]"
+          style={{ left: `${(x(hoverIdx) / W) * 100}%`, top: `${(y(data[hoverIdx][series[0]?.key || "prom"]) / H) * 100}%`, transform: "translate(-50%,-116%)" }}
+        >
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wide mb-1">{fmtFechaLarga(data[hoverIdx].fecha)}</div>
+          {series.map((s) => (
+            <div key={s.key} className="flex items-center gap-1.5 py-0.5">
+              <span className="w-2.5 h-0.5 rounded-full shrink-0" style={{ background: s.color }} />
+              <span className="text-zinc-400 flex-1">{s.label}</span>
+              <span className="text-zinc-100 font-bold tabular-nums">{data[hoverIdx][s.key].toFixed(1)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Barras apiladas Presente/Tarde/Ausente por semana (vista equipo) -- misma logica de hover.
+function AsistenciaSemanasChart({ semanas }) {
+  const svgRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const W = 1000, H = 220, padL = 30, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = semanas.length;
+  const maxTotal = Math.max(1, ...semanas.map((s) => s.presente + s.tarde + s.ausente));
+  const bandW = n ? plotW / n : plotW;
+  const barW = Math.min(26, bandW * 0.5);
+  const y = (v) => padT + (1 - v / maxTotal) * plotH;
+
+  function onMove(e) {
+    if (!n) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    let i = Math.floor((relX - padL) / bandW);
+    setHoverIdx(Math.max(0, Math.min(n - 1, i)));
+  }
+
+  if (!n) return <p className="text-sm text-zinc-500 py-14 text-center">Sin semanas completas en este rango.</p>;
+
+  return (
+    <div className="relative">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+        {[0, 0.5, 1].map((f) => (
+          <line key={f} x1={padL} x2={W - padR} y1={y(maxTotal * f)} y2={y(maxTotal * f)} stroke="#27272a" strokeWidth="1" />
+        ))}
+        {semanas.map((s, i) => {
+          const cx = padL + bandW * i + bandW / 2;
+          const x0 = cx - barW / 2;
+          let cursor = 0;
+          const segs = [
+            { v: s.presente, color: INFORMES_ESTADO_COLOR.Presente },
+            { v: s.tarde, color: INFORMES_ESTADO_COLOR.Tarde },
+            { v: s.ausente, color: INFORMES_ESTADO_COLOR.Ausente },
+          ];
+          return (
+            <g key={s.semana}>
+              {segs.map((seg, si) => {
+                if (seg.v <= 0) return null;
+                const h = (seg.v / maxTotal) * plotH;
+                const gap = si > 0 ? 2 : 0;
+                const yTop = y(0) - cursor - h;
+                cursor += h;
+                return <rect key={si} x={x0} y={yTop + gap} width={barW} height={Math.max(0, h - gap)} fill={seg.color} opacity={hoverIdx === i ? 1 : 0.9} />;
+              })}
+              <text x={cx} y={H - 6} fontSize="9" fill="#71717a" textAnchor="middle">{fmtFechaCorta(s.semana)}</text>
+            </g>
+          );
+        })}
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="#3f3f46" strokeWidth="1" />
+      </svg>
+      {hoverIdx != null && (
+        <div
+          className="absolute pointer-events-none bg-black border border-zinc-700 rounded-lg px-2.5 py-2 text-xs shadow-xl z-10 min-w-[130px]"
+          style={{ left: `${((padL + bandW * hoverIdx + bandW / 2) / W) * 100}%`, top: "4px", transform: "translate(-50%,0)" }}
+        >
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wide mb-1">Semana del {fmtFechaCorta(semanas[hoverIdx].semana)}</div>
+          {["Presente", "Tarde", "Ausente"].map((k) => (
+            <div key={k} className="flex items-center gap-1.5 py-0.5">
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: INFORMES_ESTADO_COLOR[k] }} />
+              <span className="text-zinc-400 flex-1">{k}</span>
+              <span className="text-zinc-100 font-bold tabular-nums">{semanas[hoverIdx][k === "Presente" ? "presente" : k === "Tarde" ? "tarde" : "ausente"]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InformesView({ jugadores }) {
+  const { categoria, tira, setCategoria, setTira } = useTeam();
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const [scope, setScope] = useState("equipo"); // "equipo" | "jugador"
+  const [playerId, setPlayerId] = useState("");
+  const [rango, setRango] = useState({ desde: addDiasISO(hoy, -29), hasta: hoy, label: "Último mes" });
+  const [rangoAbierto, setRangoAbierto] = useState(false);
+  const [customDesde, setCustomDesde] = useState(addDiasISO(hoy, -29));
+  const [customHasta, setCustomHasta] = useState(hoy);
+  const [customError, setCustomError] = useState("");
+  const rangoRef = useRef(null);
+
+  const [wellnessOn, setWellnessOn] = useState({ prom: true, sueno: false, fatiga: false, dolor: false, estres: false });
+  const [wellnessTabla, setWellnessTabla] = useState(false);
+  const [asistTabla, setAsistTabla] = useState(false);
+
+  const roster = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+
+  useEffect(() => {
+    if (scope === "jugador" && (!playerId || !roster.some((j) => j.id === playerId))) {
+      setPlayerId(roster[0]?.id || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, categoria, tira, jugadores]);
+
+  useEffect(() => {
+    const onClickFuera = (e) => { if (rangoRef.current && !rangoRef.current.contains(e.target)) setRangoAbierto(false); };
+    document.addEventListener("mousedown", onClickFuera);
+    return () => document.removeEventListener("mousedown", onClickFuera);
+  }, []);
+
+  const [wellRows, setWellRows] = useState(null);
+  const [eventosRows, setEventosRows] = useState(null);
+  const [asisRows, setAsisRows] = useState(null);
+
+  const prevRango = rangoAnteriorISO(rango.desde, rango.hasta);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setWellRows(null); setEventosRows(null); setAsisRows(null);
+      const rosterIds = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira)).map((j) => j.id);
+      const desde = prevRango.desde, hasta = rango.hasta;
+
+      const [{ data: wd }, { data: ev }] = await Promise.all([
+        rosterIds.length
+          ? supabase.from("wellness_diario").select("jugador_id, fecha, sueno, fatiga, dolor_muscular, estres, promedio_wellness")
+              .in("jugador_id", rosterIds).gte("fecha", desde).lte("fecha", hasta)
+          : Promise.resolve({ data: [] }),
+        supabase.from("eventos").select("id, date")
+          .eq("type", "entrenamiento").eq("categoria", categoria).eq("tira", tira)
+          .gte("date", desde).lte("date", hasta),
+      ]);
+      if (cancelled) return;
+
+      let asis = [];
+      if (ev && ev.length) {
+        const { data } = await supabase.from("asistencias").select("entrenamiento_id, jugador_id, estado").in("entrenamiento_id", ev.map((e) => e.id));
+        asis = data || [];
+      }
+      if (cancelled) return;
+
+      setWellRows(wd || []);
+      setEventosRows(ev || []);
+      setAsisRows(asis);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoria, tira, rango.desde, rango.hasta, jugadores]);
+
+  const cargando = wellRows === null || eventosRows === null || asisRows === null;
+
+  // ---------- wellness: agregado por fecha, cur vs periodo anterior ----------
+  const filtroJugador = scope === "jugador" ? playerId : null;
+  const wellCurRaw = (wellRows || []).filter((r) => r.fecha >= rango.desde && r.fecha <= rango.hasta && (!filtroJugador || r.jugador_id === filtroJugador));
+  const wellPrevRaw = (wellRows || []).filter((r) => r.fecha >= prevRango.desde && r.fecha <= prevRango.hasta && (!filtroJugador || r.jugador_id === filtroJugador));
+  const wellCur = promedioWellnessPorFecha(wellCurRaw);
+  const wellPrev = promedioWellnessPorFecha(wellPrevRaw);
+  const promCurAvg = wellCur.length ? wellCur.reduce((s, d) => s + d.prom, 0) / wellCur.length : 0;
+  const promPrevAvg = wellPrev.length ? wellPrev.reduce((s, d) => s + d.prom, 0) / wellPrev.length : 0;
+  const alertaCur = wellCur.filter((d) => d.prom < 6).length;
+  const alertaPrev = wellPrev.filter((d) => d.prom < 6).length;
+  const peorDia = wellCur.reduce((w, d) => (!w || d.prom < w.prom ? d : w), null);
+  const seriesActivas = INFORMES_SERIES.filter((s) => wellnessOn[s.key]);
+
+  // ---------- asistencia: eventos + asistencias del rango vs periodo anterior ----------
+  const eventosCur = (eventosRows || []).filter((e) => e.date >= rango.desde && e.date <= rango.hasta);
+  const eventosPrev = (eventosRows || []).filter((e) => e.date >= prevRango.desde && e.date <= prevRango.hasta);
+  const asistCur = statsAsistencia(eventosCur.map((e) => e.id), asisRows || [], filtroJugador);
+  const asistPrev = statsAsistencia(eventosPrev.map((e) => e.id), asisRows || [], filtroJugador);
+
+  const semanasEquipo = (() => {
+    if (scope !== "equipo") return [];
+    const porSemana = {};
+    eventosCur.forEach((e) => {
+      const sem = inicioSemanaISO(e.date);
+      if (!porSemana[sem]) porSemana[sem] = [];
+      porSemana[sem].push(e.id);
+    });
+    return Object.entries(porSemana).sort(([a], [b]) => (a < b ? -1 : 1)).map(([semana, ids]) => {
+      const idsSet = new Set(ids);
+      const filas = (asisRows || []).filter((a) => idsSet.has(a.entrenamiento_id));
+      return {
+        semana,
+        presente: filas.filter((a) => a.estado === "Presente").length,
+        tarde: filas.filter((a) => a.estado === "Tarde").length,
+        ausente: filas.filter((a) => a.estado === "Ausente").length,
+      };
+    });
+  })();
+
+  const sesionesJugador = (() => {
+    if (scope !== "jugador" || !playerId) return [];
+    return eventosCur
+      .map((e) => {
+        const fila = (asisRows || []).find((a) => a.entrenamiento_id === e.id && a.jugador_id === playerId);
+        return fila ? { fecha: e.date, estado: fila.estado } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  })();
+  const rachaActual = (() => {
+    let n = 0;
+    for (const s of sesionesJugador) { if (s.estado === "Presente") n++; else break; }
+    return n;
+  })();
+
+  const rankingAsistencia = (() => {
+    if (scope !== "equipo") return [];
+    const idsSet = new Set(eventosCur.map((e) => e.id));
+    const porJugador = {};
+    (asisRows || []).forEach((a) => {
+      if (!idsSet.has(a.entrenamiento_id)) return;
+      if (!porJugador[a.jugador_id]) porJugador[a.jugador_id] = { total: 0, presentes: 0 };
+      porJugador[a.jugador_id].total += 1;
+      if (a.estado === "Presente") porJugador[a.jugador_id].presentes += 1;
+    });
+    return Object.entries(porJugador)
+      .map(([jid, v]) => {
+        const j = roster.find((r) => r.id === jid);
+        return { id: jid, nombre: j ? j.nombre_apellido : "Jugador dado de baja", pct: v.total ? (v.presentes / v.total) * 100 : 0, total: v.total };
+      })
+      .sort((a, b) => a.pct - b.pct)
+      .slice(0, 5);
+  })();
+
+  function aplicarPreset(dias, label) {
+    setRango({ desde: addDiasISO(hoy, -(dias - 1)), hasta: hoy, label });
+    setCustomDesde(addDiasISO(hoy, -(dias - 1)));
+    setCustomHasta(hoy);
+    setCustomError("");
+    setRangoAbierto(false);
+  }
+  function aplicarCustom() {
+    if (!customDesde || !customHasta) { setCustomError("Elegí las dos fechas."); return; }
+    if (customDesde > customHasta) { setCustomError('La fecha "Desde" tiene que ser anterior a "Hasta".'); return; }
+    setRango({ desde: customDesde, hasta: customHasta, label: `${fmtFechaCorta(customDesde)} – ${fmtFechaCorta(customHasta)}` });
+    setCustomError("");
+    setRangoAbierto(false);
+  }
+
+  const jugadorSeleccionado = roster.find((j) => j.id === playerId) || null;
+
+  return (
+    <div className="max-w-6xl mx-auto text-zinc-100">
+      <div className="flex items-center gap-2 mb-1 text-zinc-400">
+        <LineChart size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Informes</span>
+      </div>
+      <h1 className="text-2xl font-bold mb-1">Wellness y asistencia en el tiempo</h1>
+      <p className="text-sm text-zinc-500 mb-4">Tendencias del equipo o de un jugador puntual, para cualquier rango de fechas.</p>
+
+      <div className="flex flex-wrap items-center gap-2 mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-2">
+        <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={tira} onChange={(e) => setTira(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+          {TIRAS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1">
+          {[["equipo", "Equipo"], ["jugador", "Jugador puntual"]].map(([k, l]) => (
+            <button key={k} onClick={() => setScope(k)} className={`text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap ${scope === k ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {scope === "jugador" && (
+          <select value={playerId} onChange={(e) => setPlayerId(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100">
+            {roster.length === 0 && <option value="">Sin jugadores</option>}
+            {roster.map((j) => <option key={j.id} value={j.id}>{j.nombre_apellido}</option>)}
+          </select>
+        )}
+
+        <div className="relative ml-auto" ref={rangoRef}>
+          <button onClick={() => setRangoAbierto((v) => !v)} className="flex items-center gap-1.5 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-zinc-100">
+            {rango.label} <ChevronDown size={12} />
+          </button>
+          {rangoAbierto && (
+            <div className="absolute z-30 top-full right-0 mt-1 bg-zinc-950 border border-zinc-700 rounded-xl p-2 w-64 shadow-xl">
+              {[[14, "2 semanas"], [30, "Último mes"], [90, "Temporada"]].map(([dias, label]) => (
+                <button key={dias} onClick={() => aplicarPreset(dias, label)} className={`w-full flex items-center justify-between text-left text-xs font-semibold px-2.5 py-2 rounded-lg hover:bg-zinc-800 ${rango.label === label ? "text-zinc-100" : "text-zinc-400"}`}>
+                  {label}
+                  {rango.label === label && <Check size={14} className="text-brand-400" />}
+                </button>
+              ))}
+              <div className="h-px bg-zinc-800 my-1.5" />
+              <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 px-2.5 mb-1.5">Rango personalizado</p>
+              <div className="flex items-center gap-1.5 px-1 mb-1.5">
+                <label className="flex-1 flex flex-col gap-1">
+                  <span className="text-[10px] text-zinc-500 px-1.5">Desde</span>
+                  <input type="date" value={customDesde} min={addDiasISO(hoy, -179)} max={hoy} onChange={(e) => setCustomDesde(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-1.5 py-1 text-[11px] text-zinc-100" />
+                </label>
+                <label className="flex-1 flex flex-col gap-1">
+                  <span className="text-[10px] text-zinc-500 px-1.5">Hasta</span>
+                  <input type="date" value={customHasta} min={addDiasISO(hoy, -179)} max={hoy} onChange={(e) => setCustomHasta(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-1.5 py-1 text-[11px] text-zinc-100" />
+                </label>
+              </div>
+              <button onClick={aplicarCustom} className="w-full bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold py-1.5 rounded-lg">Aplicar</button>
+              {customError && <p className="text-[11px] text-red-400 px-1 mt-1.5">{customError}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {scope === "jugador" && !jugadorSeleccionado && !cargando && (
+        <p className="text-sm text-zinc-500 mb-4">No hay jugadores activos en {categoria} · {tira}.</p>
+      )}
+
+      {/* ---------------- WELLNESS ---------------- */}
+      <div className="mb-9">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3987e5]" /> Wellness en el tiempo
+          </h2>
+          <span className="text-xs text-zinc-500">{rango.label}</span>
+        </div>
+
+        {cargando ? (
+          <p className="text-sm text-zinc-500">Cargando…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+              <TileInforme label="Promedio del período" valor={wellCur.length ? promCurAvg.toFixed(1) : "—"} delta={wellCur.length && wellPrev.length ? promCurAvg - promPrevAvg : null} positivoEsBueno={true} nota={scope === "equipo" ? "Promedio del plantel" : jugadorSeleccionado?.nombre_apellido} />
+              <TileInforme label="Días en alerta (<6)" valor={String(alertaCur)} delta={wellCur.length ? alertaCur - alertaPrev : null} positivoEsBueno={false} nota={`vs. ${alertaPrev} en el período anterior`} />
+              <TileInforme label="Día más bajo del período" valor={peorDia ? peorDia.prom.toFixed(1) : "—"} nota={peorDia ? fmtFechaLarga(peorDia.fecha) : ""} />
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <div className="flex flex-wrap gap-1">
+                  {INFORMES_SERIES.map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setWellnessOn((prev) => {
+                        const activos = Object.values(prev).filter(Boolean).length;
+                        if (prev[s.key] && activos === 1) return prev; // al menos una serie activa
+                        return { ...prev, [s.key]: !prev[s.key] };
+                      })}
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg ${wellnessOn[s.key] ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+                    >
+                      <span className="w-3 h-0.5 rounded-full" style={{ background: s.color }} />
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setWellnessTabla((v) => !v)} className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-300 border border-zinc-700 rounded-lg px-2.5 py-1.5">
+                  {wellnessTabla ? "Ver como gráfico" : "Ver como tabla"}
+                </button>
+              </div>
+
+              {wellnessTabla ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="text-left text-zinc-500 font-semibold py-1.5 pr-3">Fecha</th>
+                        {seriesActivas.map((s) => <th key={s.key} className="text-right text-zinc-500 font-semibold py-1.5 pl-3">{s.label}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {wellCur.map((d) => (
+                        <tr key={d.fecha} className="border-t border-zinc-800/70">
+                          <td className="py-1.5 pr-3 text-zinc-300">{fmtFechaLarga(d.fecha)}</td>
+                          {seriesActivas.map((s) => <td key={s.key} className="text-right py-1.5 pl-3 text-zinc-300">{d[s.key].toFixed(1)}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <WellnessChart data={wellCur} series={seriesActivas} />
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ---------------- ASISTENCIA ---------------- */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Asistencia en el tiempo
+          </h2>
+          <span className="text-xs text-zinc-500">{rango.label}</span>
+        </div>
+
+        {cargando ? (
+          <p className="text-sm text-zinc-500">Cargando…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+              <TileInforme label="% asistencia del período" valor={asistCur.total ? `${Math.round(asistCur.pct)}%` : "—"} delta={asistCur.total && asistPrev.total ? asistCur.pct - asistPrev.pct : null} deltaSufijo="pp" positivoEsBueno={true} nota={`${asistCur.total} ${asistCur.total === 1 ? "sesión registrada" : "sesiones registradas"}`} />
+              {scope === "equipo" ? (
+                <TileInforme label="Ausencias totales" valor={String(asistCur.ausentes)} delta={asistCur.ausentes - asistPrev.ausentes} positivoEsBueno={false} nota={`vs. ${asistPrev.ausentes} antes`} />
+              ) : (
+                <TileInforme label="Ausencias" valor={String(asistCur.ausentes)} nota={`de ${asistCur.total} sesiones`} />
+              )}
+              {scope === "equipo" ? (
+                <TileInforme label="Menor asistencia" valor={rankingAsistencia[0]?.nombre || "—"} nota={rankingAsistencia[0] ? `${Math.round(rankingAsistencia[0].pct)}% en el período` : ""} />
+              ) : (
+                <TileInforme label="Racha actual" valor={rachaActual === 1 ? "1 sesión" : `${rachaActual} sesiones`} nota={rachaActual > 0 ? "presente sin faltar" : "última sesión no fue presente"} />
+              )}
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <div className="flex flex-wrap gap-3">
+                  {["Presente", "Tarde", "Ausente"].map((k) => (
+                    <div key={k} className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: INFORMES_ESTADO_COLOR[k] }} /> {k}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setAsistTabla((v) => !v)} className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-300 border border-zinc-700 rounded-lg px-2.5 py-1.5">
+                  {asistTabla ? "Ver como gráfico" : "Ver como tabla"}
+                </button>
+              </div>
+
+              {scope === "equipo" ? (
+                asistTabla ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="text-left text-zinc-500 font-semibold py-1.5 pr-3">Semana</th>
+                          <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Presente</th>
+                          <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Tarde</th>
+                          <th className="text-right text-zinc-500 font-semibold py-1.5 pl-3">Ausente</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {semanasEquipo.map((s) => (
+                          <tr key={s.semana} className="border-t border-zinc-800/70">
+                            <td className="py-1.5 pr-3 text-zinc-300">Sem. {fmtFechaCorta(s.semana)}</td>
+                            <td className="text-right py-1.5 px-3 text-zinc-300">{s.presente}</td>
+                            <td className="text-right py-1.5 px-3 text-zinc-300">{s.tarde}</td>
+                            <td className="text-right py-1.5 pl-3 text-zinc-300">{s.ausente}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <AsistenciaSemanasChart semanas={semanasEquipo} />
+                )
+              ) : sesionesJugador.length === 0 ? (
+                <p className="text-sm text-zinc-500 py-6 text-center">Sin sesiones registradas en este rango.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {sesionesJugador.map((s, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ color: INFORMES_ESTADO_COLOR[s.estado], background: `${INFORMES_ESTADO_COLOR[s.estado]}22` }}>
+                      {fmtFechaCorta(s.fecha)} · {s.estado}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {scope === "equipo" && rankingAsistencia.length > 0 && (
+              <div className="mt-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500 mb-2">Menor asistencia en el período</p>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800/70">
+                  {rankingAsistencia.map((r) => (
+                    <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="text-sm font-semibold text-zinc-100 flex-1">{r.nombre}</span>
+                      <div className="w-28 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.round(r.pct)}%`, background: r.pct < 70 ? INFORMES_ESTADO_COLOR.Ausente : r.pct < 85 ? INFORMES_ESTADO_COLOR.Tarde : INFORMES_ESTADO_COLOR.Presente }} />
+                      </div>
+                      <span className="text-xs font-bold text-zinc-300 w-10 text-right">{Math.round(r.pct)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { id: "inicio", label: "Inicio", icon: Home },
   { id: "calendario", label: "Calendario", icon: Calendar },
@@ -7800,6 +8435,7 @@ const NAV_ITEMS = [
   { id: "scouting", label: "Scouting", icon: Swords },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
   { id: "lesionados", label: "Lesionados", icon: HeartPulse },
+  { id: "informes", label: "Informes", icon: LineChart },
   { id: "configuracion", label: "Configuración", icon: Settings },
 ];
 
@@ -8400,6 +9036,11 @@ export default function App() {
               <Route path="/lesionados" element={
                 <ProtectedRoute seccionId="lesionados">
                   <LesionadosView jugadores={jugadores} lesiones={lesiones} onAddLesion={addLesion} onUpdateLesion={updateLesion} onDarDeAlta={darDeAltaLesion} />
+                </ProtectedRoute>
+              } />
+              <Route path="/informes" element={
+                <ProtectedRoute seccionId="informes">
+                  <InformesView jugadores={jugadores} />
                 </ProtectedRoute>
               } />
               <Route path="/configuracion" element={
