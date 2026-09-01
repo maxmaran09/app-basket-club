@@ -7807,20 +7807,32 @@ const INFORMES_SERIES = [
 ];
 const INFORMES_ESTADO_COLOR = { Presente: "#0ca30c", Tarde: "#fab219", Ausente: "#d03b3b" };
 
-// Metricas de rendimiento en cancha -- una sola linea por vez (nunca dos metricas de escala
-// distinta en el mismo eje, ej. Puntos junto con eFG%), salvo el caso especial de "Puntos" en
-// vista equipo, que muestra Favor/Contra juntas porque comparten unidad (son ambas puntos).
+// Metricas de rendimiento en cancha -- "tipo" decide como se arma el grafico, nunca dos
+// metricas de escala distinta en el mismo eje:
+//  - "linea": un solo valor por partido (Puntos, Plays, Asistencias, Recuperos, Perdidas).
+//    Puntos en vista equipo es el unico caso con una segunda linea (Favor/Contra), porque
+//    comparten unidad (son ambas puntos).
+//  - "tiro": encestados vs intentados del mismo tipo de tiro (T2/T3/T1) -- comparten unidad
+//    ("tiros"), van en el mismo eje como dos lineas; el %, al ser otra escala, es una tarjeta,
+//    no una tercera linea.
+//  - "rebotes": ofensivos + defensivos por partido, barra apilada (no tiene sentido como linea
+//    continua, son dos conteos que se suman al total de ese partido puntual).
 const INFORMES_METRICAS = [
-  { key: "pts", label: "Puntos" },
-  { key: "efg", label: "eFG%" },
-  { key: "rt", label: "Rebotes totales" },
-  { key: "ast", label: "Asistencias" },
-  { key: "rec", label: "Recuperos" },
-  { key: "per", label: "Pérdidas" },
+  { key: "pts", label: "Puntos", tipo: "linea", campo: "pts" },
+  { key: "t2", label: "T2", tipo: "tiro", campoA: "t2a", campoI: "t2i" },
+  { key: "t3", label: "T3", tipo: "tiro", campoA: "t3a", campoI: "t3i" },
+  { key: "t1", label: "T1", tipo: "tiro", campoA: "t1a", campoI: "t1i" },
+  { key: "rebotes", label: "Rebotes", tipo: "rebotes" },
+  { key: "play", label: "Plays", tipo: "linea", campo: "play" },
+  { key: "ast", label: "Asistencias", tipo: "linea", campo: "ast" },
+  { key: "rec", label: "Recuperos", tipo: "linea", campo: "rec" },
+  { key: "per", label: "Pérdidas", tipo: "linea", campo: "per" },
 ];
-const METRICA_CAMPO = { pts: "pts", efg: "efg_pct", rt: "rtot", ast: "ast", rec: "rec", per: "per" };
 const RENDIMIENTO_COLOR = "#3987e5";
 const RENDIMIENTO_COLOR_CONTRA = "#d03b3b";
+const RENDIMIENTO_COLOR_SECUNDARIO = "#a1a1aa";
+const REBOTES_COLOR_OF = "#d95926";
+const REBOTES_COLOR_DEF = "#3987e5";
 
 function addDiasISO(iso, n) {
   const d = new Date(iso + "T00:00:00");
@@ -8126,7 +8138,7 @@ function RendimientoChart({ data, colorPrincipal, labelPrincipal, colorSecundari
 // primitivas de jsPDF (doc.line/doc.rect) sobre los mismos datos que ya se ven en pantalla --
 // mas simples que la version interactiva (sin toggles ni hover, una sola vez), pero vectoriales
 // de verdad, no una captura de pantalla.
-async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur, wellTiles, asistTiles, scope, semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles, rendCur, metricaLabel, tieneContra }) {
+async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur, wellTiles, asistTiles, scope, semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles, rendCur, metricaLabel, metricaTipo, tieneContra }) {
   const [{ default: jsPDF }, { INTER_REGULAR_BASE64, INTER_BOLD_BASE64, INTER_ITALIC_BASE64 }] = await Promise.all([
     import("jspdf"),
     import("./pdfFonts.js"),
@@ -8146,6 +8158,7 @@ async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur,
   let y = 50;
 
   const ensureSpace = (needed) => { if (y + needed > pageHeight - marginBottom) { doc.addPage(); y = 50; } };
+  const hexToRgb = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 
   const addSectionTitle = (text) => {
     ensureSpace(28);
@@ -8240,6 +8253,32 @@ async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur,
     y = chartY + chartH + 26;
   };
 
+  // Rebotes ofensivos + defensivos apilados por partido (no por semana, ver addBarChart).
+  const addRebotesBars = (data) => {
+    if (!data.length) { addText("Sin partidos con datos en este rango.", { color: [113, 113, 122] }); return; }
+    ensureSpace(110);
+    const chartY = y + 6, chartH = 80, chartW = contentWidth;
+    const max = Math.max(1, ...data.map((d) => d.rof + d.rdef));
+    const n = data.length;
+    const bandW = chartW / n;
+    const barW = Math.min(20, bandW * 0.5);
+    doc.setDrawColor(225, 224, 217); doc.setLineWidth(0.5);
+    doc.line(marginX, chartY + chartH, marginX + chartW, chartY + chartH);
+    data.forEach((d, i) => {
+      const cx = marginX + bandW * i + bandW / 2;
+      let cursor = 0;
+      [[REBOTES_COLOR_DEF, d.rdef], [REBOTES_COLOR_OF, d.rof]].forEach(([colorHex, v]) => {
+        if (v <= 0) return;
+        const h = (v / max) * chartH;
+        const rgb = hexToRgb(colorHex);
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.rect(cx - barW / 2, chartY + chartH - cursor - h, barW, h, "F");
+        cursor += h;
+      });
+    });
+    y = chartY + chartH + 26;
+  };
+
   // Fila de referencias de color (cuadradito + texto) -- solo hace falta cuando un grafico tiene
   // mas de una serie (el caso de Puntos Favor/Contra en equipo), para no dejar dos lineas de
   // color sin decir cual es cual en un PDF estatico sin leyenda interactiva.
@@ -8298,13 +8337,99 @@ async function exportarInformePDF({ categoria, tira, scopeLabel, rango, wellCur,
 
   addSectionTitle(`Rendimiento en cancha — ${metricaLabel}`);
   addTiles(rendTiles);
-  if (tieneContra) addSwatchLegend([{ label: "PTS Favor", color: [57, 135, 229] }, { label: "PTS Contra", color: [208, 59, 59] }]);
-  addLineChart(rendCur.map((d) => d.value), { dataContra: tieneContra ? rendCur.map((d) => d.valueContra || 0) : null });
+  if (metricaTipo === "rebotes") {
+    addSwatchLegend([{ label: "Ofensivos", color: hexToRgb(REBOTES_COLOR_OF) }, { label: "Defensivos", color: hexToRgb(REBOTES_COLOR_DEF) }]);
+    addRebotesBars(rendCur);
+  } else {
+    if (tieneContra) {
+      const esTiro = metricaTipo === "tiro";
+      addSwatchLegend([
+        { label: esTiro ? "Encestados" : "PTS Favor", color: [57, 135, 229] },
+        { label: esTiro ? "Intentados" : "PTS Contra", color: esTiro ? hexToRgb(RENDIMIENTO_COLOR_SECUNDARIO) : [208, 59, 59] },
+      ]);
+    }
+    addLineChart(rendCur.map((d) => d.value), {
+      dataContra: tieneContra ? rendCur.map((d) => d.valueContra || 0) : null,
+      colorContra: metricaTipo === "tiro" ? hexToRgb(RENDIMIENTO_COLOR_SECUNDARIO) : [208, 59, 59],
+    });
+  }
 
   doc.setFont("Inter", "normal"); doc.setFontSize(7.5); doc.setTextColor(161, 161, 170);
   doc.text(`Generado el ${new Date().toLocaleDateString("es-AR")}`, marginX, pageHeight - 20);
 
   doc.save(`Informe - ${categoria} ${tira} - ${rango.desde} a ${rango.hasta}.pdf`);
+}
+
+// Rebotes ofensivos + defensivos por partido, barra apilada -- a diferencia de RendimientoChart
+// (una tendencia continua), acá cada partido es una unidad discreta que se suma a un total, asi
+// que una barra por partido cuenta mejor la historia que una linea.
+function RendimientoBarrasChart({ data }) {
+  const svgRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const W = 1000, H = 260, padL = 26, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = data.length;
+  const maxTotal = Math.max(1, ...data.map((d) => d.rof + d.rdef));
+  const bandW = n ? plotW / n : plotW;
+  const barW = Math.min(30, bandW * 0.5);
+  const y = (v) => padT + (1 - v / maxTotal) * plotH;
+
+  function onMove(e) {
+    if (!n) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    let i = Math.floor((relX - padL) / bandW);
+    setHoverIdx(Math.max(0, Math.min(n - 1, i)));
+  }
+
+  if (!n) return <p className="text-sm text-zinc-500 py-14 text-center">Sin partidos con datos en este rango.</p>;
+
+  const step = Math.max(1, Math.ceil(n / 8));
+
+  return (
+    <div className="relative">
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+        {[0, 0.5, 1].map((f) => (
+          <line key={f} x1={padL} x2={W - padR} y1={y(maxTotal * f)} y2={y(maxTotal * f)} stroke="#27272a" strokeWidth="1" />
+        ))}
+        {data.map((d, i) => {
+          const cx = padL + bandW * i + bandW / 2;
+          const x0 = cx - barW / 2;
+          const hDef = (d.rdef / maxTotal) * plotH;
+          const hOf = (d.rof / maxTotal) * plotH;
+          const gap = d.rdef > 0 && d.rof > 0 ? 2 : 0;
+          return (
+            <g key={d.fecha + i}>
+              {d.rdef > 0 && <rect x={x0} y={y(0) - hDef} width={barW} height={hDef} fill={REBOTES_COLOR_DEF} opacity={hoverIdx === i ? 1 : 0.9} />}
+              {d.rof > 0 && <rect x={x0} y={y(0) - hDef - gap - hOf} width={barW} height={hOf} fill={REBOTES_COLOR_OF} opacity={hoverIdx === i ? 1 : 0.9} />}
+              {(i % step === 0 || i === n - 1) && (
+                <text x={cx} y={H - 6} fontSize="9" fill="#71717a" textAnchor="middle">{fmtFechaCorta(d.fecha)}</text>
+              )}
+            </g>
+          );
+        })}
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="#3f3f46" strokeWidth="1" />
+      </svg>
+      {hoverIdx != null && (
+        <div
+          className="absolute pointer-events-none bg-black border border-zinc-700 rounded-lg px-2.5 py-2 text-xs shadow-xl z-10 min-w-[150px]"
+          style={{ left: `${((padL + bandW * hoverIdx + bandW / 2) / W) * 100}%`, top: "4px", transform: "translate(-50%,0)" }}
+        >
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wide mb-1">vs {data[hoverIdx].rival} · {fmtFechaLarga(data[hoverIdx].fecha)}</div>
+          <div className="flex items-center gap-1.5 py-0.5">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: REBOTES_COLOR_OF }} />
+            <span className="text-zinc-400 flex-1">Ofensivos</span>
+            <span className="text-zinc-100 font-bold tabular-nums">{data[hoverIdx].rof}</span>
+          </div>
+          <div className="flex items-center gap-1.5 py-0.5">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: REBOTES_COLOR_DEF }} />
+            <span className="text-zinc-400 flex-1">Defensivos</span>
+            <span className="text-zinc-100 font-bold tabular-nums">{data[hoverIdx].rdef}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function InformesView({ jugadores }) {
@@ -8323,11 +8448,13 @@ function InformesView({ jugadores }) {
   const [wellnessOn, setWellnessOn] = useState({ prom: true, sueno: false, fatiga: false, dolor: false, estres: false });
   const [wellnessTabla, setWellnessTabla] = useState(false);
   const [asistTabla, setAsistTabla] = useState(false);
+  const [rendTabla, setRendTabla] = useState(false);
   const [metrica, setMetrica] = useState("pts");
   const [exportando, setExportando] = useState(false);
   const [exportError, setExportError] = useState("");
 
   const roster = jugadores.filter((j) => jugadorEnEquipo(j, categoria, tira));
+  const jugadorSeleccionado = roster.find((j) => j.id === playerId) || null;
 
   useEffect(() => {
     if (scope === "jugador" && (!playerId || !roster.some((j) => j.id === playerId))) {
@@ -8404,8 +8531,8 @@ function InformesView({ jugadores }) {
       if (!partidos || !partidos.length) { setPartidosRows([]); setJugPartidoRows([]); setEqPartidoRows([]); return; }
       const ids = partidos.map((p) => p.id);
       const [{ data: jp }, { data: ep }] = await Promise.all([
-        supabase.from("jugador_partido_stats").select("partido_id, jugador_id, minutos, pts, rtot, ast, rec, per, efg_pct").in("partido_id", ids),
-        supabase.from("equipo_partido_stats").select("partido_id, condicion, pts, rtot, ast, rec, per, efg_pct").in("partido_id", ids),
+        supabase.from("jugador_partido_stats").select("partido_id, jugador_id, minutos, pts, t2a, t2i, t3a, t3i, t1a, t1i, rdef, rof, rtot, ast, rec, per, play").in("partido_id", ids),
+        supabase.from("equipo_partido_stats").select("partido_id, condicion, pts, t2a, t2i, t3a, t3i, t1a, t1i, rdef, rof, rtot, ast, rec, per").in("partido_id", ids),
       ]);
       if (cancelled) return;
       setPartidosRows(partidos);
@@ -8427,25 +8554,52 @@ function InformesView({ jugadores }) {
     return "Rival";
   }
 
+  // "play" no existe como columna propia en equipo_partido_stats (solo se calcula por jugador al
+  // procesar el PDF) -- para el equipo se arma con la misma formula (T2I+T3I+0.44*T1I+PER) sobre
+  // los totales del equipo en ese partido.
+  function valorLinea(fila, campo) {
+    if (campo === "play" && fila.play == null) {
+      return (Number(fila.t2i) || 0) + (Number(fila.t3i) || 0) + 0.44 * (Number(fila.t1i) || 0) + (Number(fila.per) || 0);
+    }
+    return Number(fila[campo]) || 0;
+  }
+
+  const metricaInfo = INFORMES_METRICAS.find((m) => m.key === metrica);
+
+  // Una fila de jugador_partido_stats/equipo_partido_stats de UN partido puntual -> el punto que
+  // va al grafico, con la forma que le corresponda segun el tipo de metrica elegida:
+  //  - "tiro": value = encestados, valueContra = intentados (dos lineas, mismo eje).
+  //  - "rebotes": rof/rdef por separado (para la barra apilada) + value = total (para
+  //    promedios/destacado, mismo criterio que las demas metricas).
+  //  - "linea": value = el campo elegido tal cual (o calculado, ver valorLinea).
+  function filaAValor(fila, p) {
+    if (metricaInfo.tipo === "tiro") {
+      return { fecha: p.fecha, rival: nombreRival(p), value: Number(fila[metricaInfo.campoA]) || 0, valueContra: Number(fila[metricaInfo.campoI]) || 0 };
+    }
+    if (metricaInfo.tipo === "rebotes") {
+      const of = Number(fila.rof) || 0, def = Number(fila.rdef) || 0;
+      return { fecha: p.fecha, rival: nombreRival(p), rof: of, rdef: def, value: of + def };
+    }
+    return { fecha: p.fecha, rival: nombreRival(p), value: valorLinea(fila, metricaInfo.campo) };
+  }
+
   // Un partido puntual puede no tener fila para este jugador (no jugo/DNP) o, en vista equipo,
   // no tener "equipo_propio" definido (partido rival-vs-rival cargado solo para scoutear) -- en
   // ambos casos se lo salta, no se inventa un cero.
   function serieRendimiento(lista) {
-    const campo = METRICA_CAMPO[metrica];
     if (scope === "jugador") {
       if (!playerId) return [];
       return lista.map((p) => {
         const fila = (jugPartidoRows || []).find((j) => j.partido_id === p.id && j.jugador_id === playerId && Number(j.minutos) > 0);
-        if (!fila) return null;
-        return { fecha: p.fecha, rival: nombreRival(p), value: Number(fila[campo]) || 0 };
+        return fila ? filaAValor(fila, p) : null;
       }).filter(Boolean);
     }
     return lista.map((p) => {
       if (!p.equipo_propio) return null;
       const propia = (eqPartidoRows || []).find((e) => e.partido_id === p.id && e.condicion === p.equipo_propio);
       if (!propia) return null;
-      const item = { fecha: p.fecha, rival: nombreRival(p), value: Number(propia[campo]) || 0 };
-      if (metrica === "pts") {
+      const item = filaAValor(propia, p);
+      if (metricaInfo.key === "pts") {
         const rivalFila = (eqPartidoRows || []).find((e) => e.partido_id === p.id && e.condicion !== p.equipo_propio);
         item.valueContra = rivalFila ? Number(rivalFila.pts) || 0 : null;
       }
@@ -8458,10 +8612,49 @@ function InformesView({ jugadores }) {
   const rendCurAvg = rendCur.length ? rendCur.reduce((s, d) => s + d.value, 0) / rendCur.length : 0;
   const rendPrevAvg = rendPrev.length ? rendPrev.reduce((s, d) => s + d.value, 0) / rendPrev.length : 0;
   const rendContraCurAvg = rendCur.length && rendCur[0].valueContra != null ? rendCur.reduce((s, d) => s + (d.valueContra || 0), 0) / rendCur.length : null;
-  const metricaInfo = INFORMES_METRICAS.find((m) => m.key === metrica);
   const destacadoPartido = rendCur.length
     ? (metrica === "per" ? rendCur.reduce((m, d) => (d.value < m.value ? d : m)) : rendCur.reduce((m, d) => (d.value > m.value ? d : m)))
     : null;
+
+  // ---------- tiro (T2/T3/T1): % del período sobre la suma real de encestados/intentados, no
+  // el promedio de los % de cada partido (arrastraria error de redondeo de partido a partido) ----------
+  const tiroSumACur = rendCur.reduce((s, d) => s + d.value, 0);
+  const tiroSumICur = rendCur.reduce((s, d) => s + (d.valueContra || 0), 0);
+  const tiroPctCur = tiroSumICur > 0 ? (tiroSumACur / tiroSumICur) * 100 : 0;
+  const tiroSumAPrev = rendPrev.reduce((s, d) => s + d.value, 0);
+  const tiroSumIPrev = rendPrev.reduce((s, d) => s + (d.valueContra || 0), 0);
+  const tiroPctPrev = tiroSumIPrev > 0 ? (tiroSumAPrev / tiroSumIPrev) * 100 : 0;
+
+  // ---------- rebotes: promedio de ofensivos/defensivos por separado, para la tarjeta ----------
+  const rebOfCurAvg = rendCur.length ? rendCur.reduce((s, d) => s + d.rof, 0) / rendCur.length : 0;
+  const rebDefCurAvg = rendCur.length ? rendCur.reduce((s, d) => s + d.rdef, 0) / rendCur.length : 0;
+
+  // Tarjetas de Rendimiento -- misma forma para TileInforme y para el PDF (handleExportar las
+  // reusa tal cual, para no mantener dos veces la logica de "que numero va en cada tarjeta").
+  const rendTilesData = (() => {
+    if (metricaInfo.tipo === "tiro") {
+      const n = rendCur.length || 1;
+      return [
+        { label: "% del período", valor: tiroSumICur ? `${tiroPctCur.toFixed(1)}%` : "—", delta: tiroSumICur && tiroSumIPrev ? tiroPctCur - tiroPctPrev : null, deltaSufijo: "pp", positivoEsBueno: true, nota: tiroSumICur ? `${tiroSumACur} / ${tiroSumICur}` : "" },
+        { label: "Promedio por partido", valor: rendCur.length ? `${(tiroSumACur / n).toFixed(1)} / ${(tiroSumICur / n).toFixed(1)}` : "—", nota: "Encestados / Intentados" },
+        { label: "Mejor partido", valor: destacadoPartido ? `${destacadoPartido.value} enc.` : "—", nota: destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : "" },
+      ];
+    }
+    if (metricaInfo.tipo === "rebotes") {
+      return [
+        { label: "Promedio del período", valor: rendCur.length ? rendCurAvg.toFixed(1) : "—", delta: rendCur.length && rendPrev.length ? rendCurAvg - rendPrevAvg : null, positivoEsBueno: true, nota: scope === "equipo" ? "Promedio del equipo" : (jugadorSeleccionado?.nombre_apellido || "") },
+        { label: "Ofensivos / Defensivos", valor: rendCur.length ? `${rebOfCurAvg.toFixed(1)} / ${rebDefCurAvg.toFixed(1)}` : "—", nota: "Promedio por partido" },
+        { label: "Mejor partido", valor: destacadoPartido ? String(destacadoPartido.value) : "—", nota: destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : "" },
+      ];
+    }
+    return [
+      { label: "Promedio del período", valor: rendCur.length ? rendCurAvg.toFixed(1) : "—", delta: rendCur.length && rendPrev.length ? rendCurAvg - rendPrevAvg : null, positivoEsBueno: metrica !== "per", nota: scope === "equipo" ? "Promedio del equipo" : (jugadorSeleccionado?.nombre_apellido || "") },
+      metrica === "pts" && scope === "equipo"
+        ? { label: "Puntos en contra (promedio)", valor: rendContraCurAvg != null ? rendContraCurAvg.toFixed(1) : "—", nota: "Promedio del rival" }
+        : { label: "Partidos con datos", valor: String(rendCur.length), nota: `de ${partidosCur.length} en el período` },
+      { label: metrica === "per" ? "Menos pérdidas" : "Mejor partido", valor: destacadoPartido ? destacadoPartido.value.toFixed(1) : "—", nota: destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : "" },
+    ];
+  })();
 
   // ---------- wellness: agregado por fecha, cur vs periodo anterior ----------
   const filtroJugador = scope === "jugador" ? playerId : null;
@@ -8552,8 +8745,6 @@ function InformesView({ jugadores }) {
     setRangoAbierto(false);
   }
 
-  const jugadorSeleccionado = roster.find((j) => j.id === playerId) || null;
-
   const handleExportar = async () => {
     setExportando(true);
     setExportError("");
@@ -8573,19 +8764,12 @@ function InformesView({ jugadores }) {
           ? { label: "Menor asistencia", valor: rankingAsistencia[0]?.nombre || "—", nota: rankingAsistencia[0] ? `${Math.round(rankingAsistencia[0].pct)}% en el período` : "" }
           : { label: "Racha actual", valor: rachaActual === 1 ? "1 sesión" : `${rachaActual} sesiones`, nota: rachaActual > 0 ? "presente sin faltar" : "última sesión no fue presente" },
       ];
-      const rendTiles = [
-        { label: "Promedio del período", valor: rendCur.length ? `${rendCurAvg.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—", nota: scope === "equipo" ? "Promedio del equipo" : jugadorSeleccionado?.nombre_apellido || "" },
-        metrica === "pts" && scope === "equipo"
-          ? { label: "Puntos en contra (promedio)", valor: rendContraCurAvg != null ? rendContraCurAvg.toFixed(1) : "—", nota: "Promedio del rival" }
-          : { label: "Partidos con datos", valor: String(rendCur.length), nota: `de ${partidosCur.length} en el período` },
-        { label: metrica === "per" ? "Menos pérdidas" : "Mejor partido", valor: destacadoPartido ? `${destacadoPartido.value.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—", nota: destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : "" },
-      ];
-
       await exportarInformePDF({
         categoria, tira, scopeLabel, rango, wellCur, wellTiles, asistTiles, scope,
-        semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles, rendCur,
-        metricaLabel: metrica === "pts" && scope === "equipo" ? "Puntos (Favor/Contra)" : metricaInfo.label,
-        tieneContra: metrica === "pts" && scope === "equipo",
+        semanasEquipo, sesionesJugador, rankingAsistencia, rendTiles: rendTilesData, rendCur,
+        metricaLabel: metricaInfo.key === "pts" && scope === "equipo" ? "Puntos (Favor/Contra)" : metricaInfo.tipo === "tiro" ? `${metricaInfo.label} (Encestados/Intentados)` : metricaInfo.label,
+        metricaTipo: metricaInfo.tipo,
+        tieneContra: (metricaInfo.key === "pts" && scope === "equipo") || metricaInfo.tipo === "tiro",
       });
     } catch (err) {
       setExportError("No se pudo generar el PDF. Probá de nuevo.");
@@ -8853,23 +9037,7 @@ function InformesView({ jugadores }) {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
-              <TileInforme
-                label="Promedio del período"
-                valor={rendCur.length ? `${rendCurAvg.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—"}
-                delta={rendCur.length && rendPrev.length ? rendCurAvg - rendPrevAvg : null}
-                positivoEsBueno={metrica !== "per"}
-                nota={scope === "equipo" ? "Promedio del equipo" : jugadorSeleccionado?.nombre_apellido}
-              />
-              {metrica === "pts" && scope === "equipo" ? (
-                <TileInforme label="Puntos en contra (promedio)" valor={rendContraCurAvg != null ? rendContraCurAvg.toFixed(1) : "—"} nota="Promedio del rival" />
-              ) : (
-                <TileInforme label="Partidos con datos" valor={String(rendCur.length)} nota={`de ${partidosCur.length} en el período`} />
-              )}
-              <TileInforme
-                label={metrica === "per" ? "Menos pérdidas" : "Mejor partido"}
-                valor={destacadoPartido ? `${destacadoPartido.value.toFixed(1)}${metrica === "efg" ? "%" : ""}` : "—"}
-                nota={destacadoPartido ? `vs ${destacadoPartido.rival} · ${fmtFechaCorta(destacadoPartido.fecha)}` : ""}
-              />
+              {rendTilesData.map((t, i) => <TileInforme key={i} {...t} />)}
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
@@ -8881,14 +9049,100 @@ function InformesView({ jugadores }) {
                     </button>
                   ))}
                 </div>
+                <button onClick={() => setRendTabla((v) => !v)} className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-300 border border-zinc-700 rounded-lg px-2.5 py-1.5">
+                  {rendTabla ? "Ver como gráfico" : "Ver como tabla"}
+                </button>
               </div>
-              {metrica === "pts" && scope === "equipo" && (
+
+              {metricaInfo.tipo === "tiro" && (
+                <div className="flex gap-3 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR }} /> Encestados</div>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR_SECUNDARIO }} /> Intentados</div>
+                </div>
+              )}
+              {metricaInfo.key === "pts" && scope === "equipo" && (
                 <div className="flex gap-3 mb-2">
                   <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR }} /> PTS Favor</div>
                   <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-0.5 rounded-full" style={{ background: RENDIMIENTO_COLOR_CONTRA }} /> PTS Contra</div>
                 </div>
               )}
-              <RendimientoChart data={rendCur} colorPrincipal={RENDIMIENTO_COLOR} labelPrincipal={metrica === "pts" && scope === "equipo" ? "PTS Favor" : metricaInfo.label} colorSecundario={RENDIMIENTO_COLOR_CONTRA} labelSecundario="PTS Contra" />
+              {metricaInfo.tipo === "rebotes" && (
+                <div className="flex gap-3 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: REBOTES_COLOR_OF }} /> Ofensivos</div>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: REBOTES_COLOR_DEF }} /> Defensivos</div>
+                </div>
+              )}
+
+              {rendTabla ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="text-left text-zinc-500 font-semibold py-1.5 pr-3">Fecha</th>
+                        <th className="text-left text-zinc-500 font-semibold py-1.5 px-3">Rival</th>
+                        {metricaInfo.tipo === "tiro" ? (
+                          <>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Encestados</th>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Intentados</th>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 pl-3">%</th>
+                          </>
+                        ) : metricaInfo.tipo === "rebotes" ? (
+                          <>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Ofensivos</th>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Defensivos</th>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 pl-3">Total</th>
+                          </>
+                        ) : metricaInfo.key === "pts" && scope === "equipo" ? (
+                          <>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 px-3">Favor</th>
+                            <th className="text-right text-zinc-500 font-semibold py-1.5 pl-3">Contra</th>
+                          </>
+                        ) : (
+                          <th className="text-right text-zinc-500 font-semibold py-1.5 pl-3">{metricaInfo.label}</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rendCur.map((d, i) => (
+                        <tr key={i} className="border-t border-zinc-800/70">
+                          <td className="py-1.5 pr-3 text-zinc-300">{fmtFechaCorta(d.fecha)}</td>
+                          <td className="py-1.5 px-3 text-zinc-300">{d.rival}</td>
+                          {metricaInfo.tipo === "tiro" ? (
+                            <>
+                              <td className="text-right py-1.5 px-3 text-zinc-300">{d.value}</td>
+                              <td className="text-right py-1.5 px-3 text-zinc-300">{d.valueContra}</td>
+                              <td className="text-right py-1.5 pl-3 text-zinc-300">{d.valueContra ? Math.round((d.value / d.valueContra) * 100) : 0}%</td>
+                            </>
+                          ) : metricaInfo.tipo === "rebotes" ? (
+                            <>
+                              <td className="text-right py-1.5 px-3 text-zinc-300">{d.rof}</td>
+                              <td className="text-right py-1.5 px-3 text-zinc-300">{d.rdef}</td>
+                              <td className="text-right py-1.5 pl-3 text-zinc-300">{d.value}</td>
+                            </>
+                          ) : metricaInfo.key === "pts" && scope === "equipo" ? (
+                            <>
+                              <td className="text-right py-1.5 px-3 text-zinc-300">{d.value}</td>
+                              <td className="text-right py-1.5 pl-3 text-zinc-300">{d.valueContra}</td>
+                            </>
+                          ) : (
+                            <td className="text-right py-1.5 pl-3 text-zinc-300">{d.value.toFixed(1)}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : metricaInfo.tipo === "rebotes" ? (
+                <RendimientoBarrasChart data={rendCur} />
+              ) : (
+                <RendimientoChart
+                  data={rendCur}
+                  colorPrincipal={RENDIMIENTO_COLOR}
+                  labelPrincipal={metricaInfo.tipo === "tiro" ? "Encestados" : metricaInfo.key === "pts" && scope === "equipo" ? "PTS Favor" : metricaInfo.label}
+                  colorSecundario={metricaInfo.tipo === "tiro" ? RENDIMIENTO_COLOR_SECUNDARIO : RENDIMIENTO_COLOR_CONTRA}
+                  labelSecundario={metricaInfo.tipo === "tiro" ? "Intentados" : "PTS Contra"}
+                />
+              )}
             </div>
           </>
         )}
