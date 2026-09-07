@@ -1,6 +1,31 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
+// pdfjs-dist (desde la v5) usa Promise.withResolvers() en su inicialización interna -- una API
+// del motor de JS agregada recien en 2024 (Safari 17.4+/marzo 2024, Chrome 119+). En un celular
+// con el navegador desactualizado (tipico en Android viejo, o iPhones sin la ultima actualizacion
+// de iOS) esa funcion no existe todavia, y el intento de llamarla explota como
+// "undefined is not a function" apenas se toca "Elegir PDF de estadísticas" -- pasaba SOLO en
+// celular porque ahi es mucho mas comun tener el navegador un par de versiones atras que en una
+// notebook. Polyfill minimo (identico al que trae el spec) para que ese motor viejo pueda seguir
+// leyendo PDFs sin necesidad de forzar una actualizacion de sistema operativo.
+if (typeof Promise.withResolvers !== "function") {
+  Promise.withResolvers = function withResolvers() {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  };
+}
+
+// OJO: el polyfill de arriba corre en el hilo principal -- el worker de pdfjs-dist corre en un
+// contexto de JS aparte (un Worker no ve nada de lo que corre en la pestaña), y ahi adentro
+// tambien se usa Promise.withResolvers(). Se probo envolver el worker en un Blob para inyectarle
+// el mismo polyfill, pero un Blob-URL como Module Worker no anda de forma confiable en
+// WebKit/Safari (se queda colgado sin tirar error, un bug conocido de ese motor) -- exactamente
+// el motor donde mas hace falta este arreglo. Se dejó sin envolver: si el worker real llega a
+// fallar por lo mismo en un celular viejo, pdfjs-dist ya cae solo a su modo "fake worker" (corre
+// en el hilo principal, con el polyfill de arriba sí puesto) -- ver el try/catch de
+// PDFWorker#initialize en node_modules/pdfjs-dist/build/pdf.mjs si hace falta revisar esto de nuevo.
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 export const round2 = (n) => Math.round(n * 100) / 100;
