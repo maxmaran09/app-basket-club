@@ -13,6 +13,27 @@ if (typeof Promise.withResolvers !== "function") {
   };
 }
 
+// getTextContent() de pdfjs-dist recorre el texto de cada página con "for await (const n of
+// stream)" sobre un ReadableStream -- WebKit tardó años en implementar la iteración asíncrona
+// nativa de ReadableStream (Symbol.asyncIterator) y en algunos iPhones con iOS igual de
+// actualizado que el resto todavía no está, entonces explota como "undefined is not a function"
+// justo ahí (confirmado con el stack trace real: getTextContent@pdf-*.js). Polyfill estándar
+// (reader.read() en loop) para los motores que todavía no lo tienen nativo.
+if (typeof ReadableStream !== "undefined" && !ReadableStream.prototype[Symbol.asyncIterator]) {
+  ReadableStream.prototype[Symbol.asyncIterator] = ReadableStream.prototype.values || async function* () {
+    const reader = this.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+}
+
 // pdfjs-dist normalmente corre el parseo pesado en un Web Worker aparte -- pero un Worker es un
 // contexto de JS totalmente separado (no ve nada de lo que corre en la pestaña), asi que el
 // polyfill de arriba no lo alcanza ahi adentro, y el propio worker usa Promise.withResolvers()
