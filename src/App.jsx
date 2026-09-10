@@ -6064,7 +6064,9 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         setParseError("No encontré filas de jugadores en el PDF. Podés cargar los datos a mano abajo, o revisar que el PDF no esté escaneado como imagen.");
       }
     } catch (err) {
-      setParseError("Error al leer el PDF: " + err.message);
+      console.error("Error al leer el PDF de estadísticas:", err);
+      const stackLine = (err.stack || "").split("\n").slice(0, 3).join(" | ");
+      setParseError("Error al leer el PDF: " + err.message + (stackLine ? " — " + stackLine : ""));
     }
     setParsing(false);
   };
