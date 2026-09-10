@@ -1,14 +1,10 @@
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
 // pdfjs-dist (desde la v5) usa Promise.withResolvers() en su inicialización interna -- una API
 // del motor de JS agregada recien en 2024 (Safari 17.4+/marzo 2024, Chrome 119+). En un celular
-// con el navegador desactualizado (tipico en Android viejo, o iPhones sin la ultima actualizacion
+// con el navegador/SO desactualizado (tipico en Android viejo, o iPhones sin la ultima actualizacion
 // de iOS) esa funcion no existe todavia, y el intento de llamarla explota como
-// "undefined is not a function" apenas se toca "Elegir PDF de estadísticas" -- pasaba SOLO en
-// celular porque ahi es mucho mas comun tener el navegador un par de versiones atras que en una
-// notebook. Polyfill minimo (identico al que trae el spec) para que ese motor viejo pueda seguir
-// leyendo PDFs sin necesidad de forzar una actualizacion de sistema operativo.
+// "undefined is not a function" apenas se toca "Elegir PDF de estadísticas". Polyfill minimo
+// (identico al que trae el spec) para que ese motor viejo pueda seguir leyendo PDFs sin necesidad
+// de forzar una actualizacion de sistema operativo.
 if (typeof Promise.withResolvers !== "function") {
   Promise.withResolvers = function withResolvers() {
     let resolve, reject;
@@ -17,16 +13,30 @@ if (typeof Promise.withResolvers !== "function") {
   };
 }
 
-// OJO: el polyfill de arriba corre en el hilo principal -- el worker de pdfjs-dist corre en un
-// contexto de JS aparte (un Worker no ve nada de lo que corre en la pestaña), y ahi adentro
-// tambien se usa Promise.withResolvers(). Se probo envolver el worker en un Blob para inyectarle
-// el mismo polyfill, pero un Blob-URL como Module Worker no anda de forma confiable en
-// WebKit/Safari (se queda colgado sin tirar error, un bug conocido de ese motor) -- exactamente
-// el motor donde mas hace falta este arreglo. Se dejó sin envolver: si el worker real llega a
-// fallar por lo mismo en un celular viejo, pdfjs-dist ya cae solo a su modo "fake worker" (corre
-// en el hilo principal, con el polyfill de arriba sí puesto) -- ver el try/catch de
-// PDFWorker#initialize en node_modules/pdfjs-dist/build/pdf.mjs si hace falta revisar esto de nuevo.
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+// pdfjs-dist normalmente corre el parseo pesado en un Web Worker aparte -- pero un Worker es un
+// contexto de JS totalmente separado (no ve nada de lo que corre en la pestaña), asi que el
+// polyfill de arriba no lo alcanza ahi adentro, y el propio worker usa Promise.withResolvers()
+// tambien. En un celular viejo eso hacia que el worker fallara ya arrancado (no al crearse), un
+// caso que pdfjs-dist NO detecta como "worker roto" (por eso no caia solo a su modo de respaldo en
+// el hilo principal como se pensó originalmente) -- el error llegaba igual hasta la pantalla.
+// Envolver el worker con un Blob para inyectarle el polyfill tampoco sirve: un Blob-URL como
+// Module Worker se queda colgado sin tirar error en WebKit/Safari (bug conocido de ese motor).
+// La solución real: nunca levantar el Worker separado -- pdfjs-dist expone `globalThis.pdfjsWorker`
+// como el enganche oficial para forzar su modo "fake worker" (todo corre en el hilo principal, con
+// el polyfill de arriba sí puesto) desde el arranque, en vez de como respaldo ante una falla que no
+// siempre se detecta a tiempo. Se importa dinámico (no en el import de arriba del archivo) para que
+// pdfjs-dist + su worker (~1.3MB) sigan yendo en un chunk aparte, y solo se bajen cuando alguien
+// realmente sube un PDF de estadísticas -- no en el bundle principal de toda la app.
+let pdfjsLibPromise = null;
+function getPdfjsLib() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs"),
+    ]).then(([pdfjsLib]) => pdfjsLib);
+  }
+  return pdfjsLibPromise;
+}
 
 export const round2 = (n) => Math.round(n * 100) / 100;
 export const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -96,6 +106,7 @@ function groupIntoLines(items) {
 }
 
 async function extractLines(file) {
+  const pdfjsLib = await getPdfjsLib();
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const lines = [];
