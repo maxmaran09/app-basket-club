@@ -4953,6 +4953,8 @@ function PromedioJugadorAmplio({ p }) {
   return (
     <div className="mt-1.5 space-y-1.5">
       <div className="flex flex-wrap gap-1.5">
+        <Chip tone="blue">{p.pj} PJ</Chip>
+        <Chip tone="blue">{p.min_prom} MIN</Chip>
         <Chip tone="blue">{p.pts_prom} PTS</Chip>
         <Chip tone="blue">{p.play_prom} Plays</Chip>
         <Chip tone="blue">{p.pplay_prom} PTS/Play</Chip>
