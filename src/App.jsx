@@ -1422,7 +1422,7 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
   const bloquesSoloLectura = nivelBloque(rol, "entrenamiento", "bloquesCancha") !== "rw";
 
   return (
-    <div className="max-w-2xl mx-auto text-zinc-100">
+    <div className="max-w-2xl lg:max-w-6xl mx-auto text-zinc-100">
       <div className="flex items-center justify-between flex-wrap gap-y-2 mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm">
           <ArrowLeft size={15} /> Volver al calendario
@@ -1449,13 +1449,17 @@ function EntrenamientoView({ event, onBack, onUpdate, onDelete, onDuplicate, jug
         {(event.categoria || event.tira) && <Chip tone="blue">{event.categoria} · {event.tira}</Chip>}
       </div>
 
-      <EditableField label="Objetivo del entrenamiento" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline soloLectura={headerSoloLectura} />
+      <div className="lg:grid lg:grid-cols-[1.6fr_1fr] lg:gap-x-6 lg:items-start">
+        <EditableField label="Objetivo del entrenamiento" icon={Trophy} value={objetivoSemana} onSave={(v) => { setObjetivoSemana(v); onUpdate({ objetivoSemana: v }); }} multiline soloLectura={headerSoloLectura} />
 
-      <HorariosSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
+        <HorariosSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
+      </div>
 
-      <AsistenciaSection event={event} jugadores={jugadores} />
+      <div className="lg:grid lg:grid-cols-2 lg:gap-x-6 lg:items-start">
+        <AsistenciaSection event={event} jugadores={jugadores} />
 
-      <WellnessHoyPanel event={event} jugadores={jugadores} rol={rol} tipoEvento="entrenamiento" />
+        <WellnessHoyPanel event={event} jugadores={jugadores} rol={rol} tipoEvento="entrenamiento" />
+      </div>
 
       <PreparacionFisicaSection data={event} onSave={onUpdate} soloLectura={prepFisicaSoloLectura} />
 
