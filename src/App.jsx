@@ -673,12 +673,12 @@ function CourtDiagram({ initial, onSave, onCancel }) {
 }
 
 // Render de solo lectura de una cancha ya guardada (miniatura dentro de la lista de un bloque).
-function CourtPreview({ courtType, players = [], lines = [], ball, balls, shots = [] }) {
+function CourtPreview({ courtType, players = [], lines = [], ball, balls, shots = [], size = 120 }) {
   const markerId = useId();
   const vbW = 150, vbH = courtType === "half" ? 140 : 280;
   const ballList = balls || (ball ? [ball] : []);
   return (
-    <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ maxWidth: 120, pointerEvents: "none" }} className="bg-zinc-900 rounded-lg border border-zinc-800 shrink-0">
+    <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ maxWidth: size, pointerEvents: "none" }} className="bg-zinc-900 rounded-lg border border-zinc-800 shrink-0">
       <defs>
         <marker id={markerId} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.4" refY="2" orient="auto">
           <path d="M0,0 L0,4 L3.4,2 z" fill="#fb923c" />
@@ -1199,6 +1199,9 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
   const [editingBloqueId, setEditingBloqueId] = useState(null);
   const [editBloqueForm, setEditBloqueForm] = useState({ inicio: "", fin: "", titulo: "", desc: "" });
   const [showBiblioteca, setShowBiblioteca] = useState(false);
+  const [editingComentario, setEditingComentario] = useState(null); // { bloqueId, diagramId }
+  const [comentarioDraft, setComentarioDraft] = useState("");
+  const [zoomDiagram, setZoomDiagram] = useState(null); // diagrama a mostrar más grande en el modal
 
   const addBloque = () => {
     if (!form.titulo) return;
@@ -1231,6 +1234,17 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
 
   const deleteDiagram = (bloqueId, diagramId) => {
     onChange(bloques.map((b) => (b.id === bloqueId ? { ...b, diagrams: (b.diagrams || []).filter((d) => d.id !== diagramId) } : b)));
+  };
+
+  const startEditComentario = (bloqueId, d) => {
+    setComentarioDraft(d.comentario || "");
+    setEditingComentario({ bloqueId, diagramId: d.id });
+  };
+
+  const guardarComentario = () => {
+    const { bloqueId, diagramId } = editingComentario;
+    onChange(bloques.map((b) => (b.id !== bloqueId ? b : { ...b, diagrams: (b.diagrams || []).map((d) => (d.id === diagramId ? { ...d, comentario: comentarioDraft } : d)) })));
+    setEditingComentario(null);
   };
 
   const moveBloque = (bloqueId, direction) => {
@@ -1317,28 +1331,47 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                     )}
                   </div>
 
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3 flex flex-wrap gap-3">
                     {diagrams.map((d, di) =>
                       !soloLectura && editing?.bloqueId === b.id && editing?.diagramId === d.id ? (
-                        <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} />
+                        <div key={d.id} className="w-full"><CourtDiagram initial={d} onSave={(state) => saveDiagram(b.id, d.id, state)} onCancel={() => setEditing(null)} /></div>
                       ) : (
-                        <div key={d.id} className="flex items-center gap-2">
-                          <CourtPreview {...d} />
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
-                            {!soloLectura && (
-                              <>
-                                <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
-                                <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
-                              </>
-                            )}
-                          </div>
+                        <div key={d.id} className="w-32 shrink-0">
+                          <button type="button" onClick={() => setZoomDiagram(d)} title="Ver más grande" className="block w-full cursor-zoom-in hover:brightness-125 transition">
+                            <CourtPreview {...d} />
+                          </button>
+                          <span className="text-xs text-zinc-500 block mt-1">Cancha {di + 1}</span>
+                          {!soloLectura && (
+                            <div className="flex gap-2 mt-0.5">
+                              <button onClick={() => setEditing({ bloqueId: b.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
+                              <button onClick={() => deleteDiagram(b.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                            </div>
+                          )}
+                          {editingComentario?.bloqueId === b.id && editingComentario?.diagramId === d.id ? (
+                            <div className="mt-1.5 space-y-1">
+                              <textarea autoFocus value={comentarioDraft} onChange={(e) => setComentarioDraft(e.target.value)} rows={2} placeholder="Comentario de la cancha" className="w-full bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1 text-xs text-zinc-100" />
+                              <div className="flex gap-2">
+                                <button onClick={guardarComentario} className="text-xs text-blue-400 hover:text-blue-300">Guardar</button>
+                                <button onClick={() => setEditingComentario(null)} className="text-xs text-zinc-500">Cancelar</button>
+                              </div>
+                            </div>
+                          ) : d.comentario ? (
+                            <button onClick={() => !soloLectura && startEditComentario(b.id, d)} className={`mt-1.5 text-xs text-zinc-400 text-left ${soloLectura ? "" : "hover:text-cyan-300"}`}>
+                              {d.comentario}
+                            </button>
+                          ) : (
+                            !soloLectura && (
+                              <button onClick={() => startEditComentario(b.id, d)} className="mt-1.5 text-xs text-zinc-600 hover:text-cyan-400 text-left">
+                                + Agregar comentario
+                              </button>
+                            )
+                          )}
                         </div>
                       )
                     )}
 
                     {soloLectura ? null : editing?.bloqueId === b.id && editing?.diagramId === "new" ? (
-                      <CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} />
+                      <div className="w-full"><CourtDiagram initial={null} onSave={(state) => saveDiagram(b.id, "new", state)} onCancel={() => setEditing(null)} /></div>
                     ) : (
                       <button onClick={() => setEditing({ bloqueId: b.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
                         <PenLine size={12} /> Agregar cancha
@@ -1405,6 +1438,18 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {zoomDiagram && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setZoomDiagram(null)}>
+          <div className="max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-end mb-2">
+              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200"><X size={20} /></button>
+            </div>
+            <CourtPreview {...zoomDiagram} size={400} />
+            {zoomDiagram.comentario && <p className="text-sm text-zinc-300 mt-3">{zoomDiagram.comentario}</p>}
           </div>
         </div>
       )}
@@ -1645,28 +1690,51 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol, bib
 // bloque ya armado en un entrenamiento (eso sigue existiendo en BloquesConCanchaSection, vía el
 // ícono de guardar). Sin "inicio"/"fin": esos horarios solo tienen sentido una vez que el bloque
 // se inserta dentro de una sesión puntual.
+const SIN_CATEGORIA = "Sin categoría";
+
 function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLectura }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ titulo: "", desc: "" });
+  const [form, setForm] = useState({ titulo: "", desc: "", categoria: "" });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ titulo: "", desc: "" });
+  const [editForm, setEditForm] = useState({ titulo: "", desc: "", categoria: "" });
   const [editingDiagram, setEditingDiagram] = useState(null); // { itemId, diagramId } — diagramId "new" = cancha nueva
+  const [editingComentario, setEditingComentario] = useState(null); // { itemId, diagramId }
+  const [comentarioDraft, setComentarioDraft] = useState("");
+  const [zoomDiagram, setZoomDiagram] = useState(null);
+
+  const categoriasExistentes = [...new Set(bibliotecaBloques.map((b) => b.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+  // Agrupa por categoría (orden alfabético, "Sin categoría" siempre al final) y ordena los
+  // ejercicios de cada grupo por título.
+  const grupos = (() => {
+    const porCategoria = {};
+    bibliotecaBloques.forEach((item) => {
+      const cat = item.categoria || SIN_CATEGORIA;
+      (porCategoria[cat] ||= []).push(item);
+    });
+    const nombres = Object.keys(porCategoria).sort((a, b) => {
+      if (a === SIN_CATEGORIA) return 1;
+      if (b === SIN_CATEGORIA) return -1;
+      return a.localeCompare(b);
+    });
+    return nombres.map((nombre) => ({ nombre, items: porCategoria[nombre].sort((a, b) => a.titulo.localeCompare(b.titulo)) }));
+  })();
 
   const addItem = () => {
     if (!form.titulo) return;
-    onAdd({ titulo: form.titulo, desc: form.desc, diagrams: [] });
-    setForm({ titulo: "", desc: "" });
+    onAdd({ titulo: form.titulo, desc: form.desc, diagrams: [], categoria: form.categoria.trim() || null });
+    setForm({ titulo: "", desc: "", categoria: "" });
     setShowForm(false);
   };
 
   const startEdit = (item) => {
-    setEditForm({ titulo: item.titulo || "", desc: item.descripcion || "" });
+    setEditForm({ titulo: item.titulo || "", desc: item.descripcion || "", categoria: item.categoria || "" });
     setEditingId(item.id);
   };
 
   const saveEdit = () => {
     if (!editForm.titulo) return;
-    onUpdate(editingId, { titulo: editForm.titulo, descripcion: editForm.desc });
+    onUpdate(editingId, { titulo: editForm.titulo, descripcion: editForm.desc, categoria: editForm.categoria.trim() || null });
     setEditingId(null);
   };
 
@@ -1687,9 +1755,110 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
     onUpdate(itemId, { diagrams: (item.diagrams || []).filter((d) => d.id !== diagramId) });
   };
 
+  const startEditComentario = (itemId, d) => {
+    setComentarioDraft(d.comentario || "");
+    setEditingComentario({ itemId, diagramId: d.id });
+  };
+
+  const guardarComentario = () => {
+    const { itemId, diagramId } = editingComentario;
+    const item = bibliotecaBloques.find((b) => b.id === itemId);
+    if (!item) return;
+    onUpdate(itemId, { diagrams: (item.diagrams || []).map((d) => (d.id === diagramId ? { ...d, comentario: comentarioDraft } : d)) });
+    setEditingComentario(null);
+  };
+
   const deleteItem = (id) => {
     if (!window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) return;
     onDelete(id);
+  };
+
+  const renderItem = (item) => {
+    const diagrams = item.diagrams || [];
+    return (
+      <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+        {editingId === item.id ? (
+          <div className="space-y-2">
+            <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input list="biblioteca-categorias" placeholder="Categoría (ej: Tiro, Defensa, Transición)" value={editForm.categoria} onChange={(e) => setEditForm({ ...editForm, categoria: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <RichTextEditor initialValue={editForm.desc} onChange={(html) => setEditForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
+            <div className="flex gap-2">
+              <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+              <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">{item.titulo}</p>
+                {item.descripcion && <div className="text-sm text-zinc-400 mt-0.5 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(item.descripcion)) }} />}
+              </div>
+              {!soloLectura && (
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
+                    <PenLine size={15} />
+                  </button>
+                  <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-3">
+              {diagrams.map((d, di) =>
+                !soloLectura && editingDiagram?.itemId === item.id && editingDiagram?.diagramId === d.id ? (
+                  <div key={d.id} className="w-full"><CourtDiagram initial={d} onSave={(state) => saveDiagram(item.id, d.id, state)} onCancel={() => setEditingDiagram(null)} /></div>
+                ) : (
+                  <div key={d.id} className="w-32 shrink-0">
+                    <button type="button" onClick={() => setZoomDiagram(d)} title="Ver más grande" className="block w-full cursor-zoom-in hover:brightness-125 transition">
+                      <CourtPreview {...d} />
+                    </button>
+                    <span className="text-xs text-zinc-500 block mt-1">Cancha {di + 1}</span>
+                    {!soloLectura && (
+                      <div className="flex gap-2 mt-0.5">
+                        <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
+                        <button onClick={() => deleteDiagram(item.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
+                      </div>
+                    )}
+                    {editingComentario?.itemId === item.id && editingComentario?.diagramId === d.id ? (
+                      <div className="mt-1.5 space-y-1">
+                        <textarea autoFocus value={comentarioDraft} onChange={(e) => setComentarioDraft(e.target.value)} rows={2} placeholder="Comentario de la cancha" className="w-full bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1 text-xs text-zinc-100" />
+                        <div className="flex gap-2">
+                          <button onClick={guardarComentario} className="text-xs text-blue-400 hover:text-blue-300">Guardar</button>
+                          <button onClick={() => setEditingComentario(null)} className="text-xs text-zinc-500">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : d.comentario ? (
+                      <button onClick={() => !soloLectura && startEditComentario(item.id, d)} className={`mt-1.5 text-xs text-zinc-400 text-left ${soloLectura ? "" : "hover:text-cyan-300"}`}>
+                        {d.comentario}
+                      </button>
+                    ) : (
+                      !soloLectura && (
+                        <button onClick={() => startEditComentario(item.id, d)} className="mt-1.5 text-xs text-zinc-600 hover:text-cyan-400 text-left">
+                          + Agregar comentario
+                        </button>
+                      )
+                    )}
+                  </div>
+                )
+              )}
+
+              {soloLectura ? null : editingDiagram?.itemId === item.id && editingDiagram?.diagramId === "new" ? (
+                <div className="w-full"><CourtDiagram initial={null} onSave={(state) => saveDiagram(item.id, "new", state)} onCancel={() => setEditingDiagram(null)} /></div>
+              ) : (
+                !soloLectura && (
+                  <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
+                    <PenLine size={12} /> Agregar cancha
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -1703,84 +1872,26 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         Guardá acá los ejercicios y jugadas que se repiten para agregarlos directo a cualquier entrenamiento o plan individual sin recrearlos desde cero. Editar una copia ya insertada en un evento no modifica lo guardado acá.
       </p>
 
+      <datalist id="biblioteca-categorias">
+        {categoriasExistentes.map((c) => <option key={c} value={c} />)}
+      </datalist>
+
       {bibliotecaBloques.length === 0 && (
         <p className="text-sm text-zinc-500 mb-4">Todavía no hay bloques guardados.</p>
       )}
 
-      <div className="space-y-2 mb-4">
-        {bibliotecaBloques.map((item) => {
-          const diagrams = item.diagrams || [];
-          return (
-            <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-              {editingId === item.id ? (
-                <div className="space-y-2">
-                  <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                  <RichTextEditor initialValue={editForm.desc} onChange={(html) => setEditForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
-                  <div className="flex gap-2">
-                    <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
-                    <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-100">{item.titulo}</p>
-                      {item.descripcion && <div className="text-sm text-zinc-400 mt-0.5 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(item.descripcion)) }} />}
-                    </div>
-                    {!soloLectura && (
-                      <div className="flex items-center gap-3 shrink-0">
-                        <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
-                          <PenLine size={15} />
-                        </button>
-                        <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 space-y-3">
-                    {diagrams.map((d, di) =>
-                      !soloLectura && editingDiagram?.itemId === item.id && editingDiagram?.diagramId === d.id ? (
-                        <CourtDiagram key={d.id} initial={d} onSave={(state) => saveDiagram(item.id, d.id, state)} onCancel={() => setEditingDiagram(null)} />
-                      ) : (
-                        <div key={d.id} className="flex items-center gap-2">
-                          <CourtPreview {...d} />
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs text-zinc-500">Cancha {di + 1}</span>
-                            {!soloLectura && (
-                              <>
-                                <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: d.id })} className="text-xs text-cyan-400 hover:text-cyan-300 text-left">Editar</button>
-                                <button onClick={() => deleteDiagram(item.id, d.id)} className="text-xs text-red-400 hover:text-red-300 text-left">Eliminar</button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    )}
-
-                    {soloLectura ? null : editingDiagram?.itemId === item.id && editingDiagram?.diagramId === "new" ? (
-                      <CourtDiagram initial={null} onSave={(state) => saveDiagram(item.id, "new", state)} onCancel={() => setEditingDiagram(null)} />
-                    ) : (
-                      !soloLectura && (
-                        <button onClick={() => setEditingDiagram({ itemId: item.id, diagramId: "new" })} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
-                          <PenLine size={12} /> Agregar cancha
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {grupos.map(({ nombre, items }) => (
+        <div key={nombre} className="mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-2">{nombre} <span className="text-zinc-600 font-normal normal-case tracking-normal">({items.length})</span></h2>
+          <div className="space-y-2">{items.map(renderItem)}</div>
+        </div>
+      ))}
 
       {!soloLectura && (
         showForm ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
             <input placeholder="Título del bloque" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <input list="biblioteca-categorias" placeholder="Categoría (ej: Tiro, Defensa, Transición)" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
               <button onClick={addItem} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
@@ -1792,6 +1903,18 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
             <Plus size={15} /> Agregar bloque a la biblioteca
           </button>
         )
+      )}
+
+      {zoomDiagram && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setZoomDiagram(null)}>
+          <div className="max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-end mb-2">
+              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200"><X size={20} /></button>
+            </div>
+            <CourtPreview {...zoomDiagram} size={400} />
+            {zoomDiagram.comentario && <p className="text-sm text-zinc-300 mt-3">{zoomDiagram.comentario}</p>}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -9279,7 +9402,7 @@ export default function App() {
   // Guarda una copia del bloque (titulo/desc/diagramas) en la biblioteca, sin tocar el bloque
   // original del evento -- son filas independientes desde el momento en que se guarda.
   const addBloqueBiblioteca = async (bloque) => {
-    const row = { titulo: bloque.titulo, descripcion: bloque.desc || "", diagrams: bloque.diagrams || [] };
+    const row = { titulo: bloque.titulo, descripcion: bloque.desc || "", diagrams: bloque.diagrams || [], categoria: bloque.categoria || null };
     const { data, error } = await supabase.from("biblioteca_bloques").insert(row).select().single();
     if (error) { setErrorMsg(error.message); return; }
     setBibliotecaBloques((prev) => [...prev, data].sort((a, b) => a.titulo.localeCompare(b.titulo)));

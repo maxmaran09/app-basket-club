@@ -17,6 +17,11 @@ create table if not exists public.biblioteca_bloques (
   diagrams jsonb not null default '[]'::jsonb
 );
 
+-- Categoría libre para agrupar ejercicios en la biblioteca (ej "Tiro", "Defensa", "Transición").
+-- Texto libre, no un catálogo aparte (a diferencia de sistemas_juego): acá se usa solo dentro de
+-- la Biblioteca, el frontend arma las opciones del datalist a partir de lo ya tipeado.
+alter table public.biblioteca_bloques add column if not exists categoria text;
+
 alter table public.biblioteca_bloques enable row level security;
 
 -- Mismo criterio que "bloquesCancha" en permisos.js: Preparador Fisico puede ver la biblioteca
