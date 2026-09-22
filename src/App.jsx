@@ -1737,6 +1737,16 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
   const [editingComentario, setEditingComentario] = useState(null); // { itemId, diagramId }
   const [comentarioDraft, setComentarioDraft] = useState("");
   const [zoomDiagram, setZoomDiagram] = useState(null);
+  const [categoriasColapsadas, setCategoriasColapsadas] = useState(() => new Set());
+
+  const toggleCategoria = (nombre) => {
+    setCategoriasColapsadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(nombre)) next.delete(nombre);
+      else next.add(nombre);
+      return next;
+    });
+  };
 
   const categoriasExistentes = [...new Set(bibliotecaBloques.map((b) => b.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
@@ -1912,12 +1922,18 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         <p className="text-sm text-zinc-500 mb-4">Todavía no hay bloques guardados.</p>
       )}
 
-      {grupos.map(({ nombre, items }) => (
-        <div key={nombre} className="mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-2">{nombre} <span className="text-zinc-600 font-normal normal-case tracking-normal">({items.length})</span></h2>
-          <div className="space-y-2">{items.map(renderItem)}</div>
-        </div>
-      ))}
+      {grupos.map(({ nombre, items }) => {
+        const abierta = !categoriasColapsadas.has(nombre);
+        return (
+          <div key={nombre} className="mb-4">
+            <button onClick={() => toggleCategoria(nombre)} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 mb-2">
+              <ChevronDown size={13} className={`transition-transform ${abierta ? "" : "-rotate-90"}`} />
+              {nombre} <span className="text-zinc-600 font-normal normal-case tracking-normal">({items.length})</span>
+            </button>
+            {abierta && <div className="space-y-2">{items.map(renderItem)}</div>}
+          </div>
+        );
+      })}
 
       {!soloLectura && (
         showForm ? (
