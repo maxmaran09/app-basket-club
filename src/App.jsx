@@ -1692,6 +1692,42 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol, bib
 // se inserta dentro de una sesión puntual.
 const SIN_CATEGORIA = "Sin categoría";
 
+// Desplegable de categoría para un bloque de la biblioteca: elegir una ya usada sin tipear, con
+// una opción "+ Nueva categoría…" que abre un campo de texto para crear una en el momento.
+function CategoriaPicker({ value, onChange, categorias }) {
+  const [creando, setCreando] = useState(false);
+
+  if (creando) {
+    return (
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          placeholder="Nombre de la nueva categoría"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100"
+        />
+        <button type="button" onClick={() => { setCreando(false); onChange(""); }} className="text-xs text-zinc-500 hover:text-zinc-300 px-2 shrink-0">Cancelar</button>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={categorias.includes(value) ? value : ""}
+      onChange={(e) => {
+        if (e.target.value === "__nueva__") setCreando(true);
+        else onChange(e.target.value);
+      }}
+      className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100"
+    >
+      <option value="">Sin categoría</option>
+      {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+      <option value="__nueva__">+ Nueva categoría…</option>
+    </select>
+  );
+}
+
 function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLectura }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ titulo: "", desc: "", categoria: "" });
@@ -1780,7 +1816,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         {editingId === item.id ? (
           <div className="space-y-2">
             <input placeholder="Título del bloque" value={editForm.titulo} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input list="biblioteca-categorias" placeholder="Categoría (ej: Tiro, Defensa, Transición)" value={editForm.categoria} onChange={(e) => setEditForm({ ...editForm, categoria: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <CategoriaPicker value={editForm.categoria} onChange={(v) => setEditForm({ ...editForm, categoria: v })} categorias={categoriasExistentes} />
             <RichTextEditor initialValue={editForm.desc} onChange={(html) => setEditForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
               <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
@@ -1872,10 +1908,6 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         Guardá acá los ejercicios y jugadas que se repiten para agregarlos directo a cualquier entrenamiento o plan individual sin recrearlos desde cero. Editar una copia ya insertada en un evento no modifica lo guardado acá.
       </p>
 
-      <datalist id="biblioteca-categorias">
-        {categoriasExistentes.map((c) => <option key={c} value={c} />)}
-      </datalist>
-
       {bibliotecaBloques.length === 0 && (
         <p className="text-sm text-zinc-500 mb-4">Todavía no hay bloques guardados.</p>
       )}
@@ -1891,7 +1923,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         showForm ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
             <input placeholder="Título del bloque" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input list="biblioteca-categorias" placeholder="Categoría (ej: Tiro, Defensa, Transición)" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <CategoriaPicker value={form.categoria} onChange={(v) => setForm({ ...form, categoria: v })} categorias={categoriasExistentes} />
             <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
               <button onClick={addItem} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
