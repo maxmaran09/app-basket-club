@@ -1412,7 +1412,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
 
       {showBiblioteca && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowBiblioteca(false)}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 max-w-md w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 max-w-3xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-cyan-400 font-bold text-sm flex items-center gap-1.5"><Library size={15} /> Biblioteca de bloques</h3>
               <button onClick={() => setShowBiblioteca(false)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
@@ -1420,20 +1420,27 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
             {bibliotecaBloques.length === 0 ? (
               <p className="text-sm text-zinc-500">Todavía no guardaste ningún bloque en la biblioteca. Usá el ícono <BookmarkPlus size={12} className="inline" /> de un bloque ya creado para guardarlo acá.</p>
             ) : (
-              <div className="overflow-y-auto space-y-2">
-                {bibliotecaBloques.map((item) => (
-                  <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex items-center gap-2">
-                    {item.diagrams?.[0] && <CourtPreview {...item.diagrams[0]} />}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-100 truncate">{item.titulo}</p>
-                      {item.descripcion && <p className="text-xs text-zinc-500 truncate">{htmlToPlainText(item.descripcion)}</p>}
+              <div className="overflow-y-auto">
+                {agruparBibliotecaPorCategoria(bibliotecaBloques).map(({ nombre, items }) => (
+                  <div key={nombre} className="mb-4 last:mb-0">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-2">{nombre} <span className="text-zinc-600 font-normal normal-case tracking-normal">({items.length})</span></h4>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {items.map((item) => (
+                        <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex items-center gap-2">
+                          {item.diagrams?.[0] && <CourtPreview {...item.diagrams[0]} />}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-zinc-100 truncate">{item.titulo}</p>
+                            {item.descripcion && <p className="text-xs text-zinc-500 truncate">{htmlToPlainText(item.descripcion)}</p>}
+                          </div>
+                          <button onClick={() => agregarDesdeBiblioteca(item)} title="Agregar a este evento" className="text-cyan-400 hover:text-cyan-300 shrink-0">
+                            <Plus size={16} />
+                          </button>
+                          <button onClick={() => { if (window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) onDeleteBiblioteca?.(item.id); }} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    <button onClick={() => agregarDesdeBiblioteca(item)} title="Agregar a este evento" className="text-cyan-400 hover:text-cyan-300 shrink-0">
-                      <Plus size={16} />
-                    </button>
-                    <button onClick={() => { if (window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) onDeleteBiblioteca?.(item.id); }} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 shrink-0">
-                      <Trash2 size={14} />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -1692,6 +1699,23 @@ function IndividualView({ event, jugadores, onBack, onUpdate, onDelete, rol, bib
 // se inserta dentro de una sesión puntual.
 const SIN_CATEGORIA = "Sin categoría";
 
+// Agrupa bloques de la biblioteca por categoría (orden alfabético, "Sin categoría" al final) y
+// ordena los ejercicios de cada grupo por título. Usado tanto en la vista Biblioteca como en el
+// selector "Desde la biblioteca" dentro de un entrenamiento/plan individual.
+function agruparBibliotecaPorCategoria(items) {
+  const porCategoria = {};
+  items.forEach((item) => {
+    const cat = item.categoria || SIN_CATEGORIA;
+    (porCategoria[cat] ||= []).push(item);
+  });
+  const nombres = Object.keys(porCategoria).sort((a, b) => {
+    if (a === SIN_CATEGORIA) return 1;
+    if (b === SIN_CATEGORIA) return -1;
+    return a.localeCompare(b);
+  });
+  return nombres.map((nombre) => ({ nombre, items: porCategoria[nombre].sort((a, b) => a.titulo.localeCompare(b.titulo)) }));
+}
+
 // Desplegable de categoría para un bloque de la biblioteca: elegir una ya usada sin tipear, con
 // una opción "+ Nueva categoría…" que abre un campo de texto para crear una en el momento.
 function CategoriaPicker({ value, onChange, categorias }) {
@@ -1749,22 +1773,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
   };
 
   const categoriasExistentes = [...new Set(bibliotecaBloques.map((b) => b.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-
-  // Agrupa por categoría (orden alfabético, "Sin categoría" siempre al final) y ordena los
-  // ejercicios de cada grupo por título.
-  const grupos = (() => {
-    const porCategoria = {};
-    bibliotecaBloques.forEach((item) => {
-      const cat = item.categoria || SIN_CATEGORIA;
-      (porCategoria[cat] ||= []).push(item);
-    });
-    const nombres = Object.keys(porCategoria).sort((a, b) => {
-      if (a === SIN_CATEGORIA) return 1;
-      if (b === SIN_CATEGORIA) return -1;
-      return a.localeCompare(b);
-    });
-    return nombres.map((nombre) => ({ nombre, items: porCategoria[nombre].sort((a, b) => a.titulo.localeCompare(b.titulo)) }));
-  })();
+  const grupos = agruparBibliotecaPorCategoria(bibliotecaBloques);
 
   const addItem = () => {
     if (!form.titulo) return;
