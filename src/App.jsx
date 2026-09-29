@@ -5161,8 +5161,35 @@ function PromedioJugadorAmplio({ p }) {
 // cada uno con un título libre (ej "Ida 15/06/2025 - Ganamos 78-65") y su link de YouTube.
 function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
   const [videos, setVideos] = useState(equipo.videos_previos || []);
+  const [partidosJugados, setPartidosJugados] = useState([]);
+  const [tituloSeleccionado, setTituloSeleccionado] = useState("");
+  const [escribiendoTitulo, setEscribiendoTitulo] = useState(false);
   const [nuevoTitulo, setNuevoTitulo] = useState("");
   const [nuevoUrl, setNuevoUrl] = useState("");
+
+  // Partidos ya cargados en Estadísticas contra este rival puntual (equipo_partido_stats.
+  // equipo_rival_id), para elegir el título del video de una lista en vez de tipearlo cada vez.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: filas, error } = await supabase.from("equipo_partido_stats").select("partido_id").eq("equipo_rival_id", equipo.id);
+      if (cancelled || error) return;
+      const partidoIds = [...new Set((filas || []).map((f) => f.partido_id))];
+      if (partidoIds.length === 0) { setPartidosJugados([]); return; }
+      const { data: partidos, error: errP } = await supabase
+        .from("partidos_stats")
+        .select("id, fecha, equipo_local, equipo_visitante, resultado_local, resultado_visitante")
+        .in("id", partidoIds)
+        .order("fecha", { ascending: false });
+      if (!cancelled && !errP) setPartidosJugados(partidos || []);
+    })();
+    return () => { cancelled = true; };
+  }, [equipo.id]);
+
+  const opcionesTitulo = partidosJugados.map((p) => ({
+    value: p.id,
+    label: `${fmtFechaCorta(p.fecha)} — ${p.equipo_local} ${p.resultado_local ?? "-"} vs ${p.resultado_visitante ?? "-"} ${p.equipo_visitante}`,
+  }));
 
   const guardar = (next) => {
     setVideos(next);
@@ -5170,9 +5197,14 @@ function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
   };
 
   const agregar = () => {
-    if (!nuevoUrl.trim()) return;
-    guardar([...videos, { id: "v" + Date.now(), titulo: nuevoTitulo.trim() || "Partido anterior", url: nuevoUrl.trim() }]);
+    const titulo = escribiendoTitulo || opcionesTitulo.length === 0
+      ? nuevoTitulo.trim()
+      : opcionesTitulo.find((o) => o.value === tituloSeleccionado)?.label || "";
+    if (!nuevoUrl.trim() || !titulo) return;
+    guardar([...videos, { id: "v" + Date.now(), titulo, url: nuevoUrl.trim() }]);
+    setTituloSeleccionado("");
     setNuevoTitulo("");
+    setEscribiendoTitulo(false);
     setNuevoUrl("");
   };
 
@@ -5196,10 +5228,32 @@ function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
         ))}
       </div>
       {!soloLectura && (
-        <div className="flex flex-wrap gap-2">
-          <input value={nuevoTitulo} onChange={(e) => setNuevoTitulo(e.target.value)} placeholder="Título (ej: Ida 15/06/2025)" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          <input value={nuevoUrl} onChange={(e) => setNuevoUrl(e.target.value)} placeholder="Link de YouTube" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-          <button onClick={agregar} className="bg-brand-600 hover:bg-brand-500 text-white text-sm px-3 py-1.5 rounded shrink-0">Agregar</button>
+        <div className="space-y-2">
+          {escribiendoTitulo || opcionesTitulo.length === 0 ? (
+            <div className="flex gap-2">
+              <input value={nuevoTitulo} onChange={(e) => setNuevoTitulo(e.target.value)} placeholder="Título (ej: Ida 15/06/2025)" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+              {opcionesTitulo.length > 0 && (
+                <button type="button" onClick={() => { setEscribiendoTitulo(false); setNuevoTitulo(""); }} className="text-xs text-zinc-500 hover:text-zinc-300 px-2 shrink-0">Elegir partido</button>
+              )}
+            </div>
+          ) : (
+            <select
+              value={tituloSeleccionado}
+              onChange={(e) => {
+                if (e.target.value === "__otro__") { setEscribiendoTitulo(true); setTituloSeleccionado(""); }
+                else setTituloSeleccionado(e.target.value);
+              }}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100"
+            >
+              <option value="">Elegí el partido…</option>
+              {opcionesTitulo.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <option value="__otro__">Otro (escribir título)…</option>
+            </select>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <input value={nuevoUrl} onChange={(e) => setNuevoUrl(e.target.value)} placeholder="Link de YouTube" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <button onClick={agregar} className="bg-brand-600 hover:bg-brand-500 text-white text-sm px-3 py-1.5 rounded shrink-0">Agregar</button>
+          </div>
         </div>
       )}
     </Section>
