@@ -19,6 +19,12 @@ create table if not exists public.equipos_rivales (
   id_estadistico_externo uuid
 );
 
+-- Videos de partidos anteriores contra este rival (distinto de video_colectivo_url, que es UN
+-- solo video de scouting general) -- array de {id, titulo, url}, mismo patron jsonb que
+-- diagrams/estudios/evolucion en otros modulos. Cada partido previo queda con su propio link de
+-- YouTube y un título libre (ej "Ida 15/06/2025 - Ganamos 78-65") para poder cargar varios.
+alter table public.equipos_rivales add column if not exists videos_previos jsonb not null default '[]'::jsonb;
+
 create index if not exists equipos_rivales_nombre_idx on public.equipos_rivales (nombre_club);
 
 drop trigger if exists equipos_rivales_set_updated_at on public.equipos_rivales;

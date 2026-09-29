@@ -38,7 +38,10 @@ select
   t.anio,
   t.activa as temporada_activa,
   t.categoria,
-  t.tira
+  t.tira,
+  -- Agregada al final a proposito: CREATE OR REPLACE VIEW no permite reordenar/insertar columnas
+  -- en el medio de una vista ya existente en produccion, solo agregar al final.
+  er.videos_previos
 from public.equipos_rivales er
 left join public.temporadas t on t.id = er.temporada_id;
 

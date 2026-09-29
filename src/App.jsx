@@ -5156,6 +5156,56 @@ function PromedioJugadorAmplio({ p }) {
   );
 }
 
+// Lista de videos de partidos anteriores contra este rival (distinto del "Video colectivo" de
+// scouting general, que es uno solo) -- guardados en equipos_rivales.videos_previos (jsonb),
+// cada uno con un título libre (ej "Ida 15/06/2025 - Ganamos 78-65") y su link de YouTube.
+function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
+  const [videos, setVideos] = useState(equipo.videos_previos || []);
+  const [nuevoTitulo, setNuevoTitulo] = useState("");
+  const [nuevoUrl, setNuevoUrl] = useState("");
+
+  const guardar = (next) => {
+    setVideos(next);
+    onUpdateEquipo({ videos_previos: next });
+  };
+
+  const agregar = () => {
+    if (!nuevoUrl.trim()) return;
+    guardar([...videos, { id: "v" + Date.now(), titulo: nuevoTitulo.trim() || "Partido anterior", url: nuevoUrl.trim() }]);
+    setNuevoTitulo("");
+    setNuevoUrl("");
+  };
+
+  const eliminar = (id) => {
+    if (!window.confirm("¿Eliminar este video?")) return;
+    guardar(videos.filter((v) => v.id !== id));
+  };
+
+  return (
+    <Section icon={Youtube} title="Partidos previos vs. ellos" accent="text-brand-400">
+      {videos.length === 0 && <p className="text-sm text-zinc-500 mb-2">Sin videos cargados todavía.</p>}
+      <div className="space-y-2 mb-3">
+        {videos.map((v) => (
+          <div key={v.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <VideoLinkButton url={v.url} size={14} />
+            <span className="text-sm text-zinc-200 flex-1 min-w-0 truncate">{v.titulo}</span>
+            {!soloLectura && (
+              <button onClick={() => eliminar(v.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 shrink-0"><Trash2 size={14} /></button>
+            )}
+          </div>
+        ))}
+      </div>
+      {!soloLectura && (
+        <div className="flex flex-wrap gap-2">
+          <input value={nuevoTitulo} onChange={(e) => setNuevoTitulo(e.target.value)} placeholder="Título (ej: Ida 15/06/2025)" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <input value={nuevoUrl} onChange={(e) => setNuevoUrl(e.target.value)} placeholder="Link de YouTube" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <button onClick={agregar} className="bg-brand-600 hover:bg-brand-500 text-white text-sm px-3 py-1.5 rounded shrink-0">Agregar</button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // Ficha completa de un equipo rival: notas/video colectivo editable + plantel de jugadores
 // rivales (propia tabla relacional, se reusa desde cualquier partido contra este equipo).
 function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
@@ -5251,6 +5301,8 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
         </div>
         <VideoLinkButton url={videoUrl} label="Ver Video de Partido" />
       </Section>
+
+      <VideosPreviosSection equipo={equipo} onUpdateEquipo={onUpdateEquipo} soloLectura={soloLectura} />
 
       <Section icon={Users} title="Plantel rival" accent="text-brand-400">
         {loading ? (
@@ -9749,6 +9801,7 @@ export default function App() {
     logo_url: equipoRow.logo_url,
     notas_colectivas: equipoRow.notas_colectivas,
     video_colectivo_url: equipoRow.video_colectivo_url,
+    videos_previos: equipoRow.videos_previos || [],
     id_estadistico_externo: equipoRow.id_estadistico_externo,
     temporada_id: temporadaRow?.id ?? null,
     nombre_competencia: temporadaRow?.nombre_competencia,
