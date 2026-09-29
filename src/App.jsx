@@ -2644,6 +2644,18 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
               <p className="text-sm text-zinc-600 mb-3">Sin notas colectivas cargadas todavía.</p>
             )}
             <VideoLinkButton url={equipoRival.video_colectivo_url} label="Ver Video de Partido" />
+
+            {equipoRival.videos_previos?.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-xs text-zinc-500">Partidos anteriores vs. ellos:</p>
+                {equipoRival.videos_previos.map((v) => (
+                  <div key={v.id} className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                    <VideoLinkButton url={v.url} size={14} />
+                    <span className="text-sm text-zinc-200 flex-1 min-w-0 truncate">{v.titulo}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </Section>
