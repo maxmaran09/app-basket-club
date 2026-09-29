@@ -2292,6 +2292,26 @@ async function exportarPlanDeJuegoPDF({ event, equipoRival, jugadoresRivales, jo
   addSectionTitle("Scouting colectivo");
   addRichText(equipoRival?.notas_colectivas, { sinDatos: "Sin notas colectivas cargadas." });
   addVideoLink(youtubeWatchUrl(equipoRival?.video_colectivo_url));
+
+  if (equipoRival?.videos_previos?.length) {
+    addText("Partidos anteriores vs. ellos:", { size: 9, bold: true, gapAfter: 3 });
+    const maxTituloW = contentWidth - iconoYoutubeW - 8;
+    equipoRival.videos_previos.forEach((v) => {
+      const watchUrl = youtubeWatchUrl(v.url);
+      if (!watchUrl) return;
+      ensureSpace(14);
+      doc.setFont("Inter", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(63, 63, 70);
+      const original = v.titulo || "Video";
+      let titulo = original;
+      while (doc.getTextWidth(titulo) > maxTituloW && titulo.length > 1) titulo = titulo.slice(0, -1);
+      if (titulo !== original) titulo = titulo.slice(0, -1) + "…";
+      doc.text(titulo, marginX + iconoYoutubeW + 6, y);
+      dibujarIconoYoutube(marginX, y - 9, watchUrl);
+      y += 14;
+    });
+  }
   y += 6;
 
   addSectionTitle("Estadísticas colectivas");
