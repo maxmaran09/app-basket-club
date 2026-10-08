@@ -5957,6 +5957,28 @@ function filaEquipoDesdeRc(rc, nombreEquipo) {
   };
 }
 
+// PostgREST corta cada respuesta en 1000 filas por defecto (limite del proyecto, no un error) --
+// una temporada con muchos partidos cargados supera eso fácil en jugador_partido_stats (~20-30
+// filas por partido) aunque equipo_partido_stats (2 filas por partido) nunca lo note, así que el
+// corte pasaba en silencio y dejaba afuera partidos enteros de jugadores al azar según el orden
+// que haya devuelto Postgres (bug real, reportado por el usuario: Estadísticas del plantel
+// mostraba menos PJ que Jugador 360°/Scouting para el mismo jugador en la misma temporada, pero
+// solo cuando la temporada ya acumuló muchos partidos). Pagina con .range() hasta que una pagina
+// vuelva con menos filas que el tamaño pedido, sin asumir ningun límite de antemano.
+async function fetchTodasLasFilas(tabla, ids) {
+  const pageSize = 1000;
+  let desde = 0;
+  let todas = [];
+  while (true) {
+    const { data, error } = await supabase.from(tabla).select("*").in("partido_id", ids).range(desde, desde + pageSize - 1);
+    if (error) return { data: null, error };
+    todas = todas.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    desde += pageSize;
+  }
+  return { data: todas, error: null };
+}
+
 // Estadisticas en tabla de CUALQUIER equipo cargado en esta temporada -- el propio o cualquier
 // rival con partidos_stats/equipo_partido_stats vinculados (jugado contra nosotros, o cargado
 // solo para scoutearlo) -- con selector de Promedio / un partido puntual / ultimos 3 de ESE
@@ -5980,8 +6002,8 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
     setJugData(null); setEqData(null);
     (async () => {
       const [{ data: jd }, { data: ed }] = await Promise.all([
-        supabase.from("jugador_partido_stats").select("*").in("partido_id", ids),
-        supabase.from("equipo_partido_stats").select("*").in("partido_id", ids),
+        fetchTodasLasFilas("jugador_partido_stats", ids),
+        fetchTodasLasFilas("equipo_partido_stats", ids),
       ]);
       if (cancelled) return;
       setJugData(jd || []);
