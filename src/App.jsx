@@ -5992,6 +5992,14 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
   const [jugData, setJugData] = useState(null); // null = cargando
   const [eqData, setEqData] = useState(null);
   const [idsJugadoresRivalesDelEquipo, setIdsJugadoresRivalesDelEquipo] = useState([]);
+  const [sortCol, setSortCol] = useState("pts");
+  const [sortDir, setSortDir] = useState("desc"); // "asc" | "desc"
+
+  const toggleSort = (colKey) => {
+    if (sortCol === colKey) { setSortDir((d) => (d === "desc" ? "asc" : "desc")); return; }
+    setSortCol(colKey);
+    setSortDir(colKey === "nombre" ? "asc" : "desc");
+  };
 
   // Un solo fetch para toda la temporada (ambos lados de cada partido) -- cambiar de equipo o de
   // vista despues es puramente calculo en el cliente, sin volver a pedirle nada a Supabase.
@@ -6118,6 +6126,14 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
 
   const cargando = jugData === null || eqData === null;
 
+  // Orden elegido tocando un encabezado de columna (ver toggleSort) -- la fila de equipo-resumen
+  // no entra acá, siempre queda fija al final de la tabla/CSV.
+  const filasOrdenadas = filas ? [...filas].sort((a, b) => {
+    const av = a[sortCol], bv = b[sortCol];
+    const cmp = sortCol === "nombre" ? String(av || "").localeCompare(String(bv || "")) : (Number(av) || 0) - (Number(bv) || 0);
+    return sortDir === "asc" ? cmp : -cmp;
+  }) : filas;
+
   const VIEWS = [
     ["promedio", "Promedio"],
     ["ultimos3", "Últimos 3 partidos"],
@@ -6127,9 +6143,9 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
   ];
 
   const exportarCSV = () => {
-    if (!filas) return;
+    if (!filasOrdenadas) return;
     const headers = COLUMNAS_STATS_PLANTEL.map((c) => c.l);
-    const cuerpo = filas.map((j) => COLUMNAS_STATS_PLANTEL.map((c) => formatCeldaStats(j, c)));
+    const cuerpo = filasOrdenadas.map((j) => COLUMNAS_STATS_PLANTEL.map((c) => formatCeldaStats(j, c)));
     if (filaEquipo) cuerpo.push(COLUMNAS_STATS_PLANTEL.map((c) => formatCeldaStats(filaEquipo, c)));
     const nombreEquipo = equiposDisponibles.find((e) => e.value === equipo)?.label || "equipo";
     const sufijo = view === "seleccion"
@@ -6201,14 +6217,18 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
               <thead>
                 <tr>
                   {COLUMNAS_STATS_PLANTEL.map((c) => (
-                    <th key={c.k} className={`sticky top-0 bg-zinc-950 text-zinc-500 font-bold uppercase tracking-wide text-[10px] py-2 px-2.5 border-b border-zinc-800 whitespace-nowrap ${posicionStickyStats(c.k)} ${c.k === "dorsal" || c.k === "nombre" ? "z-20" : "z-10"}`}>
-                      {c.l}
+                    <th key={c.k} onClick={() => toggleSort(c.k)} title="Ordenar por esta columna"
+                      className={`sticky top-0 bg-zinc-950 text-zinc-500 font-bold uppercase tracking-wide text-[10px] py-2 px-2.5 border-b border-zinc-800 whitespace-nowrap cursor-pointer select-none hover:text-zinc-300 ${posicionStickyStats(c.k)} ${c.k === "dorsal" || c.k === "nombre" ? "z-20" : "z-10"} ${sortCol === c.k ? "text-brand-400" : ""}`}>
+                      <span className="inline-flex items-center gap-0.5">
+                        {c.l}
+                        {sortCol === c.k && (sortDir === "asc" ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+                      </span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filas.map((j, i) => (
+                {filasOrdenadas.map((j, i) => (
                   <tr key={i} className="group hover:bg-zinc-800/40">
                     {COLUMNAS_STATS_PLANTEL.map((c) => (
                       <td key={c.k} className={`py-1.5 px-2.5 border-b border-zinc-800/70 whitespace-nowrap ${posicionStickyStats(c.k)} ${c.k === "dorsal" || c.k === "nombre" ? "bg-zinc-900 group-hover:bg-zinc-800" : "text-zinc-300"} ${c.k === "nombre" ? "font-medium text-zinc-100" : ""} ${c.k === "dorsal" ? "font-mono text-brand-300" : ""}`}>
