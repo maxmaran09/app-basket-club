@@ -5969,6 +5969,7 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
   const [selectorAbierto, setSelectorAbierto] = useState(false);
   const [jugData, setJugData] = useState(null); // null = cargando
   const [eqData, setEqData] = useState(null);
+  const [idsJugadoresRivalesDelEquipo, setIdsJugadoresRivalesDelEquipo] = useState([]);
 
   // Un solo fetch para toda la temporada (ambos lados de cada partido) -- cambiar de equipo o de
   // vista despues es puramente calculo en el cliente, sin volver a pedirle nada a Supabase.
@@ -6024,6 +6025,23 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equipo]);
 
+  // IDs de jugadores_rivales que pertenecen puntualmente al equipo rival elegido -- necesario para
+  // separar correctamente sus filas de jugador_partido_stats en un partido rival-vs-rival (donde
+  // hay jugadores de DOS equipos rivales a la vez). Antes se intentaba resolver comparando el
+  // texto "equipo" de jugador_partido_stats contra el de equipo_partido_stats, pero ese texto podía
+  // quedar desincronizado entre ambas tablas en partidos viejos (ej. el nombre del equipo se
+  // corrigió en el header después de guardado) y esas filas desaparecían en silencio de esta
+  // pantalla aunque el jugador siguiera bien vinculado (bug real, reportado por el usuario).
+  useEffect(() => {
+    if (equipo === "propio") { setIdsJugadoresRivalesDelEquipo([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("jugadores_rivales").select("id").eq("equipo_rival_id", equipo);
+      if (!cancelled) setIdsJugadoresRivalesDelEquipo((data || []).map((j) => j.id));
+    })();
+    return () => { cancelled = true; };
+  }, [equipo]);
+
   const idsRelevantes = view === "promedio" ? partidosDelEquipo.map((p) => p.id)
     : view === "ultimos3" ? partidosDelEquipo.slice(0, 3).map((p) => p.id)
     : view === "local" ? partidosDelEquipo.filter((p) => ladoDelEquipo(p.id) === "LOCAL").map((p) => p.id)
@@ -6031,14 +6049,18 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
     : partidosSeleccionados.filter((id) => partidosDelEquipo.some((p) => p.id === id));
 
   // No alcanza con "el partido es relevante" -- un partido rival-vs-rival tiene jugadores de DOS
-  // equipos distintos cargados a la vez, asi que ademas hay que quedarse solo con las filas cuyo
-  // texto de equipo (tal cual vino del PDF) coincide con el lado que ocupa el equipo elegido en
-  // ESE partido puntual.
+  // equipos distintos cargados a la vez, asi que ademas hay que quedarse solo con las filas que
+  // realmente son del equipo elegido. Para "propio" alcanza con que la fila tenga jugador_id (solo
+  // nuestro plantel se vincula ahi, sin importar de que lado del partido jugamos); para un rival,
+  // su jugador_rival_id tiene que pertenecer puntualmente a ESE equipo_rival_id (ver fetch de
+  // idsJugadoresRivalesDelEquipo arriba). Matchear por el texto "equipo" (como se hacia antes) era
+  // fragil: ese texto podia quedar desincronizado entre jugador_partido_stats y
+  // equipo_partido_stats en partidos viejos y la fila desaparecia en silencio de esta pantalla.
   const filas = jugData === null ? null : agruparJugadoresDeEquipo(
     (jugData || []).filter((f) => {
       if (!idsRelevantes.includes(f.partido_id)) return false;
-      const filaEq = filaEquipoEnPartido(f.partido_id);
-      return !!filaEq && f.equipo === filaEq.equipo;
+      if (equipo === "propio") return !!f.jugador_id;
+      return !!f.jugador_rival_id && idsJugadoresRivalesDelEquipo.includes(f.jugador_rival_id);
     }),
     equipo === "propio"
   );
