@@ -6042,7 +6042,19 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
     return () => { cancelled = true; };
   }, [equipo]);
 
-  const idsRelevantes = view === "promedio" ? partidosDelEquipo.map((p) => p.id)
+  // "Promedio" usa TODOS los partidos de la temporada (igual que vista_promedios_jugador, que no
+  // depende de resolver el lado del equipo) -- no solo los que "partidosDelEquipo" pudo clasificar
+  // como propios/de este rival vía equipo_propio/condicion o equipo_rival_id en equipo_partido_stats.
+  // Esa clasificación puede fallar en partidos puntuales (ej. quedó sin marcar LOCAL/VISITANTE, o
+  // sin "Vincular equipo" del lado del rival) aunque los jugadores de ese partido SÍ estén bien
+  // vinculados -- antes esos partidos se perdían en silencio del promedio (bug real, reportado por
+  // el usuario: Estadísticas del plantel mostraba menos PJ que Jugador 360°/Scouting para el mismo
+  // jugador en la misma temporada). El filtro de abajo (jugador_id / jugador_rival_id) ya garantiza
+  // que solo entren filas que de verdad son de este jugador/equipo, así que ampliar el universo de
+  // partidos acá es seguro. Local/Visita/Últimos 3 sí necesitan el lado resuelto (para saber de
+  // qué condición se trata, o para ordenar los últimos de ESTE equipo), así que siguen usando
+  // "partidosDelEquipo".
+  const idsRelevantes = view === "promedio" ? historial.map((p) => p.id)
     : view === "ultimos3" ? partidosDelEquipo.slice(0, 3).map((p) => p.id)
     : view === "local" ? partidosDelEquipo.filter((p) => ladoDelEquipo(p.id) === "LOCAL").map((p) => p.id)
     : view === "visita" ? partidosDelEquipo.filter((p) => ladoDelEquipo(p.id) === "VISITANTE").map((p) => p.id)
