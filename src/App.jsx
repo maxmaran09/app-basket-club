@@ -6259,9 +6259,12 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
 // entidad por cada equipo con datos en esta temporada (el propio + cualquier rival con
 // equipo_rival_id vinculado) -- identifica cada lado por equipo_propio/condicion o
 // equipo_rival_id, nunca por el texto libre "equipo" (ese texto puede variar entre cargas del
-// mismo equipo -- ver el fix de Estadisticas del plantel, mismo motivo).
+// mismo equipo -- ver el fix de Estadisticas del plantel, mismo motivo). De paso arma la lista de
+// "enfrentamientos" (cada partido con ambos lados identificados), para poder sacar despues el
+// resultado directo entre dos equipos puntuales (desempate olímpico, ver diferencialEntreDosEquipos).
 function construirEntidadesEquipos(historial, eqData, equiposRivales) {
   const entidades = new Map(); // key -> { propias: [], rivales: [] }
+  const enfrentamientos = []; // { partidoId, fecha, keyA, keyB, filaA, filaB }
   const getEntidad = (key) => {
     if (!entidades.has(key)) entidades.set(key, { propias: [], rivales: [] });
     return entidades.get(key);
@@ -6279,14 +6282,35 @@ function construirEntidadesEquipos(historial, eqData, equiposRivales) {
     const id1 = identidadDe(f1), id2 = identidadDe(f2);
     if (id1) { const e = getEntidad(id1); e.propias.push(f1); e.rivales.push(f2); }
     if (id2) { const e = getEntidad(id2); e.propias.push(f2); e.rivales.push(f1); }
+    if (id1 && id2) enfrentamientos.push({ partidoId: p.id, fecha: p.fecha, keyA: id1, keyB: id2, filaA: f1, filaB: f2 });
   });
 
-  return [...entidades.entries()].map(([key, { propias, rivales }]) => {
+  const entidadesList = [...entidades.entries()].map(([key, { propias, rivales }]) => {
     const rc = calcularRendimientoColectivo(propias, rivales);
     if (!rc) return null;
     const nombre = key === "propio" ? "Náutico Hacoaj" : (equiposRivales.find((e) => e.id === key.slice(6))?.nombre_club || "Rival");
     return { key, nombre, propio: key === "propio", rc };
   }).filter(Boolean);
+
+  return { entidades: entidadesList, enfrentamientos };
+}
+
+// Resultado directo entre dos equipos puntuales (todos los partidos de ida y vuelta que jugaron
+// entre sí esta temporada) -- desempate olímpico: cuando dos equipos empatan en récord general,
+// gana quien tenga mejor diferencia de puntos en sus enfrentamientos directos. "dif" es siempre
+// desde la perspectiva de keyX (positivo = keyX arriba).
+function diferencialEntreDosEquipos(enfrentamientos, keyX, keyY) {
+  let favor = 0, contra = 0, pj = 0;
+  enfrentamientos.forEach((e) => {
+    let filaX, filaY;
+    if (e.keyA === keyX && e.keyB === keyY) { filaX = e.filaA; filaY = e.filaB; }
+    else if (e.keyA === keyY && e.keyB === keyX) { filaX = e.filaB; filaY = e.filaA; }
+    else return;
+    favor += Number(filaX.pts) || 0;
+    contra += Number(filaY.pts) || 0;
+    pj++;
+  });
+  return pj > 0 ? { pj, favor, contra, dif: favor - contra } : null;
 }
 
 const COLUMNAS_RANKING_EQUIPOS = [
@@ -6308,6 +6332,7 @@ const COLUMNAS_RANKING_EQUIPOS = [
   { k: "t1pct", l: "%T1", pct: true },
   { k: "rd", l: "RD", dec: 1 },
   { k: "ro", l: "RO", dec: 1 },
+  { k: "roc", l: "RO Cedidos", dec: 1 },
   { k: "ast", l: "AST", dec: 1 },
   { k: "rec", l: "REC", dec: 1 },
   { k: "per", l: "PÉR", dec: 1 },
@@ -6327,7 +6352,7 @@ function filaRankingDeEntidad(ent) {
     t2a: t2.made, t2i: t2.att, t2pct: t2.pct,
     t3a: t3.made, t3i: t3.att, t3pct: t3.pct,
     t1a: t1.made, t1i: t1.att, t1pct: t1.pct,
-    rd: rc.control.rd, ro: rc.control.ro, ast: rc.control.ast, rec: rc.control.rec, per: rc.control.per,
+    rd: rc.control.rd, ro: rc.control.ro, roc: rc.control.roRival, ast: rc.control.ast, rec: rc.control.rec, per: rc.control.per,
   };
 }
 
@@ -6364,7 +6389,8 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
     return () => { cancelled = true; };
   }, [historial]);
 
-  const filas = eqData === null ? null : construirEntidadesEquipos(historial, eqData, equiposRivales).map(filaRankingDeEntidad);
+  const { entidades, enfrentamientos } = eqData === null ? { entidades: null, enfrentamientos: [] } : construirEntidadesEquipos(historial, eqData, equiposRivales);
+  const filas = entidades === null ? null : entidades.map(filaRankingDeEntidad);
 
   // Arranca comparando el propio contra el primer rival de la lista -- el usuario puede cambiar
   // cualquiera de los dos desde los desplegables.
@@ -6382,16 +6408,27 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
     setSortDir(colKey === "nombre" ? "asc" : "desc");
   };
 
+  // Ordenar por "record" (G-P) desempata, en caso de empate, por el resultado directo entre esos
+  // dos equipos puntuales (desempate olímpico) -- no por ninguna otra estadística general.
   const filasOrdenadas = filas ? [...filas].sort((a, b) => {
-    const av = sortCol === "record" ? a.g - a.p : a[sortCol];
-    const bv = sortCol === "record" ? b.g - b.p : b[sortCol];
-    const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+    let cmp;
+    if (sortCol === "record") {
+      cmp = (a.g - a.p) - (b.g - b.p);
+      if (cmp === 0) {
+        const h2h = diferencialEntreDosEquipos(enfrentamientos, a.key, b.key);
+        cmp = h2h ? h2h.dif : 0;
+      }
+    } else {
+      const av = a[sortCol], bv = b[sortCol];
+      cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+    }
     return sortDir === "asc" ? cmp : -cmp;
   }) : filas;
 
   const cargando = eqData === null;
   const filaA = filas?.find((f) => f.key === equipoA) || null;
   const filaB = filas?.find((f) => f.key === equipoB) || null;
+  const h2h = equipoA && equipoB ? diferencialEntreDosEquipos(enfrentamientos, equipoA, equipoB) : null;
 
   const METRICAS_COMPARAR = [
     { k: "ptsFavor", l: "Puntos a favor", dec: 1 },
@@ -6401,6 +6438,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
     { k: "t1pct", l: "T1 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t1a.toFixed(1)}/${f.t1i.toFixed(1)}` },
     { k: "rd", l: "Rebote defensivo", dec: 1 },
     { k: "ro", l: "Rebote ofensivo", dec: 1 },
+    { k: "roc", l: "Rebote ofensivo cedido", dec: 1, invertido: true },
     { k: "ast", l: "Asistencias", dec: 1 },
     { k: "rec", l: "Recuperos", dec: 1 },
     { k: "per", l: "Pérdidas", dec: 1, invertido: true },
@@ -6456,7 +6494,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-zinc-600 mt-2">Tocá cualquier columna para ordenar.</p>
+              <p className="text-xs text-zinc-600 mt-2">Tocá cualquier columna para ordenar — en "G-P", un empate en récord se desempata por el resultado directo entre esos dos equipos (ida y vuelta), no por otra estadística.</p>
             </>
           ) : (
             <div className="max-w-2xl mx-auto">
@@ -6475,6 +6513,23 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
                   </select>
                 </div>
               </div>
+
+              {filaA && filaB && (
+                <div className="flex items-center justify-center gap-2 mb-5 bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 px-3 text-xs">
+                  <span className="text-zinc-500">Ventaja deportiva (ida y vuelta{h2h ? `, ${h2h.pj} PJ` : ""}):</span>
+                  {h2h ? (
+                    h2h.dif === 0 ? (
+                      <span className="font-bold text-zinc-300">Empatados ({h2h.favor.toFixed(0)}-{h2h.contra.toFixed(0)})</span>
+                    ) : (
+                      <span className={`font-bold ${h2h.dif > 0 ? "text-brand-300" : "text-amber-400"}`}>
+                        {h2h.dif > 0 ? filaA.nombre : filaB.nombre} +{Math.abs(h2h.dif).toFixed(0)}
+                      </span>
+                    )
+                  ) : (
+                    <span className="font-bold text-zinc-600">sin enfrentamientos directos esta temporada</span>
+                  )}
+                </div>
+              )}
 
               {filaA && filaB && (
                 <div className="space-y-4">
