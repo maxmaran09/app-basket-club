@@ -6321,6 +6321,8 @@ const COLUMNAS_RANKING_EQUIPOS = [
   { k: "ptsContra", l: "PTS Contra", dec: 1 },
   { k: "dif", l: "Dif", dec: 1, signed: true },
   { k: "play", l: "Play", dec: 1 },
+  { k: "pplayF", l: "PPLAY F", dec: 2 },
+  { k: "pplayC", l: "PPLAY C", dec: 2 },
   { k: "t2a", l: "T2A", dec: 1 },
   { k: "t2i", l: "T2I", dec: 1 },
   { k: "t2pct", l: "%T2", pct: true },
@@ -6349,6 +6351,7 @@ function filaRankingDeEntidad(ent) {
     ptsFavor: rc.pts.general.favor, ptsContra: rc.pts.general.contra,
     dif: rc.pts.general.favor - rc.pts.general.contra,
     play: rc.eficiencia.playProm,
+    pplayF: rc.eficiencia.ppp, pplayC: rc.eficiencia.pppRival,
     t2a: t2.made, t2i: t2.att, t2pct: t2.pct,
     t3a: t3.made, t3i: t3.att, t3pct: t3.pct,
     t1a: t1.made, t1i: t1.att, t1pct: t1.pct,
@@ -6433,6 +6436,8 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
   const METRICAS_COMPARAR = [
     { k: "ptsFavor", l: "Puntos a favor", dec: 1 },
     { k: "ptsContra", l: "Puntos en contra", dec: 1, invertido: true },
+    { k: "pplayF", l: "PPLAY F (puntos por play a favor)", dec: 2 },
+    { k: "pplayC", l: "PPLAY C (puntos por play permitidos)", dec: 2, invertido: true },
     { k: "t2pct", l: "T2 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t2a.toFixed(1)}/${f.t2i.toFixed(1)}` },
     { k: "t3pct", l: "T3 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t3a.toFixed(1)}/${f.t3i.toFixed(1)}` },
     { k: "t1pct", l: "T1 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t1a.toFixed(1)}/${f.t1i.toFixed(1)}` },
@@ -7339,6 +7344,12 @@ function calcularRendimientoColectivo(propias, rivales) {
   const rec = sum(propias, "rec");
   const madeFg = t2a + t3a;
 
+  // Mismo "play" del rival (intentos de T2/T3 + 0.44*T1 + perdidas, del lado contrario), para
+  // poder sacar "puntos por play permitidos" -- cuantos puntos nos metieron por cada posesion que
+  // tuvieron, la contracara exacta de "ppp" (puntos por play a favor).
+  const playRival = sum(rivales, "t2i") + sum(rivales, "t3i") + 0.44 * sum(rivales, "t1i") + sum(rivales, "per");
+  const ptsRival = sum(rivales, "pts");
+
   const promPtsDe = (idsCondicion) => {
     const prop = propias.filter((f) => idsCondicion.has(f.partido_id));
     const riv = rivales.filter((f) => idsCondicion.has(f.partido_id));
@@ -7360,6 +7371,7 @@ function calcularRendimientoColectivo(propias, rivales) {
       efgPct: (t2i + t3i) ? ((t2a + 1.5 * t3a) / (t2i + t3i)) * 100 : 0,
       playProm: play / pj,
       ppp: play ? pts / play : 0,
+      pppRival: playRival ? ptsRival / playRival : 0,
     },
     tiros: [
       { l: "T2", made: t2a / pj, att: t2i / pj, pct: t2i ? (t2a / t2i) * 100 : 0 },
