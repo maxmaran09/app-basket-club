@@ -6449,6 +6449,13 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
     { k: "per", l: "Pérdidas", dec: 1, invertido: true },
   ];
 
+  const exportarCSV = () => {
+    if (!filasOrdenadas) return;
+    const headers = COLUMNAS_RANKING_EQUIPOS.map((c) => c.l);
+    const cuerpo = filasOrdenadas.map((f) => COLUMNAS_RANKING_EQUIPOS.map((c) => formatCeldaRanking(f, c)));
+    descargarCSV("Ranking de equipos.csv", [headers, ...cuerpo]);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-6xl max-h-[88vh] flex flex-col text-zinc-100" onClick={(e) => e.stopPropagation()}>
@@ -6460,9 +6467,16 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
             </div>
             <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
           </div>
-          <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1 w-fit">
-            <button onClick={() => setView("ranking")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "ranking" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Ranking</button>
-            <button onClick={() => setView("comparar")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "comparar" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Comparar 2 equipos</button>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1 w-fit">
+              <button onClick={() => setView("ranking")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "ranking" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Ranking</button>
+              <button onClick={() => setView("comparar")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "comparar" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Comparar 2 equipos</button>
+            </div>
+            {view === "ranking" && (
+              <button onClick={exportarCSV} disabled={!filas || filas.length === 0} className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40 border border-zinc-700 rounded px-2.5 py-1.5">
+                <Download size={13} /> Exportar CSV
+              </button>
+            )}
           </div>
         </div>
 
