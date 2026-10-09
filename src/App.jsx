@@ -182,7 +182,7 @@ function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", m
             <input value={draft} onChange={(e) => setDraft(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
           )}
           <div className="flex gap-2">
-            <button onClick={save} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={save} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
             <button onClick={() => setEditing(false)} className="text-zinc-400 text-xs px-3 py-1.5">Cancelar</button>
           </div>
         </div>
@@ -192,10 +192,10 @@ function EditableField({ label, icon, value, onSave, accent = "text-cyan-400", m
             value ? (
               <div className="text-sm text-zinc-300 flex-1 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(value)) }} />
             ) : (
-              <p className="text-sm text-zinc-600 flex-1">Sin datos.</p>
+              <p className="text-sm text-zinc-500 flex-1">Sin datos.</p>
             )
           ) : (
-            <p className="text-sm text-zinc-300 flex-1">{value || <span className="text-zinc-600">Sin datos.</span>}</p>
+            <p className="text-sm text-zinc-300 flex-1">{value || <span className="text-zinc-500">Sin datos.</span>}</p>
           )}
           {!soloLectura && (
             <button onClick={startEdit} className="text-xs text-blue-400 hover:text-blue-300 shrink-0">Editar</button>
@@ -213,7 +213,7 @@ function ConfirmDeleteModal({ itemLabel, subject = "elemento", onCancel, onConfi
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-red-400 font-bold text-sm mb-2">Eliminar {subject}</h3>
         <p className="text-zinc-400 text-sm mb-3">
           Vas a eliminar {subject} <span className="text-zinc-200">"{itemLabel}"</span> de forma permanente. Escribí <span className="font-mono text-red-300">BORRAR</span> para confirmar.
@@ -663,7 +663,7 @@ function CourtDiagram({ initial, onSave, onCancel }) {
         Mové, agregá jugadores, coach o balón tocando la cancha (pasá el mouse sobre cada ícono para ver qué hace). Para Pase/Dribbling/Corte/Cortina: cada clic agrega un punto y quiebra la trayectoria — doble clic o "Finalizar trazo" para terminar. Pase = punteada · Dribbling = zigzag · Corte = sólida con flecha · Cortina = sólida con T · Lanzamiento = símbolo fijo, primer clic ubica, segundo clic define la dirección.
       </p>
       <div className="flex gap-2 mt-2">
-        <button onClick={() => onSave({ courtType, players, lines, balls, shots })} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
+        <button onClick={() => onSave({ courtType, players, lines, balls, shots })} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-3 py-1.5 rounded">
           Guardar cancha
         </button>
         <button onClick={onCancel} className="text-zinc-400 text-xs px-3 py-1.5">Cancelar</button>
@@ -783,7 +783,7 @@ function AsistenciaSection({ event, jugadores }) {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={guardar} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar asistencia</button>
+            <button onClick={guardar} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Guardar asistencia</button>
             {saved && <span className="text-emerald-400 text-xs">Guardado ✓</span>}
           </div>
         </>
@@ -904,7 +904,7 @@ function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
                         className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100"
                       />
                       <div className="flex gap-2">
-                        <button onClick={() => guardarNota(f)} className="bg-brand-600 hover:bg-brand-500 text-white text-xs px-2.5 py-1 rounded">Guardar</button>
+                        <button onClick={() => guardarNota(f)} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-2.5 py-1 rounded">Guardar</button>
                         <button onClick={() => setEditandoId(null)} className="text-zinc-400 text-xs px-2.5 py-1">Cancelar</button>
                       </div>
                     </div>
@@ -951,7 +951,7 @@ function HorariosSection({ data, onSave, soloLectura }) {
                 <input value={horarioFisico} onChange={(e) => setHorarioFisico(e.target.value)} placeholder="ej: 19:00 a 20:00 hs" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               </div>
             </div>
-            <button onClick={guardarHorarios} className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={guardarHorarios} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1036,7 +1036,7 @@ function PreparacionFisicaSection({ data, onSave, soloLectura }) {
               <p className="text-xs text-zinc-500 mb-1">Notas del preparador físico</p>
               <RichTextEditor initialValue={notasFisicas} onChange={setNotasFisicas} placeholder="Notas del preparador físico" />
             </div>
-            <button onClick={guardarFisica} className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
+            <button onClick={guardarFisica} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-3 py-1.5 rounded">Guardar</button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1294,7 +1294,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                   </div>
                   <RichTextEditor initialValue={editBloqueForm.desc} onChange={(html) => setEditBloqueForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
                   <div className="flex gap-2">
-                    <button onClick={saveBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+                    <button onClick={saveBloque} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
                     <button onClick={() => setEditingBloqueId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
                   </div>
                 </div>
@@ -1324,8 +1324,8 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                         <button onClick={() => guardarEnBiblioteca(b)} title="Guardar en la biblioteca" className="text-zinc-500 hover:text-cyan-400">
                           <BookmarkPlus size={15} />
                         </button>
-                        <button onClick={() => deleteBloque(b.id)} title="Eliminar bloque" className="text-zinc-500 hover:text-red-400">
-                          <Trash2 size={15} />
+                        <button onClick={() => deleteBloque(b.id)} title="Eliminar bloque" className="text-zinc-500 hover:text-red-400 p-2 ml-1">
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     )}
@@ -1395,7 +1395,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
           </div>
           <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
           <div className="flex gap-2">
-            <button onClick={addBloque} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
+            <button onClick={addBloque} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Agregar bloque de cancha</button>
             <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
           </div>
         </div>
@@ -1415,7 +1415,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 max-w-3xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-cyan-400 font-bold text-sm flex items-center gap-1.5"><Library size={15} /> Biblioteca de bloques</h3>
-              <button onClick={() => setShowBiblioteca(false)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+              <button onClick={() => setShowBiblioteca(false)} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={16} /></button>
             </div>
             {bibliotecaBloques.length === 0 ? (
               <p className="text-sm text-zinc-500">Todavía no guardaste ningún bloque en la biblioteca. Usá el ícono <BookmarkPlus size={12} className="inline" /> de un bloque ya creado para guardarlo acá.</p>
@@ -1435,7 +1435,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
                           <button onClick={() => agregarDesdeBiblioteca(item)} title="Agregar a este evento" className="text-cyan-400 hover:text-cyan-300 shrink-0">
                             <Plus size={16} />
                           </button>
-                          <button onClick={() => { if (window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) onDeleteBiblioteca?.(item.id); }} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 shrink-0">
+                          <button onClick={() => { if (window.confirm("¿Eliminar este bloque de la biblioteca? No afecta a los eventos donde ya se usó.")) onDeleteBiblioteca?.(item.id); }} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 shrink-0 p-2 ml-1">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1453,7 +1453,7 @@ function BloquesConCanchaSection({ bloques, onChange, soloLectura, bibliotecaBlo
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setZoomDiagram(null)}>
           <div className="max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-end mb-2">
-              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200"><X size={20} /></button>
+              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200 p-1.5 -m-1.5"><X size={20} /></button>
             </div>
             <CourtPreview {...zoomDiagram} size={400} />
             {zoomDiagram.comentario && <p className="text-sm text-zinc-300 mt-3">{zoomDiagram.comentario}</p>}
@@ -1838,7 +1838,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
             <CategoriaPicker value={editForm.categoria} onChange={(v) => setEditForm({ ...editForm, categoria: v })} categorias={categoriasExistentes} />
             <RichTextEditor initialValue={editForm.desc} onChange={(html) => setEditForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
-              <button onClick={saveEdit} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+              <button onClick={saveEdit} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
               <button onClick={() => setEditingId(null)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
             </div>
           </div>
@@ -1854,8 +1854,8 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
                   <button onClick={() => startEdit(item)} title="Editar bloque" className="text-zinc-500 hover:text-cyan-400">
                     <PenLine size={15} />
                   </button>
-                  <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400">
-                    <Trash2 size={15} />
+                  <button onClick={() => deleteItem(item.id)} title="Eliminar de la biblioteca" className="text-zinc-500 hover:text-red-400 p-2 ml-1">
+                    <Trash2 size={14} />
                   </button>
                 </div>
               )}
@@ -1951,7 +1951,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
             <CategoriaPicker value={form.categoria} onChange={(v) => setForm({ ...form, categoria: v })} categorias={categoriasExistentes} />
             <RichTextEditor initialValue={form.desc} onChange={(html) => setForm((prev) => ({ ...prev, desc: html }))} placeholder="Descripción del ejercicio" />
             <div className="flex gap-2">
-              <button onClick={addItem} className="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
+              <button onClick={addItem} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Agregar a la biblioteca</button>
               <button onClick={() => setShowForm(false)} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
             </div>
           </div>
@@ -1966,7 +1966,7 @@ function BibliotecaView({ bibliotecaBloques, onAdd, onUpdate, onDelete, soloLect
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setZoomDiagram(null)}>
           <div className="max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-end mb-2">
-              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200"><X size={20} /></button>
+              <button onClick={() => setZoomDiagram(null)} className="text-zinc-400 hover:text-zinc-200 p-1.5 -m-1.5"><X size={20} /></button>
             </div>
             <CourtPreview {...zoomDiagram} size={400} />
             {zoomDiagram.comentario && <p className="text-sm text-zinc-300 mt-3">{zoomDiagram.comentario}</p>}
@@ -2403,7 +2403,7 @@ function FotoLightboxModal({ url, onClose }) {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end mb-2">
-          <button onClick={onClose} className="text-zinc-300 hover:text-white"><X size={20} /></button>
+          <button onClick={onClose} className="text-zinc-300 hover:text-white p-1.5 -m-1.5"><X size={20} /></button>
         </div>
         <img src={url} alt="" className="w-full h-auto max-h-[80vh] object-contain rounded-lg" />
       </div>
@@ -2417,7 +2417,7 @@ function VideoPlayerModal({ url, onClose }) {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end mb-2">
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200"><X size={18} /></button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 p-1.5 -m-1.5"><X size={18} /></button>
         </div>
         {embedUrl ? (
           <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
@@ -2661,7 +2661,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
             {equipoRival.notas_colectivas ? (
               <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(equipoRival.notas_colectivas)) }} />
             ) : (
-              <p className="text-sm text-zinc-600 mb-3">Sin notas colectivas cargadas todavía.</p>
+              <p className="text-sm text-zinc-500 mb-3">Sin notas colectivas cargadas todavía.</p>
             )}
             <VideoLinkButton url={equipoRival.video_colectivo_url} label="Ver Video de Partido" />
 
@@ -2693,7 +2693,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
           objetivoAtaque ? (
             <div className="text-sm text-zinc-300 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(objetivoAtaque)) }} />
           ) : (
-            <p className="text-sm text-zinc-600">Sin objetivos de ataque cargados.</p>
+            <p className="text-sm text-zinc-500">Sin objetivos de ataque cargados.</p>
           )
         ) : (
           <RichTextEditor initialValue={objetivoAtaque} onChange={setObjetivoAtaque} onBlur={guardarObjetivoAtaque} placeholder="Objetivos de ataque" />
@@ -2705,7 +2705,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
           objetivoDefensa ? (
             <div className="text-sm text-zinc-300 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(objetivoDefensa)) }} />
           ) : (
-            <p className="text-sm text-zinc-600">Sin objetivos de defensa cargados.</p>
+            <p className="text-sm text-zinc-500">Sin objetivos de defensa cargados.</p>
           )
         ) : (
           <RichTextEditor initialValue={objetivoDefensa} onChange={setObjetivoDefensa} onBlur={guardarObjetivoDefensa} placeholder="Objetivos de defensa" />
@@ -2717,7 +2717,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
           planAtaque ? (
             <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planAtaque)) }} />
           ) : (
-            <p className="text-sm text-zinc-600 mb-3">Sin plan de ataque cargado.</p>
+            <p className="text-sm text-zinc-500 mb-3">Sin plan de ataque cargado.</p>
           )
         ) : (
           <div className="mb-3">
@@ -2738,7 +2738,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
           planDefensa ? (
             <div className="text-sm text-zinc-300 mb-3 desc-render" dangerouslySetInnerHTML={{ __html: sanitizeDescripcionHtml(descripcionToHtml(planDefensa)) }} />
           ) : (
-            <p className="text-sm text-zinc-600 mb-3">Sin plan de defensa cargado.</p>
+            <p className="text-sm text-zinc-500 mb-3">Sin plan de defensa cargado.</p>
           )
         ) : (
           <div className="mb-3">
@@ -2927,7 +2927,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
         <div className="mt-5 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-medium text-sm">{selectedDay} de {MESES[month]}</h2>
-            <button onClick={() => setSelectedDay(null)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+            <button onClick={() => setSelectedDay(null)} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={16} /></button>
           </div>
           {dayEvents.length === 0 && <p className="text-sm text-zinc-500 mb-3">Sin eventos cargados.</p>}
           <div className="space-y-2 mb-3">
@@ -2963,7 +2963,7 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                         <button onClick={() => onDuplicateEvent(e)} title="Duplicar evento" className="text-zinc-500 hover:text-cyan-400 p-1.5 shrink-0">
                           <Copy size={14} />
                         </button>
-                        <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-1.5 shrink-0">
+                        <button onClick={() => setDeleteTarget(e)} title="Eliminar evento" className="text-zinc-500 hover:text-red-400 p-2 ml-1 shrink-0">
                           <Trash2 size={14} />
                         </button>
                       </>
@@ -2975,21 +2975,21 @@ function CalendarView({ events, equiposRivales, onSelectEvent, onAddEvent, onDel
                       <input type="time" lang="es-AR" value={horaInicioEdit} onChange={(ev) => setHoraInicioEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
                       <span className="text-zinc-500 text-xs">a</span>
                       <input type="time" lang="es-AR" value={horaFinEdit} onChange={(ev) => setHoraFinEdit(ev.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
-                      <button onClick={() => { onEditHorario(e.id, { horaInicio: horaInicioEdit || null, horaFin: horaFinEdit || null }); setHorarioTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => { onEditHorario(e.id, { horaInicio: horaInicioEdit || null, horaFin: horaFinEdit || null }); setHorarioTarget(null); }} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
                       <button onClick={() => setHorarioTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
                   )}
                   {isRenaming && (
                     <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
                       <input value={renameValue} onChange={(ev) => setRenameValue(ev.target.value)} className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
-                      <button onClick={() => { if (renameValue.trim()) { onRenameEvent(e.id, renameValue.trim()); setRenameTarget(null); } }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => { if (renameValue.trim()) { onRenameEvent(e.id, renameValue.trim()); setRenameTarget(null); } }} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
                       <button onClick={() => setRenameTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
                   )}
                   {isMoving && (
                     <div className="flex items-center flex-wrap gap-2 px-3 pb-2">
                       <input type="date" value={moveDate} onChange={(ev) => setMoveDate(ev.target.value)} className="min-w-0 flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100" />
-                      <button onClick={() => { onMoveEvent(e.id, moveDate); setMoveTarget(null); }} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
+                      <button onClick={() => { onMoveEvent(e.id, moveDate); setMoveTarget(null); }} className="bg-brand-500 hover:bg-brand-600 text-white text-xs px-2 py-1 rounded shrink-0">Guardar</button>
                       <button onClick={() => setMoveTarget(null)} className="text-zinc-400 text-xs px-2 py-1 shrink-0">Cancelar</button>
                     </div>
                   )}
@@ -3189,8 +3189,14 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
           {!soloCamposMedicos && (
             <>
               <div className="flex gap-2">
-                <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-                <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                <div className="w-20">
+                  <p className="text-xs text-zinc-500 mb-1">Dorsal</p>
+                  <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-zinc-500 mb-1">Nombre y apellido</p>
+                  <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+                </div>
               </div>
               <input placeholder="DNI (opcional)" value={form.dni} onChange={(e) => set("dni", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
               <div className="flex gap-2">
@@ -3273,7 +3279,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
                         title="Dorsal en este equipo (vacío = el mismo que en su equipo principal)"
                         className="w-11 bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-xs text-zinc-100"
                       />
-                      <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
+                      <button onClick={() => removeEquipo(i)} className="text-zinc-500 hover:text-red-400 p-1.5 -m-1.5"><X size={12} /></button>
                     </span>
                   ))}
                 </div>
@@ -3294,6 +3300,7 @@ function JugadorFormModal({ jugador, categoria, tira, onCancel, onSave, soloCamp
           <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugador ? "Guardar cambios" : "Guardar jugador"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
+        {!form.nombre_apellido && <p className="text-xs text-amber-400 mt-1.5">Falta el nombre y apellido.</p>}
       </div>
     </div>
   );
@@ -3427,8 +3434,8 @@ function TablaEvolucionSimple({ filasDesc, campos, puedeEliminar, onEliminar }) 
               })}
               {puedeEliminar && (
                 <td className="px-2 py-2 text-center">
-                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400">
-                    <Trash2 size={13} />
+                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-2">
+                    <Trash2 size={14} />
                   </button>
                 </td>
               )}
@@ -3471,8 +3478,8 @@ function TablaEvolucionGrupo({ filasDesc, grupo, campos, lowerIsBetter, puedeEli
               })}
               {puedeEliminar && (
                 <td className="px-2 py-2 text-center">
-                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400">
-                    <Trash2 size={13} />
+                  <button onClick={() => onEliminar(f.idx)} title="Eliminar este registro" className="text-zinc-600 hover:text-red-400 p-2">
+                    <Trash2 size={14} />
                   </button>
                 </td>
               )}
@@ -3497,7 +3504,7 @@ function EvolucionJugadorModal({ jugador, puedeEliminar, onEliminar, onCancel })
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-2xl w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-2 mb-1">
           <h3 className="font-bold text-sm">Evolución — {jugador.nombre_apellido}</h3>
-          <button onClick={onCancel} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+          <button onClick={onCancel} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={18} /></button>
         </div>
         <p className="text-xs text-zinc-500 mb-4">Medidas corporales y evaluación física a lo largo del tiempo.</p>
 
@@ -3573,7 +3580,7 @@ function ActualizarMedidasModal({ jugador, onCancel, onSave }) {
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="flex gap-2 mt-3">
-          <button disabled={saving} onClick={submit} className="bg-sky-600 hover:bg-sky-500 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
+          <button disabled={saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded">Guardar</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
       </div>
@@ -3805,13 +3812,13 @@ function PlantelView({ jugadores, lesiones, onAddJugador, onDeleteJugador, onUpd
               ) : (
                 <>
                   {puedeEditar && (
-                    <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-1">
-                      <PenLine size={13} />
+                    <button onClick={() => setEditTarget(j)} title="Editar jugador" className="text-zinc-600 hover:text-blue-400 p-2">
+                      <PenLine size={14} />
                     </button>
                   )}
                   {puedeAltaBaja && (
-                    <button onClick={() => setDeleteTarget(j)} title="Dar de baja" className="text-zinc-600 hover:text-red-400 p-1">
-                      <Trash2 size={13} />
+                    <button onClick={() => setDeleteTarget(j)} title="Dar de baja" className="text-zinc-600 hover:text-red-400 p-2 ml-1">
+                      <Trash2 size={14} />
                     </button>
                   )}
                 </>
@@ -3977,11 +3984,14 @@ function NuevaTemporadaModal({ categoria, tira, temporadaActivaActual, onCancel,
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-sm mb-1">Nueva temporada</h3>
         <p className="text-xs text-zinc-500 mb-3">Para {categoria} · {tira}</p>
         <div className="space-y-2">
-          <input placeholder="Nombre de la competencia (ej: Liga Metropolitana)" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div>
+            <p className="text-xs text-zinc-500 mb-1">Nombre de la competencia</p>
+            <input placeholder="Ej: Liga Metropolitana" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
           <input type="number" placeholder="Año" value={anio} onChange={(e) => setAnio(e.target.value)} className="w-32 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
         </div>
         {temporadaActivaActual && (
@@ -3996,6 +4006,7 @@ function NuevaTemporadaModal({ categoria, tira, temporadaActivaActual, onCancel,
           </button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
+        {!nombreCompetencia.trim() && <p className="text-xs text-amber-400 mt-1.5">Falta el nombre de la competencia.</p>}
       </div>
     </div>
   );
@@ -4328,7 +4339,7 @@ function MetricaComparada({ label, valor, mediaEquipo, mediaPosicion, mejorMayor
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5">
       <div className="flex items-baseline justify-between mb-1.5">
-        <span className="text-[10px] font-bold text-zinc-400 tracking-wide">{label}</span>
+        <span className="text-[10px] text-zinc-500 uppercase tracking-wide">{label}</span>
         <span className="text-lg font-extrabold">{fmt(v)}</span>
       </div>
       <BarraComparada valor={v} mediaEquipo={eq} mediaPosicion={pos} esMejor={esMejor} />
@@ -4351,7 +4362,7 @@ function TiroComparado({ label, hechos, intentos, pctEquipo, pctPosicion }) {
   const esMejor = delta >= 0;
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5">
-      <p className="text-[10px] font-bold text-zinc-400 tracking-wide mb-1">{label}</p>
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">{label}</p>
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-xs text-zinc-400">{h.toFixed(1)} / {i.toFixed(1)} por partido</span>
         <span className="text-lg font-extrabold">{Math.round(p * 100)}%</span>
@@ -4775,7 +4786,7 @@ function CambiarPasswordModal({ onCancel }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-sm mb-3">Cambiar contraseña</h3>
         {ok ? (
           <>
@@ -4793,6 +4804,7 @@ function CambiarPasswordModal({ onCancel }) {
               <button disabled={!pass1 || !pass2 || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{saving ? "Guardando…" : "Guardar"}</button>
               <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
             </div>
+            {!error && (!pass1 || !pass2) && <p className="text-xs text-amber-400 mt-1.5">Completá los dos campos para guardar.</p>}
           </>
         )}
       </div>
@@ -4829,10 +4841,13 @@ function NuevaCompetenciaModal({ onCancel, onCreada }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full text-zinc-100" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[85vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-sm mb-3">Crear nueva competencia</h3>
         <div className="space-y-2">
-          <input placeholder="Nombre (ej: Liga Metropolitana)" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div>
+            <p className="text-xs text-zinc-500 mb-1">Nombre de la competencia</p>
+            <input placeholder="Ej: Liga Metropolitana" value={nombreCompetencia} onChange={(e) => setNombreCompetencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
           <div className="flex gap-2">
             <input type="number" placeholder="Año" value={anio} onChange={(e) => setAnio(e.target.value)} className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
             <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
@@ -4844,6 +4859,7 @@ function NuevaCompetenciaModal({ onCancel, onCreada }) {
           </div>
         </div>
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        {!error && !nombreCompetencia.trim() && <p className="text-xs text-amber-400 mt-2">Falta el nombre de la competencia.</p>}
         <div className="flex gap-2 mt-3">
           <button disabled={!nombreCompetencia.trim() || saving} onClick={crear} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{saving ? "Creando…" : "Crear"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
@@ -4925,7 +4941,7 @@ function GestionTemporadas() {
 // completo (Head Coach/Asistente Tecnico) -- mismo criterio que el resto de la app, un booleano
 // ya resuelto en vez de comparar el rol adentro de cada bloque.
 function ConfiguracionView() {
-  const { session, rol } = useAuth();
+  const { session, rol, signOut } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
 
   return (
@@ -4946,9 +4962,12 @@ function ConfiguracionView() {
             <span className="text-xs text-zinc-500">Rol</span>
             <Chip tone="brand">{ROL_LABELS[rol] || rol}</Chip>
           </div>
-          <div className="pt-2.5 border-t border-zinc-800">
+          <div className="pt-2.5 border-t border-zinc-800 flex items-center justify-between flex-wrap gap-3">
             <button onClick={() => setShowPassword(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
               <KeyRound size={14} /> Cambiar contraseña
+            </button>
+            <button onClick={signOut} className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300">
+              <LogOut size={14} /> Cerrar sesión
             </button>
           </div>
         </div>
@@ -5052,7 +5071,10 @@ function EquipoRivalFormModal({ equipo, defaultCategoria, defaultTira, onCancel,
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-sm mb-3">{equipo ? "Editar equipo rival" : "Agregar equipo rival"}</h3>
         <div className="space-y-2">
-          <input placeholder="Nombre del club" value={form.nombre_club} onChange={(e) => set("nombre_club", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          <div>
+            <p className="text-xs text-zinc-500 mb-1">Nombre del club</p>
+            <input placeholder="Nombre del club" value={form.nombre_club} onChange={(e) => set("nombre_club", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+          </div>
           <div className="flex gap-2">
             <select value={form.categoria} onChange={(e) => set("categoria", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100">
               <option value="">— Sin asignar —</option>
@@ -5074,6 +5096,7 @@ function EquipoRivalFormModal({ equipo, defaultCategoria, defaultTira, onCancel,
           <button disabled={!form.nombre_club || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{equipo ? "Guardar cambios" : "Guardar equipo"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
+        {!form.nombre_club && <p className="text-xs text-amber-400 mt-1.5">Falta el nombre del club.</p>}
       </div>
     </div>
   );
@@ -5108,8 +5131,14 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
         <h3 className="font-bold text-sm mb-3">{jugadorRival ? "Editar jugador rival" : "Agregar jugador rival"}</h3>
         <div className="space-y-2">
           <div className="flex gap-2">
-            <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            <div className="w-20">
+              <p className="text-xs text-zinc-500 mb-1">Dorsal</p>
+              <input placeholder="Dorsal" type="number" value={form.dorsal} onChange={(e) => set("dorsal", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-zinc-500 mb-1">Nombre y apellido</p>
+              <input placeholder="Nombre y apellido" value={form.nombre_apellido} onChange={(e) => set("nombre_apellido", e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
+            </div>
           </div>
           <div className="flex gap-2">
             <select value={form.posicion} onChange={(e) => {
@@ -5137,6 +5166,7 @@ function JugadorRivalFormModal({ jugadorRival, onCancel, onSave }) {
           <button disabled={!form.nombre_apellido || saving} onClick={submit} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">{jugadorRival ? "Guardar cambios" : "Guardar jugador"}</button>
           <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
         </div>
+        {!form.nombre_apellido && <p className="text-xs text-amber-400 mt-1.5">Falta el nombre y apellido.</p>}
       </div>
     </div>
   );
@@ -5254,7 +5284,7 @@ function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
             <VideoLinkButton url={v.url} size={14} />
             <span className="text-sm text-zinc-200 flex-1 min-w-0 truncate">{v.titulo}</span>
             {!soloLectura && (
-              <button onClick={() => eliminar(v.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 shrink-0"><Trash2 size={14} /></button>
+              <button onClick={() => eliminar(v.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 shrink-0 p-2"><Trash2 size={14} /></button>
             )}
           </div>
         ))}
@@ -5284,7 +5314,7 @@ function VideosPreviosSection({ equipo, onUpdateEquipo, soloLectura }) {
           )}
           <div className="flex flex-wrap gap-2">
             <input value={nuevoUrl} onChange={(e) => setNuevoUrl(e.target.value)} placeholder="Link de YouTube" className="flex-1 min-w-[140px] bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
-            <button onClick={agregar} className="bg-brand-600 hover:bg-brand-500 text-white text-sm px-3 py-1.5 rounded shrink-0">Agregar</button>
+            <button onClick={agregar} className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-3 py-1.5 rounded shrink-0">Agregar</button>
           </div>
         </div>
       )}
@@ -5404,8 +5434,8 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
                   <span className="text-zinc-500 text-xs ml-auto">{formatPosicion(j)}{j.categoria ? ` · ${j.categoria}` : ""}</span>
                   {!soloLectura && (
                     <>
-                      <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-1"><PenLine size={12} /></button>
-                      <button onClick={() => setDeleteJugador(j)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={12} /></button>
+                      <button onClick={() => setEditJugador(j)} title="Editar" className="text-zinc-600 hover:text-blue-400 p-2"><PenLine size={14} /></button>
+                      <button onClick={() => setDeleteJugador(j)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-2 ml-1"><Trash2 size={14} /></button>
                     </>
                   )}
                 </div>
@@ -5475,7 +5505,7 @@ function SistemasJuegoModal({ sistemasJuego, onAdd, onDelete, onClose }) {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-bold text-sm">Sistemas de juego</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={16} /></button>
         </div>
         <p className="text-xs text-zinc-500 mb-4">Chips que aparecen en el Plan de juego de cada partido. Agregá o sacá los que use el club.</p>
         <div className="space-y-5">
@@ -5483,13 +5513,13 @@ function SistemasJuegoModal({ sistemasJuego, onAdd, onDelete, onClose }) {
             <div key={tipo}>
               <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1.5">{label}</p>
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {sistemas[tipo].length === 0 && <p className="text-xs text-zinc-600">Sin sistemas cargados.</p>}
+                {sistemas[tipo].length === 0 && <p className="text-xs text-zinc-500">Sin sistemas cargados.</p>}
                 {sistemas[tipo].map((nombre) => {
                   const row = sistemasJuego.find((s) => s.tipo === tipo && s.nombre === nombre);
                   return (
                     <span key={nombre} className="flex items-center gap-1 pl-2 pr-1 py-1 rounded text-xs bg-zinc-800 border border-zinc-700 text-zinc-300">
                       {nombre}
-                      <button onClick={() => row && onDelete(row.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 p-0.5"><X size={11} /></button>
+                      <button onClick={() => row && onDelete(row.id)} title="Eliminar" className="text-zinc-500 hover:text-red-400 p-1.5 -m-1"><X size={11} /></button>
                     </span>
                   );
                 })}
@@ -5692,8 +5722,8 @@ function ScoutingHubView({ equiposRivales, sistemasJuego, onAddSistema, onDelete
             </button>
             <VideoLinkButton url={eq.video_colectivo_url} size={14} />
             {!soloLectura && esTemporadaActiva && !verSinAsignar && (
-              <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-1">
-                <Trash2 size={13} />
+              <button onClick={() => setDeleteTarget(eq)} title="Eliminar equipo" className="text-zinc-600 hover:text-red-400 p-2">
+                <Trash2 size={14} />
               </button>
             )}
           </div>
@@ -6165,7 +6195,7 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
               <BarChart3 size={18} />
               <h2 className="text-sm font-bold text-zinc-100">Estadísticas</h2>
             </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={18} /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select value={equipo} onChange={(e) => setEquipo(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 font-medium">
@@ -6213,6 +6243,8 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
           ) : filas.length === 0 && !filaEquipo ? (
             <p className="text-sm text-zinc-500 p-4">Sin datos para esta vista.</p>
           ) : (
+            <div className="relative">
+            <div className="overflow-x-auto">
             <table className="border-collapse text-xs w-max min-w-full">
               <thead>
                 <tr>
@@ -6248,6 +6280,9 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
                 )}
               </tbody>
             </table>
+            </div>
+            <div className="pointer-events-none absolute top-0 bottom-0 right-0 w-10 bg-gradient-to-l from-zinc-900 to-transparent" />
+            </div>
           )}
         </div>
       </div>
@@ -6465,7 +6500,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
               <BarChart3 size={18} />
               <h2 className="text-sm font-bold text-zinc-100">Comparar equipos</h2>
             </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={18} /></button>
           </div>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1 w-fit">
@@ -6487,7 +6522,8 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
             <p className="text-sm text-zinc-500">Sin partidos cargados en esta temporada.</p>
           ) : view === "ranking" ? (
             <>
-              <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+              <div className="relative">
+                <div className="overflow-x-auto border border-zinc-800 rounded-lg">
                 <table className="border-collapse text-xs w-max min-w-full">
                   <thead>
                     <tr>
@@ -6512,8 +6548,10 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                <div className="pointer-events-none absolute top-0 bottom-0 right-0 w-10 rounded-r-lg bg-gradient-to-l from-zinc-900 to-transparent" />
               </div>
-              <p className="text-xs text-zinc-600 mt-2">Tocá cualquier columna para ordenar — en "G-P", un empate en récord se desempata por el resultado directo entre esos dos equipos (ida y vuelta), no por otra estadística.</p>
+              <p className="text-xs text-zinc-500 mt-2">Tocá cualquier columna para ordenar — en "G-P", un empate en récord se desempata por el resultado directo entre esos dos equipos (ida y vuelta), no por otra estadística.</p>
             </>
           ) : (
             <div className="max-w-2xl mx-auto">
@@ -6545,7 +6583,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
                       </span>
                     )
                   ) : (
-                    <span className="font-bold text-zinc-600">sin enfrentamientos directos esta temporada</span>
+                    <span className="font-bold text-zinc-500">sin enfrentamientos directos esta temporada</span>
                   )}
                 </div>
               )}
@@ -7225,7 +7263,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
             <button onClick={recalcularMetricas} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm px-3 py-1.5 rounded">
               Recalcular métricas
             </button>
-            <button onClick={guardar} disabled={saving} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">
+            <button onClick={guardar} disabled={saving} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded">
               {saving ? "Guardando…" : preview.id ? "Guardar cambios" : "Guardar estadísticas"}
             </button>
             <button onClick={() => setPreview(null)} className="text-zinc-400 text-sm px-3 py-1.5">{preview.id ? "Cancelar edición" : "Descartar"}</button>
@@ -7255,8 +7293,8 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
                 )}
                 {puedeEditar && (
                   <>
-                    <button onClick={() => editarPartido(p)} title="Editar partido" className="text-zinc-600 hover:text-cyan-400 p-1"><PenLine size={13} /></button>
-                    <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-1"><Trash2 size={13} /></button>
+                    <button onClick={() => editarPartido(p)} title="Editar partido" className="text-zinc-600 hover:text-cyan-400 p-2"><PenLine size={14} /></button>
+                    <button onClick={() => eliminarPartido(p.id)} title="Eliminar" className="text-zinc-600 hover:text-red-400 p-2 ml-1"><Trash2 size={14} /></button>
                   </>
                 )}
               </div>
@@ -7607,7 +7645,7 @@ function EstadisticasColectivasRival({ equipoRivalId, temporadaId }) {
         <StatTile value={rc.control.rec} label="REC" tone="good" decimales={1} className="flex-1 min-w-[90px]" />
         <StatTile value={rc.control.per} label="PER" tone="bad" decimales={1} className="flex-1 min-w-[90px]" />
       </div>
-      <p className="text-[11px] text-zinc-600 mt-3">Partidos de este rival en el torneo — no solo los que jugamos nosotros.</p>
+      <p className="text-[11px] text-zinc-500 mt-3">Partidos de este rival en el torneo — no solo los que jugamos nosotros.</p>
     </>
   );
 }
@@ -7866,11 +7904,11 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
             {loadingNotas ? (
               <p className="text-xs text-zinc-600">Cargando…</p>
             ) : notas.length === 0 ? (
-              <p className="text-xs text-zinc-600">Sin alertas pendientes.</p>
+              <p className="text-xs text-zinc-500">Sin alertas pendientes.</p>
             ) : (
               notas.map((n) => (
                 <div key={n.id} className="flex items-center gap-1.5 text-xs text-zinc-300">
-                  <button onClick={() => resolverNota(n.id)} title="Marcar resuelta" className="text-zinc-600 hover:text-emerald-400 shrink-0"><X size={11} /></button>
+                  <button onClick={() => resolverNota(n.id)} title="Marcar resuelta" className="text-zinc-600 hover:text-emerald-400 shrink-0 p-1.5 -m-1.5"><X size={11} /></button>
                   <button onClick={() => setNotaAbierta(n)} className="flex-1 min-w-0 truncate text-left hover:text-zinc-100">{n.texto}</button>
                 </div>
               ))
@@ -7999,7 +8037,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-md w-full max-h-[80vh] overflow-y-auto text-zinc-100" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm flex items-center gap-1.5"><MessageSquare size={14} /> Nota del staff</h3>
-              <button onClick={() => setNotaAbierta(null)} className="text-zinc-500 hover:text-zinc-300"><X size={16} /></button>
+              <button onClick={() => setNotaAbierta(null)} className="text-zinc-500 hover:text-zinc-300 p-1.5 -m-1.5"><X size={16} /></button>
             </div>
             <p className="text-sm text-zinc-200 whitespace-pre-wrap">{notaAbierta.texto}</p>
             <div className="flex gap-2 mt-4">
@@ -8226,7 +8264,7 @@ function EvolucionSection({ evolucion, onAddNota, soloLectura }) {
         <div className="mt-3">
           <RichTextEditor key={editorKey} initialValue={notaHtml} onChange={setNotaHtml} placeholder="Agregar novedad de la evolución…" />
           <div className="flex justify-end mt-2">
-            <button onClick={agregar} disabled={notaVacia} className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded">
+            <button onClick={agregar} disabled={notaVacia} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded">
               Agregar
             </button>
           </div>
@@ -8407,11 +8445,16 @@ function NuevaLesionForm({ jugadores, categoria, tira, jugadorIdInicial, onCance
         <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100" />
       </div>
       <div className="flex gap-2 mt-1">
-        <button onClick={submit} disabled={!jugadorId || !tipo.trim() || guardando} className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-1.5 rounded">
+        <button onClick={submit} disabled={!jugadorId || !tipo.trim() || guardando} className="bg-brand-500 hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-1.5 rounded">
           {guardando ? "Creando…" : "Crear ficha"}
         </button>
         <button onClick={onCancel} className="text-zinc-400 text-sm px-3 py-1.5">Cancelar</button>
       </div>
+      {!jugadorId ? (
+        <p className="text-xs text-amber-400 -mt-2">Elegí un jugador.</p>
+      ) : !tipo.trim() ? (
+        <p className="text-xs text-amber-400 -mt-2">Falta el tipo de lesión.</p>
+      ) : null}
     </div>
   );
 }
@@ -8491,7 +8534,7 @@ function LesionadosView({ jugadores, lesiones, onAddLesion, onUpdateLesion, onDa
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar jugador…" className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-2 py-1.5 text-sm text-zinc-100" />
         </div>
-        <button onClick={() => { setCreando(true); setSeleccionId(null); }} className="ml-auto inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
+        <button onClick={() => { setCreando(true); setSeleccionId(null); }} className="ml-auto inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
           <Plus size={14} /> Nueva ficha
         </button>
       </div>

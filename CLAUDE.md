@@ -179,6 +179,32 @@ Panel de cuenta + administración, visible para Head Coach/Asistente Técnico/Pr
 4. **Extra (no estaba en el roadmap original)**: ✅ Módulo Inicio (dashboard) — pantalla de arranque con lo más urgente de cada módulo en un solo lugar. ✅ Reestructuración por Temporadas/Competencias (Plantel, Scouting y Estadísticas) — ver sección "Temporadas" arriba; tampoco estaba en el roadmap original, se hizo para no perder historial al cambiar de plantel/rivales/torneo año a año. ✅ Panel de Configuración (cuenta + gestión de Temporadas) — ver sección "Configuración" arriba. ✅ Migración de RPE manual a Wellness diario automatizado (Google Form + Apps Script) — ver sección "Wellness diario" arriba. ✅ Módulo Lesionados (ficha médica por lesión con diagrama de cuerpo, historial y estudios en PDF) — ver sección "Lesionados" arriba. ✅ Módulo Informes (tendencias de wellness/asistencia/rendimiento en el tiempo, por equipo o jugador puntual, con export a PDF) — ver sección "Informes" arriba.
 5. **Módulo: Vista 360° y Rendimiento Integral del Jugador** — ver sección "Jugador 360°" arriba. ✅ Fase 1 (ficha base + foto de perfil). ✅ Fase 2 (evaluaciones físicas del PF, protocolo de 14 ejercicios con alerta de asimetría). ✅ Fase 3 (analítica comparada vs. equipo/posición). ✅ Fase 4 (modo espejo, comparación directa jugador vs. jugador).
 
+## Auditoría UX/UI (2026-10-09)
+
+Recorrida completa de `App.jsx` en dos pasadas (UX: flujos/comportamiento; UI: capa visual) buscando inconsistencias de interfaz (no son bugs funcionales, son deuda de pulido/consistencia). Las severidades **alta y media se resolvieron el mismo día**; queda un resto de severidad baja sin tocar, ver al final. Las líneas citadas originalmente en los hallazgos pueden haberse corrido desde entonces.
+
+**Alta (✅ resueltas):**
+- Sin botón de "Cerrar sesión" en celular → agregado en Configuración → Mi cuenta, al lado de "Cambiar contraseña" (usa el mismo `signOut` del sidebar de escritorio).
+- Botones de solo ícono con área de toque chica (~18-26px) → subidos a `p-2`/`p-1.5 -m-1.5` (según el caso) en ~26 lugares (cerrar de modal, editar/eliminar/dar de baja en Calendario, Plantel, Scouting Hub, Biblioteca, Partidos cargados, evaluaciones), con separación extra antes de cualquier "Eliminar" que comparte fila con otras acciones.
+- (UI) "Guardar" tenía 4 colores sin relación (cian/azul/celeste/marca) → unificados los 14 a `bg-brand-500 hover:bg-brand-600` (más 5 que ya eran de marca pero con el hover al revés, normalizados también).
+- (UI) Mensajes de panel vacío en el gris de menor contraste de toda la app (`zinc-600`/`700`) → subidos a `zinc-500` en los 11 que son contenido real (Scouting colectivo, objetivos/plan de juego, sistemas de juego, cartel de "ventaja deportiva", alertas de Inicio) — los íconos deshabilitados y placeholders "—" se dejaron como estaban, a propósito.
+
+**Media:**
+- ✅ Formularios sin etiqueta visible y sin aviso de por qué no se puede guardar → las 7 modales con un campo obligatorio (`JugadorFormModal`, `JugadorRivalFormModal`, `EquipoRivalFormModal`, `NuevaTemporadaModal`, `NuevaCompetenciaModal`, `CambiarPasswordModal`, ficha de lesión nueva) ahora muestran el motivo en ámbar debajo del botón, y los campos clave (Dorsal/Nombre/Nombre del club/Nombre de la competencia) tienen etiqueta visible, no solo placeholder.
+- ✅ Tablas densas de Estadísticas del plantel y Ranking de equipos sin indicio de scroll horizontal → degradé sutil en el borde derecho de ambas tablas.
+- ✅ (UI) Seis tamaños de ícono superpuestos → unificados a `size={14}` los ~10 botones de editar/eliminar/dar de baja ya tocados en el punto de arriba (el resto del sprawl de tamaños en la app, fuera de esos botones, sigue sin tocar).
+- ✅ (UI) Inicio y Jugador 360° "decían" un número destacado de formas distintas → investigado más a fondo: el número (`text-lg font-extrabold`) en realidad ya era consistente entre Jugador 360°, Evaluaciones físicas e Informes (familia de tile compacta, a propósito más chica que la de Inicio por mostrar grillas de hasta 15 métricas) — lo que sí estaba desparejo era la etiqueta (negrita+zinc-400 en 2 de los 4 componentes, normal+zinc-500 en los otros 2), ya unificada a la segunda.
+- ⚠️ **Parcial** — 16 modales con 10+ combinaciones de `max-w`/`max-h` sin componente compartido: se les agregó `max-h-[85vh] overflow-y-auto` a los 4 que no tenían ninguno (`ConfirmDeleteModal`, `NuevaTemporadaModal`, `CambiarPasswordModal`, `NuevaCompetenciaModal`), que era el riesgo real de desborde. Extraer un `<Modal>` compartido para los 16 casos (beneficio mayormente de mantenibilidad, no de usuario) queda pendiente como tarea aparte.
+- ⏳ (UI) La misma tarjeta (`bg-zinc-900 border border-zinc-800`) sigue repartida en tres combinaciones de radio/padding (`rounded-lg`/`xl` × `p-3`/`4`/`5`) — sin tocar.
+
+**Baja (sin tocar, no se priorizaron):**
+- ~21 lugares muestran "Cargando…" en texto plano — cero spinners/skeletons en toda la app.
+- La redacción de estados vacíos no sigue una sola regla ("No hay X" / "Todavía no hay X" / "Sin X" conviven, a veces en la misma oración).
+- El patrón de card se repite ~63 veces inline sin un componente `<Card>` compartido.
+- (UI) 10 tamaños de texto en uso (incluidos 3 arbitrarios de 9-11px) y el espacio bajo el `<h1>` de cada módulo varía de 0 a 16px según la pantalla.
+
+No se incluyó el soporte offline/service worker como hallazgo de esta auditoría — ya está anotado como pendiente más arriba (Fase 3), sigue siendo la brecha más grande entre "cómo se ve la app" y "qué tan bien aguanta sin señal en el gimnasio".
+
 ## Notas de diseño
 
 El escudo de Náutico Hacoaj ya está cargado en la app. La paleta ya no es un placeholder: el color principal (`brand-300` a `brand-950` en `src/index.css`, vía `@theme` de Tailwind v4) es el azul del club, muestreado directo del escudo (`#01215A`) — se usa en navegación, botones principales, Login, y en Partido/Scouting Hub (que antes tenían su propio naranja). El fondo se mantiene oscuro (zinc-950/900).
