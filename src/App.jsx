@@ -6255,6 +6255,272 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
   );
 }
 
+// Arma, a partir del historial de partidos y las filas de equipo_partido_stats ya traidas, una
+// entidad por cada equipo con datos en esta temporada (el propio + cualquier rival con
+// equipo_rival_id vinculado) -- identifica cada lado por equipo_propio/condicion o
+// equipo_rival_id, nunca por el texto libre "equipo" (ese texto puede variar entre cargas del
+// mismo equipo -- ver el fix de Estadisticas del plantel, mismo motivo).
+function construirEntidadesEquipos(historial, eqData, equiposRivales) {
+  const entidades = new Map(); // key -> { propias: [], rivales: [] }
+  const getEntidad = (key) => {
+    if (!entidades.has(key)) entidades.set(key, { propias: [], rivales: [] });
+    return entidades.get(key);
+  };
+
+  historial.forEach((p) => {
+    const filasPartido = eqData.filter((f) => f.partido_id === p.id);
+    if (filasPartido.length !== 2) return;
+    const [f1, f2] = filasPartido;
+    const identidadDe = (f) => {
+      if (p.equipo_propio && f.condicion === p.equipo_propio) return "propio";
+      if (f.equipo_rival_id) return `rival:${f.equipo_rival_id}`;
+      return null;
+    };
+    const id1 = identidadDe(f1), id2 = identidadDe(f2);
+    if (id1) { const e = getEntidad(id1); e.propias.push(f1); e.rivales.push(f2); }
+    if (id2) { const e = getEntidad(id2); e.propias.push(f2); e.rivales.push(f1); }
+  });
+
+  return [...entidades.entries()].map(([key, { propias, rivales }]) => {
+    const rc = calcularRendimientoColectivo(propias, rivales);
+    if (!rc) return null;
+    const nombre = key === "propio" ? "Náutico Hacoaj" : (equiposRivales.find((e) => e.id === key.slice(6))?.nombre_club || "Rival");
+    return { key, nombre, propio: key === "propio", rc };
+  }).filter(Boolean);
+}
+
+const COLUMNAS_RANKING_EQUIPOS = [
+  { k: "nombre", l: "Equipo" },
+  { k: "pj", l: "PJ" },
+  { k: "record", l: "G-P" },
+  { k: "ptsFavor", l: "PTS Favor", dec: 1 },
+  { k: "ptsContra", l: "PTS Contra", dec: 1 },
+  { k: "dif", l: "Dif", dec: 1, signed: true },
+  { k: "play", l: "Play", dec: 1 },
+  { k: "t2a", l: "T2A", dec: 1 },
+  { k: "t2i", l: "T2I", dec: 1 },
+  { k: "t2pct", l: "%T2", pct: true },
+  { k: "t3a", l: "T3A", dec: 1 },
+  { k: "t3i", l: "T3I", dec: 1 },
+  { k: "t3pct", l: "%T3", pct: true },
+  { k: "t1a", l: "T1A", dec: 1 },
+  { k: "t1i", l: "T1I", dec: 1 },
+  { k: "t1pct", l: "%T1", pct: true },
+  { k: "rd", l: "RD", dec: 1 },
+  { k: "ro", l: "RO", dec: 1 },
+  { k: "ast", l: "AST", dec: 1 },
+  { k: "rec", l: "REC", dec: 1 },
+  { k: "per", l: "PÉR", dec: 1 },
+];
+
+// Aplana el "rc" de calcularRendimientoColectivo a una fila de tabla -- misma forma que usa
+// COLUMNAS_RANKING_EQUIPOS, análoga a derivarFilaJugador en Estadísticas del plantel.
+function filaRankingDeEntidad(ent) {
+  const rc = ent.rc;
+  const [t2, t3, t1] = rc.tiros;
+  return {
+    key: ent.key, nombre: ent.nombre, propio: ent.propio,
+    pj: rc.pj, g: rc.record.ganados, p: rc.record.perdidos,
+    ptsFavor: rc.pts.general.favor, ptsContra: rc.pts.general.contra,
+    dif: rc.pts.general.favor - rc.pts.general.contra,
+    play: rc.eficiencia.playProm,
+    t2a: t2.made, t2i: t2.att, t2pct: t2.pct,
+    t3a: t3.made, t3i: t3.att, t3pct: t3.pct,
+    t1a: t1.made, t1i: t1.att, t1pct: t1.pct,
+    rd: rc.control.rd, ro: rc.control.ro, ast: rc.control.ast, rec: rc.control.rec, per: rc.control.per,
+  };
+}
+
+function formatCeldaRanking(fila, col) {
+  if (col.k === "nombre") return fila.nombre;
+  if (col.k === "record") return `${fila.g}-${fila.p}`;
+  const v = fila[col.k];
+  if (col.pct) return `${Math.round(v)}%`;
+  if (col.signed) return `${v >= 0 ? "+" : ""}${v.toFixed(col.dec)}`;
+  return v.toFixed(col.dec ?? 0);
+}
+
+// Ranking de todos los equipos con datos esta temporada (el propio + cualquier rival vinculado en
+// Scouting Hub), y comparación directa 1 a 1 -- mismo patrón de fetch/paginado que Estadísticas
+// del plantel, pero sobre equipo_partido_stats (mucho más chica, nunca se acerca al límite de
+// 1000 filas de PostgREST, pero igual se usa fetchTodasLasFilas por las dudas).
+function RankingEquiposModal({ historial, equiposRivales, onClose }) {
+  const [eqData, setEqData] = useState(null); // null = cargando
+  const [view, setView] = useState("ranking"); // ranking | comparar
+  const [sortCol, setSortCol] = useState("dif");
+  const [sortDir, setSortDir] = useState("desc");
+  const [equipoA, setEquipoA] = useState(null);
+  const [equipoB, setEquipoB] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = historial.map((p) => p.id);
+    if (ids.length === 0) { setEqData([]); return; }
+    setEqData(null);
+    (async () => {
+      const { data } = await fetchTodasLasFilas("equipo_partido_stats", ids);
+      if (!cancelled) setEqData(data || []);
+    })();
+    return () => { cancelled = true; };
+  }, [historial]);
+
+  const filas = eqData === null ? null : construirEntidadesEquipos(historial, eqData, equiposRivales).map(filaRankingDeEntidad);
+
+  // Arranca comparando el propio contra el primer rival de la lista -- el usuario puede cambiar
+  // cualquiera de los dos desde los desplegables.
+  useEffect(() => {
+    if (!filas || filas.length === 0) return;
+    const propio = filas.find((f) => f.propio)?.key;
+    setEquipoA((prev) => prev ?? propio ?? filas[0].key);
+    setEquipoB((prev) => prev ?? filas.find((f) => f.key !== propio)?.key ?? filas[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filas]);
+
+  const toggleSort = (colKey) => {
+    if (sortCol === colKey) { setSortDir((d) => (d === "desc" ? "asc" : "desc")); return; }
+    setSortCol(colKey);
+    setSortDir(colKey === "nombre" ? "asc" : "desc");
+  };
+
+  const filasOrdenadas = filas ? [...filas].sort((a, b) => {
+    const av = sortCol === "record" ? a.g - a.p : a[sortCol];
+    const bv = sortCol === "record" ? b.g - b.p : b[sortCol];
+    const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+    return sortDir === "asc" ? cmp : -cmp;
+  }) : filas;
+
+  const cargando = eqData === null;
+  const filaA = filas?.find((f) => f.key === equipoA) || null;
+  const filaB = filas?.find((f) => f.key === equipoB) || null;
+
+  const METRICAS_COMPARAR = [
+    { k: "ptsFavor", l: "Puntos a favor", dec: 1 },
+    { k: "ptsContra", l: "Puntos en contra", dec: 1, invertido: true },
+    { k: "t2pct", l: "T2 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t2a.toFixed(1)}/${f.t2i.toFixed(1)}` },
+    { k: "t3pct", l: "T3 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t3a.toFixed(1)}/${f.t3i.toFixed(1)}` },
+    { k: "t1pct", l: "T1 (convertidos/intentados)", pct: true, detalle: (f) => `${f.t1a.toFixed(1)}/${f.t1i.toFixed(1)}` },
+    { k: "rd", l: "Rebote defensivo", dec: 1 },
+    { k: "ro", l: "Rebote ofensivo", dec: 1 },
+    { k: "ast", l: "Asistencias", dec: 1 },
+    { k: "rec", l: "Recuperos", dec: 1 },
+    { k: "per", l: "Pérdidas", dec: 1, invertido: true },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-6xl max-h-[88vh] flex flex-col text-zinc-100" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b border-zinc-800 flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-brand-400">
+              <BarChart3 size={18} />
+              <h2 className="text-sm font-bold text-zinc-100">Comparar equipos</h2>
+            </div>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X size={18} /></button>
+          </div>
+          <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 gap-1 w-fit">
+            <button onClick={() => setView("ranking")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "ranking" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Ranking</button>
+            <button onClick={() => setView("comparar")} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${view === "comparar" ? "bg-brand-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>Comparar 2 equipos</button>
+          </div>
+        </div>
+
+        <div className="overflow-auto flex-1 min-h-0 p-4">
+          {cargando ? (
+            <p className="text-sm text-zinc-500">Cargando…</p>
+          ) : filas.length === 0 ? (
+            <p className="text-sm text-zinc-500">Sin partidos cargados en esta temporada.</p>
+          ) : view === "ranking" ? (
+            <>
+              <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+                <table className="border-collapse text-xs w-max min-w-full">
+                  <thead>
+                    <tr>
+                      {COLUMNAS_RANKING_EQUIPOS.map((c) => (
+                        <th key={c.k} onClick={() => toggleSort(c.k)} title="Ordenar por esta columna"
+                          className={`sticky top-0 bg-zinc-950 font-bold uppercase tracking-wide text-[10px] py-2 px-2.5 border-b border-zinc-800 whitespace-nowrap cursor-pointer select-none hover:text-zinc-300 ${c.k === "nombre" ? "text-left sticky left-0 z-20" : "text-right z-10"} ${sortCol === c.k ? "text-brand-400" : "text-zinc-500"}`}>
+                          {c.l}{sortCol === c.k && (sortDir === "asc" ? " ▲" : " ▼")}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasOrdenadas.map((f) => (
+                      <tr key={f.key} className="hover:bg-zinc-800/40">
+                        {COLUMNAS_RANKING_EQUIPOS.map((c) => (
+                          <td key={c.k} className={`py-1.5 px-2.5 border-b border-zinc-800/70 whitespace-nowrap ${c.k === "nombre" ? "text-left sticky left-0 bg-zinc-900 font-medium" : "text-right text-zinc-300"} ${c.k === "dif" ? (f.dif >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold") : ""} ${c.k === "nombre" && f.propio ? "text-brand-300" : ""}`}>
+                            {formatCeldaRanking(f, c)}
+                            {c.k === "nombre" && f.propio && <span className="ml-1.5 text-[9px] font-bold text-brand-400 bg-brand-500/15 border border-brand-500/40 rounded px-1 py-0.5 align-middle">NOSOTROS</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-zinc-600 mt-2">Tocá cualquier columna para ordenar.</p>
+            </>
+          ) : (
+            <div className="max-w-2xl mx-auto">
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end mb-5">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 block mb-1">Equipo A</label>
+                  <select value={equipoA ?? ""} onChange={(e) => setEquipoA(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm font-semibold text-brand-300">
+                    {filas.map((f) => <option key={f.key} value={f.key}>{f.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="text-xs text-zinc-600 font-bold pb-2">VS</div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 block mb-1">Equipo B</label>
+                  <select value={equipoB ?? ""} onChange={(e) => setEquipoB(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm font-semibold text-amber-400">
+                    {filas.map((f) => <option key={f.key} value={f.key}>{f.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {filaA && filaB && (
+                <div className="space-y-4">
+                  {METRICAS_COMPARAR.map((m) => {
+                    const av = filaA[m.k], bv = filaB[m.k];
+                    const max = Math.max(av, bv) || 1;
+                    const aPct = Math.max(6, (av / max) * 100);
+                    const bPct = Math.max(6, (bv / max) * 100);
+                    const diff = av - bv;
+                    const favoreceA = m.invertido ? diff < 0 : diff > 0;
+                    const favoreceB = m.invertido ? diff > 0 : diff < 0;
+                    const fmt = (v) => (m.pct ? `${Math.round(v)}%` : v.toFixed(m.dec ?? 0));
+                    const diffTexto = Math.abs(diff) < 0.05 ? "=" : m.pct
+                      ? `${diff > 0 ? "+" : ""}${Math.round(diff)} pp`
+                      : `${diff > 0 ? "+" : ""}${diff.toFixed(m.dec ?? 1)}`;
+                    return (
+                      <div key={m.k}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">{m.l}</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${favoreceA ? "text-brand-300 bg-brand-500/15" : favoreceB ? "text-amber-400 bg-amber-500/15" : "text-zinc-500 bg-zinc-800"}`}>
+                            {diffTexto}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-0.5 h-6">
+                          <div className="relative bg-zinc-950 rounded-l overflow-hidden">
+                            <div className={`absolute inset-y-0 right-0 bg-brand-500 ${favoreceA ? "" : "opacity-60"}`} style={{ width: `${aPct}%` }} />
+                            <div className="absolute inset-y-0 right-0 flex items-center px-2 text-[11px] font-bold text-zinc-50 whitespace-nowrap">{m.detalle ? `${m.detalle(filaA)} (${fmt(av)})` : fmt(av)}</div>
+                          </div>
+                          <div className="relative bg-zinc-950 rounded-r overflow-hidden">
+                            <div className={`absolute inset-y-0 left-0 bg-amber-500 ${favoreceB ? "" : "opacity-60"}`} style={{ width: `${bPct}%` }} />
+                            <div className="absolute inset-y-0 left-0 flex items-center px-2 text-[11px] font-bold text-zinc-50 whitespace-nowrap">{m.detalle ? `${m.detalle(filaB)} (${fmt(bv)})` : fmt(bv)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
@@ -6270,6 +6536,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
   } = useTeam();
   const [showNuevaTemporada, setShowNuevaTemporada] = useState(false);
   const [showStatsPlantel, setShowStatsPlantel] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
   const [verSinAsignar, setVerSinAsignar] = useState(false);
   const [sinAsignar, setSinAsignar] = useState([]);
   const [jugadoresRivalesLocal, setJugadoresRivalesLocal] = useState([]);
@@ -6691,11 +6958,16 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
         <BarChart3 size={18} />
         <span className="text-xs font-bold uppercase tracking-widest">Estadísticas</span>
       </div>
-      <div className="flex items-center justify-between flex-wrap gap-y-1 mb-3">
+      <div className="flex items-center justify-between flex-wrap gap-y-1 gap-x-3 mb-3">
         <h1 className="text-2xl font-bold">Cargar partido (PDF de la CABB)</h1>
-        <button onClick={() => setShowStatsPlantel(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
-          <Users size={15} /> Estadísticas del plantel
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowRanking(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
+            <BarChart3 size={15} /> Comparar equipos
+          </button>
+          <button onClick={() => setShowStatsPlantel(true)} className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
+            <Users size={15} /> Estadísticas del plantel
+          </button>
+        </div>
       </div>
 
       {verSinAsignar ? (
@@ -6935,6 +7207,10 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       {showStatsPlantel && (
         <EstadisticasPlantelModal historial={historial} equiposRivales={equiposRivales} onClose={() => setShowStatsPlantel(false)} />
+      )}
+
+      {showRanking && (
+        <RankingEquiposModal historial={historial} equiposRivales={equiposRivales} onClose={() => setShowRanking(false)} />
       )}
     </div>
   );
