@@ -6458,7 +6458,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-6xl max-h-[88vh] flex flex-col text-zinc-100" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-[95vw] max-h-[95vh] flex flex-col text-zinc-100" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b border-zinc-800 flex flex-col gap-3 shrink-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-brand-400">
