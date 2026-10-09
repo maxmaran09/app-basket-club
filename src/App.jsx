@@ -128,6 +128,24 @@ function Chip({ children, tone = "zinc" }) {
   return <span className={`inline-block px-2 py-0.5 rounded text-xs border ${map[tone]} mr-1.5 mb-1.5`}>{children}</span>;
 }
 
+// Mismo lenguaje visual que la pantalla de carga inicial (login) pero en tamaño chico, para que
+// todos los "Cargando..." de la app (dentro de un modal, una sección, una tabla) usen la misma
+// idea -- pelota de básquet picando -- sin repetir el escudo/barra de progreso en cada lugar
+// puntual, que quedaría demasiado pesado para un loading corto dentro de una pantalla ya abierta.
+function Cargando({ texto = "Cargando…", className = "text-sm text-zinc-500" }) {
+  return (
+    <p className={`flex items-center gap-1.5 ${className}`}>
+      <svg viewBox="0 0 32 32" className="w-3.5 h-3.5 shrink-0 animate-bounce" style={{ animationDuration: "0.9s" }}>
+        <circle cx="16" cy="16" r="14" fill="#f97316" stroke="#7c2d12" strokeWidth="2" />
+        <line x1="2" y1="16" x2="30" y2="16" stroke="#7c2d12" strokeWidth="1.8" />
+        <path d="M 16 2 Q 8 16 16 30" fill="none" stroke="#7c2d12" strokeWidth="1.8" />
+        <path d="M 16 2 Q 24 16 16 30" fill="none" stroke="#7c2d12" strokeWidth="1.8" />
+      </svg>
+      {texto}
+    </p>
+  );
+}
+
 function Section({ icon: Icon, title, children, accent = "text-zinc-400" }) {
   return (
     <div className="mb-6">
@@ -747,7 +765,7 @@ function AsistenciaSection({ event, jugadores }) {
   return (
     <Section icon={Users} title="Asistencia" accent="text-cyan-400">
       {loadingAsist ? (
-        <p className="text-sm text-zinc-500">Cargando plantel…</p>
+        <Cargando texto="Cargando plantel…" />
       ) : roster.length === 0 ? (
         <p className="text-sm text-zinc-500">No hay jugadores cargados para {event.categoria} · {event.tira}. Agregalos desde la pestaña Plantel.</p>
       ) : (
@@ -869,7 +887,7 @@ function WellnessHoyPanel({ event, jugadores, rol, tipoEvento }) {
   return (
     <Section icon={Activity} title="Wellness de hoy" accent="text-brand-400">
       {loading ? (
-        <p className="text-sm text-zinc-500">Cargando…</p>
+        <Cargando />
       ) : (
         <div className="space-y-1.5">
           {roster.map((j) => {
@@ -2770,7 +2788,7 @@ function PartidoView({ event, equiposRivales, sistemasJuego, onBack, onUpdate, o
         {!equipoRival ? (
           <p className="text-sm text-zinc-500">—</p>
         ) : loadingRival ? (
-          <p className="text-sm text-zinc-500">Cargando plantel…</p>
+          <Cargando texto="Cargando plantel…" />
         ) : jugadoresRivales.length === 0 ? (
           <p className="text-sm text-zinc-500">Este rival todavía no tiene jugadores cargados en Scouting Hub.</p>
         ) : (
@@ -3783,7 +3801,7 @@ function PlantelView({ jugadores, lesiones, onAddJugador, onDeleteJugador, onUpd
         </div>
       )}
 
-      {(loadingHistorico || loadingBaja) && <p className="text-sm text-zinc-500 mb-2">Cargando…</p>}
+      {(loadingHistorico || loadingBaja) && <Cargando className="text-sm text-zinc-500 mb-2" />}
 
       {!loadingHistorico && !loadingBaja && listaMostrada.length === 0 && (
         <p className="text-sm text-zinc-500">
@@ -4415,7 +4433,7 @@ function AnaliticaComparada360({ equipo, seleccionado, temporadaId }) {
     return () => { cancelled = true; };
   }, [idsEquipo, temporadaId]);
 
-  if (loading) return <p className="text-sm text-zinc-500">Cargando estadísticas…</p>;
+  if (loading) return <Cargando texto="Cargando estadísticas…" />;
 
   const misProm = porJugador[seleccionado.id];
   if (!misProm) {
@@ -4588,7 +4606,7 @@ function ModoEspejoPanel({ equipo, seleccionado, temporadaId }) {
           </div>
 
           {!rivalId ? null : loading ? (
-            <p className="text-sm text-zinc-500">Cargando…</p>
+            <Cargando />
           ) : !promA || !promB ? (
             <p className="text-sm text-zinc-500">Alguno de los dos todavía no tiene partidos cargados en esta temporada.</p>
           ) : (
@@ -4730,7 +4748,7 @@ function Jugador360View({ jugadores }) {
         {buscadorAbierto && (
           <div className="absolute z-20 top-full left-0 right-0 mt-1 border border-zinc-700 rounded-lg overflow-y-auto max-h-72 bg-zinc-900 shadow-xl">
             {loadingHistorico ? (
-              <p className="text-sm text-zinc-500 px-3 py-2">Cargando…</p>
+              <Cargando className="text-sm text-zinc-500 px-3 py-2" />
             ) : filtrados.length === 0 ? (
               <p className="text-sm text-zinc-500 px-3 py-2">No hay jugadores para {categoria} · {tira}.</p>
             ) : (
@@ -5422,7 +5440,7 @@ function EquipoRivalFicha({ equipo, onBack, onUpdateEquipo, soloLectura }) {
 
       <Section icon={Users} title="Plantel rival" accent="text-brand-400">
         {loading ? (
-          <p className="text-sm text-zinc-500">Cargando plantel…</p>
+          <Cargando texto="Cargando plantel…" />
         ) : (
           <div className="space-y-2 mb-3">
             {jugadoresRivales.map((j) => (
@@ -5705,7 +5723,7 @@ function ScoutingHubView({ equiposRivales, sistemasJuego, onAddSistema, onDelete
         </p>
       )}
 
-      {loadingSecundario && <p className="text-sm text-zinc-500 mb-2">Cargando…</p>}
+      {loadingSecundario && <Cargando className="text-sm text-zinc-500 mb-2" />}
 
       {!loadingSecundario && equiposMostrados.length === 0 && (
         <p className="text-sm text-zinc-500">
@@ -6239,7 +6257,7 @@ function EstadisticasPlantelModal({ historial, equiposRivales, onClose }) {
 
         <div className="overflow-auto flex-1 min-h-0">
           {cargando ? (
-            <p className="text-sm text-zinc-500 p-4">Cargando…</p>
+            <Cargando className="text-sm text-zinc-500 p-4" />
           ) : filas.length === 0 && !filaEquipo ? (
             <p className="text-sm text-zinc-500 p-4">Sin datos para esta vista.</p>
           ) : (
@@ -6517,7 +6535,7 @@ function RankingEquiposModal({ historial, equiposRivales, onClose }) {
 
         <div className="overflow-auto flex-1 min-h-0 p-4">
           {cargando ? (
-            <p className="text-sm text-zinc-500">Cargando…</p>
+            <Cargando />
           ) : filas.length === 0 ? (
             <p className="text-sm text-zinc-500">Sin partidos cargados en esta temporada.</p>
           ) : view === "ranking" ? (
@@ -7274,7 +7292,7 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
 
       <Section icon={Trophy} title="Partidos cargados" accent="text-blue-400">
         {loadingHistorial ? (
-          <p className="text-sm text-zinc-500">Cargando…</p>
+          <Cargando />
         ) : historialMostrado.length === 0 ? (
           <p className="text-sm text-zinc-500">
             {verSinAsignar ? "No hay partidos sin temporada asignada." : "Todavía no cargaste ningún partido para esta temporada."}
@@ -7487,7 +7505,7 @@ function PanelRendimientoColectivo({ temporadaId, temporadaSeleccionada }) {
       <h2 className="text-lg font-bold text-zinc-100 mb-4">Salud táctica del equipo</h2>
 
       {rc === null ? (
-        <p className="text-sm text-zinc-500">Cargando…</p>
+        <Cargando />
       ) : rc === false ? (
         <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido en esta temporada.</p>
       ) : (
@@ -7596,7 +7614,7 @@ function EstadisticasColectivasRival({ equipoRivalId, temporadaId }) {
     return () => { cancelled = true; };
   }, [equipoRivalId, temporadaId]);
 
-  if (rc === null) return <p className="text-sm text-zinc-500">Cargando…</p>;
+  if (rc === null) return <Cargando />;
   if (rc === false) return <p className="text-sm text-zinc-500">Todavía no hay partidos de este rival cargados en esta temporada.</p>;
 
   return (
@@ -7902,7 +7920,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
           </div>
           <div className="space-y-1 max-h-20 overflow-y-auto">
             {loadingNotas ? (
-              <p className="text-xs text-zinc-600">Cargando…</p>
+              <Cargando className="text-xs text-zinc-600" />
             ) : notas.length === 0 ? (
               <p className="text-xs text-zinc-500">Sin alertas pendientes.</p>
             ) : (
@@ -7987,7 +8005,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
             <h3 className="text-xs font-bold uppercase tracking-widest">Líderes — último partido</h3>
           </div>
           {loadingStats ? (
-            <p className="text-sm text-zinc-500">Cargando…</p>
+            <Cargando />
           ) : !ultimoPartido ? (
             <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido en esta temporada.</p>
           ) : (
@@ -8005,7 +8023,7 @@ function InicioView({ events, jugadores, equiposRivales, onSelectEvent }) {
             <h3 className="text-xs font-bold uppercase tracking-widest">Tendencia — últimos 3 partidos</h3>
           </div>
           {loadingStats ? (
-            <p className="text-sm text-zinc-500">Cargando…</p>
+            <Cargando />
           ) : tendencia.length === 0 ? (
             <p className="text-sm text-zinc-500">Todavía no hay partidos con el lado propio definido.</p>
           ) : (
@@ -9663,7 +9681,7 @@ function InformesView({ jugadores }) {
         </div>
 
         {cargando ? (
-          <p className="text-sm text-zinc-500">Cargando…</p>
+          <Cargando />
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
@@ -9732,7 +9750,7 @@ function InformesView({ jugadores }) {
         </div>
 
         {cargando ? (
-          <p className="text-sm text-zinc-500">Cargando…</p>
+          <Cargando />
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
@@ -9833,7 +9851,7 @@ function InformesView({ jugadores }) {
         </div>
 
         {cargandoRendimiento ? (
-          <p className="text-sm text-zinc-500">Cargando…</p>
+          <Cargando />
         ) : !idsTemporadasEquipo.length ? (
           <p className="text-sm text-zinc-500">Sin temporadas cargadas para {categoria} · {tira}.</p>
         ) : (
@@ -10429,8 +10447,20 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 text-sm">
-        Cargando…
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+        <div className="flex flex-col items-center gap-4">
+          <img src="/escudo-hacoaj.png" alt="Náutico Hacoaj" className="h-16 w-auto animate-pulse" />
+          <svg viewBox="0 0 32 32" className="w-8 h-8 animate-bounce" style={{ animationDuration: "0.9s" }}>
+            <circle cx="16" cy="16" r="14" fill="#f97316" stroke="#7c2d12" strokeWidth="1.5" />
+            <line x1="2" y1="16" x2="30" y2="16" stroke="#7c2d12" strokeWidth="1.3" />
+            <path d="M 16 2 Q 8 16 16 30" fill="none" stroke="#7c2d12" strokeWidth="1.3" />
+            <path d="M 16 2 Q 24 16 16 30" fill="none" stroke="#7c2d12" strokeWidth="1.3" />
+          </svg>
+          <p className="text-sm text-zinc-400 font-medium">Pensando las jugadas…</p>
+          <div className="w-40 h-1 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-full w-1/3 bg-brand-500 rounded-full animate-loading-bar" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -10506,7 +10536,7 @@ export default function App() {
 
         {!active && (
           loading ? (
-            <p className="max-w-3xl mx-auto text-zinc-500 text-sm">Cargando eventos…</p>
+            <Cargando texto="Cargando eventos…" className="max-w-3xl mx-auto text-zinc-500 text-sm justify-center" />
           ) : (
             <Routes>
               <Route path="/" element={

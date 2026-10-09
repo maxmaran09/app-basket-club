@@ -197,8 +197,8 @@ Recorrida completa de `App.jsx` en dos pasadas (UX: flujos/comportamiento; UI: c
 - ⚠️ **Parcial** — 16 modales con 10+ combinaciones de `max-w`/`max-h` sin componente compartido: se les agregó `max-h-[85vh] overflow-y-auto` a los 4 que no tenían ninguno (`ConfirmDeleteModal`, `NuevaTemporadaModal`, `CambiarPasswordModal`, `NuevaCompetenciaModal`), que era el riesgo real de desborde. Extraer un `<Modal>` compartido para los 16 casos (beneficio mayormente de mantenibilidad, no de usuario) queda pendiente como tarea aparte.
 - ⏳ (UI) La misma tarjeta (`bg-zinc-900 border border-zinc-800`) sigue repartida en tres combinaciones de radio/padding (`rounded-lg`/`xl` × `p-3`/`4`/`5`) — sin tocar.
 
-**Baja (sin tocar, no se priorizaron):**
-- ~21 lugares muestran "Cargando…" en texto plano — cero spinners/skeletons en toda la app.
+**Baja:**
+- ✅ Los ~21 "Cargando…" de texto plano (cero spinners/skeletons) → reemplazados por un componente compartido (`Cargando` en `App.jsx`, cerca de `Chip`/`Section`) que dibuja una pelota de básquet picando (`animate-bounce`) al lado del texto — mismo lenguaje visual que la pantalla de carga inicial del login (escudo + pelota + barra de progreso indeterminada, bajo "Pensando las jugadas…"), pero en tamaño chico para no pesar en un loading corto dentro de una pantalla ya abierta. La barra de progreso (`animate-loading-bar`) es la única animación que no trae Tailwind, definida a mano en `index.css` junto con un `prefers-reduced-motion: reduce` que la desactiva.
 - La redacción de estados vacíos no sigue una sola regla ("No hay X" / "Todavía no hay X" / "Sin X" conviven, a veces en la misma oración).
 - El patrón de card se repite ~63 veces inline sin un componente `<Card>` compartido.
 - (UI) 10 tamaños de texto en uso (incluidos 3 arbitrarios de 9-11px) y el espacio bajo el `<h1>` de cada módulo varía de 0 a 16px según la pantalla.

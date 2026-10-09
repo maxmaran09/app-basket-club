@@ -78,3 +78,19 @@ input:focus, select:focus, textarea:focus, .rte-content:focus {
   content: attr(data-placeholder);
   color: #71717a;
 }
+
+/* Barrita indeterminada de la pantalla de carga inicial (escudo + pelota picando + "Pensando las
+   jugadas…") -- Tailwind no trae una animación de progreso indeterminado hecha, así que es la
+   única que se define a mano acá; el resto (animate-pulse/animate-bounce) ya viene con Tailwind. */
+@keyframes loading-bar-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.animate-loading-bar {
+  animation: loading-bar-slide 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-loading-bar, .animate-bounce, .animate-pulse {
+    animation: none;
+  }
+}
