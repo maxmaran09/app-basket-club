@@ -7021,14 +7021,25 @@ function EstadisticasView({ jugadores, equiposRivales, soloLectura }) {
       if (errEquipo) { setSaveMsg("Los jugadores se guardaron, pero hubo un error con los totales de equipo: " + errEquipo.message); setSaving(false); return; }
     }
 
-    setSaveMsg("Guardado ✓");
     setPreview(null);
-    setHistorial((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
-    setSinAsignar((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
-    // Si el partido nuevo quedo en una temporada distinta a la que se esta viendo (se cambio el
-    // "Torneo" del formulario a otra), la lista visible no necesita tocarse -- se va a traer
-    // sola cuando el staff navegue a esa temporada (el efecto de "temporadaId" ya la refresca).
-    if (!isEdit && preview.temporadaId === temporadaId) fetchHistorial(temporadaId);
+    if (isEdit) {
+      setSaveMsg("Guardado ✓");
+      setHistorial((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
+      setSinAsignar((prev) => prev.map((h) => (h.id === partidoId ? { ...h, ...partidoPatch } : h)));
+    } else if (preview.temporadaId === temporadaId) {
+      // Partido nuevo guardado en la misma temporada que se esta viendo: refresca la lista para
+      // que aparezca. El .map() de arriba no sirve para un alta (nunca "encuentra" el id nuevo).
+      setSaveMsg("Guardado ✓");
+      fetchHistorial(temporadaId);
+    } else {
+      // Partido nuevo guardado en OTRA temporada (se cambio el "Torneo" del formulario, o la
+      // temporada activa cambio mientras la vista previa estaba abierta): no toca la lista que
+      // se esta viendo ahora (no corresponde), pero antes se quedaba en "Guardado ✓" sin mas
+      // explicacion y parecia que el partido no se habia guardado. Bug real reportado por el
+      // usuario (2026-10-17).
+      const destino = temporadasDelEquipo.find((t) => t.id === preview.temporadaId);
+      setSaveMsg(`Guardado ✓ en ${destino ? destino.nombre_competencia + " " + destino.anio : "otra temporada"} — cambiá el filtro de temporada arriba para verlo ahí.`);
+    }
     setSaving(false);
   };
 
